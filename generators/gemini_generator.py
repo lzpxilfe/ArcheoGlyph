@@ -143,21 +143,23 @@ class GeminiGenerator:
                     }
                 )
                 
-                # If successful, break loop
+                # If successful, extract and return
                 if response.candidates and len(response.candidates) > 0:
-                     break
+                     candidate = response.candidates[0]
+                     if hasattr(candidate, 'content') and candidate.content.parts:
+                         for part in candidate.content.parts:
+                             if hasattr(part, 'inline_data'):
+                                 image_bytes = part.inline_data.data
+                                 return self._bytes_to_pixmap(image_bytes)
                      
             except Exception as e:
                 last_error = e
                 continue # Try next model
-            candidate = response.candidates[0]
-            if hasattr(candidate, 'content') and candidate.content.parts:
-                for part in candidate.content.parts:
-                    if hasattr(part, 'inline_data'):
-                        image_bytes = part.inline_data.data
-                        return self._bytes_to_pixmap(image_bytes)
-                        
-        return None
+        
+        if last_error:
+            raise last_error
+            
+        raise Exception("Failed to generate symbol: No suitable AI model found.")
         
     def _get_mime_type(self, file_path):
         """Get MIME type from file extension."""
