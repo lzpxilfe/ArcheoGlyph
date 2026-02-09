@@ -619,7 +619,16 @@ class SettingsDialog(QDialog):
         self.process.finished.connect(self._handle_process_finished)
         self.process.errorOccurred.connect(self._handle_process_error)
         
-        python_path = sys.executable
+        # Fix: sys.executable in QGIS is 'qgis-bin.exe', which launches QGIS again!
+        # We need the actual python interpreter.
+        if sys.platform == 'win32':
+            python_path = os.path.join(sys.exec_prefix, 'python.exe')
+            if not os.path.exists(python_path):
+                # Fallback to sys.executable if python.exe not found (unlikely)
+                python_path = sys.executable
+        else:
+            python_path = sys.executable
+            
         # Use --user flag to avoid permission issues
         args = ['-m', 'pip', 'install', '--user', 'google-generativeai']
         
