@@ -838,56 +838,50 @@ class GeminiTestThread(QThread):
     def run(self):
         try:
             import google.generativeai as genai
+    def run(self):
+        try:
+            import google.generativeai as genai
             genai.configure(api_key=self.api_key)
             
-            # List of models to try in order of preference
+            # List of models to try. 
+            # We will try the most likely ones first.
+            # Limiting to 2 attempts to prevent long "freeze" feeling.
             models_to_try = [
                 'gemini-1.5-flash',
-                'gemini-pro',
-                'gemini-1.0-pro'
+                'gemini-pro'
             ]
             
-            # First, try to find a supported model from the API list if possible
-            available_models = []
-            try:
-                for m in genai.list_models():
-                    if 'generateContent' in m.supported_generation_methods:
-                        available_models.append(m.name)
-            except Exception:
-                pass # Fallback to hardcoded list if listing fails
-                
-            # If we found models, prioritize them
-            if available_models:
-                # Check for preferred models first
-                for preferred in models_to_try:
-                    for available in available_models:
-                         if preferred in available:
-                             models_to_try.insert(0, available)
-                             break
-            
             last_error = None
+            success = False
+            
+            # Try to list models first to quickly validate key and connection
+            # If list_models fails, it's likely an auth or network error, so we fail early.
+            try:
+                # fast check
+                list(genai.list_models(page_size=1))
+            except Exception as e:
+                self.finished.emit(False, f"Connection/Auth Error: {str(e)}")
+                return
+
             for model_name in models_to_try:
                 try:
-                    # Clean up model name if it comes from list_models (e.g. models/gemini-pro)
-                    if model_name.startswith('models/'):
-                        model_name = model_name.replace('models/', '')
-                        
                     model = genai.GenerativeModel(model_name)
-                    response = model.generate_content("Say 'Hello ArcheoGlyph!' in one line.")
+                    # We can't easily set a timeout on generate_content in the library,
+                    # but since we checked connection above, this should be faster.
+                    response = model.generate_content("Say 'Hello!'")
                     
                     if response and response.text:
                         self.finished.emit(True, f"[{model_name}] {response.text}")
-                        return # Success!
+                        success = True
+                        break
                         
                 except Exception as e:
                     last_error = e
-                    continue # Try next model
+                    continue
             
-            # If we get here, all models failed
-            if last_error:
-                self.finished.emit(False, str(last_error))
-            else:
-                self.finished.emit(False, "No suitable Gemini model found.")
+            if not success:
+                error_msg = str(last_error) if last_error else "No suitable model found"
+                self.finished.emit(False, error_msg)
                 
         except ImportError:
             self.finished.emit(False, "Package 'google-generativeai' not installed")
