@@ -838,9 +838,6 @@ class GeminiTestThread(QThread):
     def run(self):
         try:
             import google.generativeai as genai
-    def run(self):
-        try:
-            import google.generativeai as genai
             genai.configure(api_key=self.api_key)
             
             # List of models to try. 
