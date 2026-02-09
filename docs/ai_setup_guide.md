@@ -132,6 +132,6 @@ Templates are built into the plugin and work offline immediately.
 
 ## Need Help?
 
-- [ArcheoGlyph GitHub Issues](https://github.com/yourusername/ArcheoGlyph/issues)
+- [ArcheoGlyph GitHub Issues](https://github.com/lzpxilfe/ArcheoGlyph/issues)
 - [Google AI Studio Help](https://ai.google.dev/docs)
 - [Automatic1111 Wiki](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki)
