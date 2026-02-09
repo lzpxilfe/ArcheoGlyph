@@ -840,13 +840,54 @@ class GeminiTestThread(QThread):
             import google.generativeai as genai
             genai.configure(api_key=self.api_key)
             
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
-            response = model.generate_content("Say 'Hello ArcheoGlyph!' in one line.")
+            # List of models to try in order of preference
+            models_to_try = [
+                'gemini-1.5-flash',
+                'gemini-pro',
+                'gemini-1.0-pro'
+            ]
             
-            if response and response.text:
-                self.finished.emit(True, response.text)
+            # First, try to find a supported model from the API list if possible
+            available_models = []
+            try:
+                for m in genai.list_models():
+                    if 'generateContent' in m.supported_generation_methods:
+                        available_models.append(m.name)
+            except Exception:
+                pass # Fallback to hardcoded list if listing fails
+                
+            # If we found models, prioritize them
+            if available_models:
+                # Check for preferred models first
+                for preferred in models_to_try:
+                    for available in available_models:
+                         if preferred in available:
+                             models_to_try.insert(0, available)
+                             break
+            
+            last_error = None
+            for model_name in models_to_try:
+                try:
+                    # Clean up model name if it comes from list_models (e.g. models/gemini-pro)
+                    if model_name.startswith('models/'):
+                        model_name = model_name.replace('models/', '')
+                        
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content("Say 'Hello ArcheoGlyph!' in one line.")
+                    
+                    if response and response.text:
+                        self.finished.emit(True, f"[{model_name}] {response.text}")
+                        return # Success!
+                        
+                except Exception as e:
+                    last_error = e
+                    continue # Try next model
+            
+            # If we get here, all models failed
+            if last_error:
+                self.finished.emit(False, str(last_error))
             else:
-                self.finished.emit(False, "No response from AI")
+                self.finished.emit(False, "No suitable Gemini model found.")
                 
         except ImportError:
             self.finished.emit(False, "Package 'google-generativeai' not installed")

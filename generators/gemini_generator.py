@@ -88,22 +88,65 @@ class GeminiGenerator:
             
         prompt += " Output a 256x256 pixel PNG image with transparent background."
         
-        # Create the model
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # List of models to try in order of preference
+        models_to_try = [
+            'gemini-1.5-flash',
+            'gemini-pro',
+            'gemini-1.0-pro'
+        ]
         
-        # Prepare the image part
-        image_part = {
-            'mime_type': self._get_mime_type(image_path),
-            'data': image_data
-        }
+        # First, try to find a supported model from the API list if possible
+        available_models = []
+        try:
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    available_models.append(m.name)
+        except Exception:
+            pass # Fallback to hardcoded list if listing fails
+            
+        # If we found models, prioritize them
+        if available_models:
+            # Check for preferred models first
+            for preferred in models_to_try:
+                for available in available_models:
+                        if preferred in available:
+                            models_to_try.insert(0, available)
+                            break
+                            
+        last_error = None
+        for model_name in models_to_try:
+            try:
+                # Clean up model name if it comes from list_models (e.g. models/gemini-pro)
+                if model_name.startswith('models/'):
+                    model_name = model_name.replace('models/', '')
+                    
+                # Create the model
+                model = genai.GenerativeModel(model_name)
+                
+                # Prepare the image part
+                image_part = {
+                    'mime_type': self._get_mime_type(image_path),
+                    'data': image_data
+                }
+                
+                # Generate
+                response = model.generate_content(
+                    [prompt, image_part],
+                    generation_config={
+                        'response_mime_type': 'image/png'
+                    }
+                )
+                
+                # If successful, break loop
+                if response.candidates and len(response.candidates) > 0:
+                     break
+                     
+            except Exception as e:
+                last_error = e
+                continue # Try next model
         
-        # Generate
-        response = model.generate_content(
-            [prompt, image_part],
-            generation_config={
-                'response_mime_type': 'image/png'
-            }
-        )
+        if last_error and (not response or not response.candidates):
+             raise last_error
         
         # Extract generated image
         if response.candidates and len(response.candidates) > 0:
