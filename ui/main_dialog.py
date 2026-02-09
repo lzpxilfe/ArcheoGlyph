@@ -318,6 +318,11 @@ class ArcheoGlyphDialog(QDialog):
         self.apply_btn.clicked.connect(self.apply_to_layer)
         button_layout.addWidget(self.apply_btn)
         
+        # Settings button
+        settings_btn = QPushButton("⚙️ Settings")
+        settings_btn.clicked.connect(self.open_settings)
+        button_layout.addWidget(settings_btn)
+        
         right_panel.addLayout(button_layout)
         main_layout.addLayout(right_panel)
         
@@ -497,3 +502,11 @@ class ArcheoGlyphDialog(QDialog):
             layer.triggerRepaint()
         else:
             QMessageBox.warning(self, "Error", "Failed to apply symbol to layer.")
+            
+    def open_settings(self):
+        """Open the settings dialog."""
+        from .settings_dialog import SettingsDialog
+        
+        dialog = SettingsDialog(self)
+        dialog.exec_()
+
