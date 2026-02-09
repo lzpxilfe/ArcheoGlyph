@@ -643,9 +643,13 @@ class SettingsDialog(QDialog):
         self.install_btn.setEnabled(True)
         self.install_btn.setText("📦 Install google-generativeai")
         
+        from qgis.core import QgsMessageLog, Qgis
+        
         if exit_code == 0 and exit_status == QProcess.NormalExit:
             self.install_status.setText("✅ Installed!")
             self.install_status.setStyleSheet("color: green; font-weight: bold;")
+            QgsMessageLog.logMessage("ArcheoGlyph: Package installed successfully.", "ArcheoGlyph", Qgis.Success)
+            
             QMessageBox.information(
                 self, 
                 "Success! 🎉", 
@@ -656,18 +660,30 @@ class SettingsDialog(QDialog):
             self.install_status.setText("❌ Failed")
             self.install_status.setStyleSheet("color: red;")
             
-            # Try to read error details
-            error_data = self.process.readAllStandardError()
-            error_msg = bytes(error_data).decode('utf-8') if error_data else "Unknown error"
+            # Read all output for debugging
+            stdout = bytes(self.process.readAllStandardOutput()).decode('utf-8', errors='replace')
+            stderr = bytes(self.process.readAllStandardError()).decode('utf-8', errors='replace')
             
-            QMessageBox.warning(
-                self,
-                "Installation Failed",
-                f"Automatic installation failed (Exit Code: {exit_code}).\n\n"
-                "Please install manually:\n"
-                "1. Open Command Prompt\n"
-                "2. Run: pip install google-generativeai"
-            )
+            full_log = f"STDOUT:\n{stdout}\n\nSTDERR:\n{stderr}"
+            QgsMessageLog.logMessage(f"ArcheoGlyph Install Failed:\n{full_log}", "ArcheoGlyph", Qgis.Critical)
+            
+            # Show error details
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Installation Failed")
+            msg.setText(f"Installation failed (Exit Code: {exit_code}).")
+            msg.setInformativeText("Check the 'ArcheoGlyph' tab in QGIS Log Messages panel for full details.")
+            msg.setDetailedText(full_log)
+            msg.addButton("Copy Command", QMessageBox.ActionRole)
+            msg.addButton(QMessageBox.Ok)
+            
+            ret = msg.exec_()
+            
+            if msg.clickedButton().text() == "Copy Command":
+                clipboard = QApplication.clipboard()
+                cmd = f'"{sys.executable}" -m pip install --user google-generativeai'
+                clipboard.setText(cmd)
+                QMessageBox.information(self, "Copied", "Command copied to clipboard!\nPaste it in your terminal.")
             
     def _handle_process_error(self, error):
         """Handle process start error."""
