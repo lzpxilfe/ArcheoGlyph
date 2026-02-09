@@ -727,46 +727,94 @@ class SettingsDialog(QDialog):
         self.gemini_test_result.setStyleSheet("color: orange;")
         QApplication.processEvents()
         
+from qgis.PyQt.QtCore import QThread, pyqtSignal
+
+class GeminiTestThread(QThread):
+    """Thread for testing Gemini API connection."""
+    finished = pyqtSignal(bool, str) # success, message
+
+    def __init__(self, api_key):
+        super().__init__()
+        self.api_key = api_key
+
+    def run(self):
         try:
             import google.generativeai as genai
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=self.api_key)
             
             model = genai.GenerativeModel('gemini-2.0-flash-exp')
             response = model.generate_content("Say 'Hello ArcheoGlyph!' in one line.")
             
             if response and response.text:
-                self.gemini_test_result.setText("✅ Connected!")
-                self.gemini_test_result.setStyleSheet("color: green; font-weight: bold;")
-                QMessageBox.information(
-                    self,
-                    "Success! 🎉",
-                    f"Connection successful!\n\n"
-                    f"AI Response: {response.text[:100]}\n\n"
-                    f"You're all set! Click 'Save Settings' and start generating symbols!"
-                )
+                self.finished.emit(True, response.text)
             else:
-                self.gemini_test_result.setText("⚠️ No response")
-                self.gemini_test_result.setStyleSheet("color: orange;")
+                self.finished.emit(False, "No response from AI")
                 
         except ImportError:
-            self.gemini_test_result.setText("❌ Package missing")
-            self.gemini_test_result.setStyleSheet("color: red;")
-            QMessageBox.warning(
-                self,
-                "Package Not Installed",
-                "The google-generativeai package is not installed.\n\n"
-                "Please:\n"
-                "1. Complete Step 1 (Install Package)\n"
-                "2. Restart QGIS\n"
-                "3. Try again"
-            )
-            
+            self.finished.emit(False, "Package 'google-generativeai' not installed")
         except Exception as e:
-            self.gemini_test_result.setText("❌ Failed")
-            self.gemini_test_result.setStyleSheet("color: red;")
+            self.finished.emit(False, str(e))
+
+
+    def test_gemini_connection(self):
+        """Test Gemini API connection (Async)."""
+        api_key = self.gemini_key_input.text().strip()
+        
+        if not api_key:
+            QMessageBox.warning(
+                self, 
+                "No API Key", 
+                "Please enter your API key first!\n\n"
+                "If you don't have one:\n"
+                "1. Click 'Open Google AI Studio'\n"
+                "2. Sign in with Google\n"
+                "3. Create a new key"
+            )
+            return
             
-            error_msg = str(e)
-            if "API_KEY_INVALID" in error_msg or "invalid" in error_msg.lower():
+        self.gemini_test_result.setText("⏳ Testing...")
+        self.gemini_test_result.setStyleSheet("color: orange;")
+        
+        # Disable button during test
+        sender = self.sender()
+        if sender:
+            sender.setEnabled(False)
+            
+        self.test_thread = GeminiTestThread(api_key)
+        self.test_thread.finished.connect(lambda s, m: self._handle_test_result(s, m, sender))
+        self.test_thread.start()
+        
+    def _handle_test_result(self, success, message, button):
+        """Handle API test result."""
+        if button:
+            button.setEnabled(True)
+            
+        if success:
+            self.gemini_test_result.setText("✅ Connected!")
+            self.gemini_test_result.setStyleSheet("color: green; font-weight: bold;")
+            QMessageBox.information(
+                self,
+                "Success! 🎉",
+                f"Connection successful!\n\n"
+                f"AI Response: {message[:100]}\n\n"
+                f"You're all set! Click 'Save Settings' and start generating symbols!"
+            )
+        else:
+            if "Package" in message:
+                self.gemini_test_result.setText("❌ Package missing")
+                self.gemini_test_result.setStyleSheet("color: red;")
+                QMessageBox.warning(
+                    self,
+                    "Package Not Installed",
+                    "The google-generativeai package is not installed.\n\n"
+                    "Please:\n"
+                    "1. Complete Step 1 (Install Package)\n"
+                    "2. Restart QGIS\n"
+                    "3. Try again"
+                )
+            elif "API_KEY_INVALID" in message or "invalid" in message.lower():
+                self.gemini_test_result.setText("❌ Invalid Key")
+                self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(
                     self, 
                     "Invalid API Key", 
@@ -777,8 +825,10 @@ class SettingsDialog(QDialog):
                     "3. Copy and paste it here"
                 )
             else:
-                QMessageBox.warning(self, "Connection Failed", f"Error: {error_msg}")
-            
+                self.gemini_test_result.setText("❌ Failed")
+                self.gemini_test_result.setStyleSheet("color: red;")
+                QMessageBox.warning(self, "Connection Failed", f"Error: {message}")
+
     def test_sd_connection(self):
         """Test Stable Diffusion server connection."""
         url = self.sd_url_input.text().strip()
