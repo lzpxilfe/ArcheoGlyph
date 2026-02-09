@@ -88,38 +88,44 @@ class GeminiGenerator:
             
         prompt += " Output a 256x256 pixel PNG image with transparent background."
         
-        # List of models to try in order of preference
-        models_to_try = [
-            'gemini-1.5-flash',
-            'gemini-pro',
-            'gemini-1.0-pro'
-        ]
-        
-        # First, try to find a supported model from the API list if possible
+        # List available models from the API
         available_models = []
         try:
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
-                    available_models.append(m.name)
+                    # Clean up model name (remove 'models/' prefix if present)
+                    name = m.name
+                    if name.startswith('models/'):
+                        name = name.replace('models/', '')
+                    available_models.append(name)
         except Exception:
-            pass # Fallback to hardcoded list if listing fails
+            pass # Fallback if listing fails
             
-        # If we found models, prioritize them
-        if available_models:
-            # Check for preferred models first
-            for preferred in models_to_try:
-                for available in available_models:
-                        if preferred in available:
-                            models_to_try.insert(0, available)
-                            break
-                            
+        # Prioritize models
+        models_to_try = []
+        
+        # 1. Flash (Fastest)
+        for m in available_models:
+            if 'flash' in m.lower():
+                models_to_try.append(m)
+        
+        # 2. Pro (Stable)
+        for m in available_models:
+            if 'pro' in m.lower() and m not in models_to_try:
+                models_to_try.append(m)
+                
+        # 3. Others (Fallback)
+        for m in available_models:
+            if m not in models_to_try:
+                models_to_try.append(m)
+        
+        # If listing failed, try defaults
+        if not models_to_try:
+             models_to_try = ['gemini-1.5-flash', 'gemini-pro']
+
         last_error = None
         for model_name in models_to_try:
             try:
-                # Clean up model name if it comes from list_models (e.g. models/gemini-pro)
-                if model_name.startswith('models/'):
-                    model_name = model_name.replace('models/', '')
-                    
                 # Create the model
                 model = genai.GenerativeModel(model_name)
                 
@@ -144,12 +150,6 @@ class GeminiGenerator:
             except Exception as e:
                 last_error = e
                 continue # Try next model
-        
-        if last_error and (not response or not response.candidates):
-             raise last_error
-        
-        # Extract generated image
-        if response.candidates and len(response.candidates) > 0:
             candidate = response.candidates[0]
             if hasattr(candidate, 'content') and candidate.content.parts:
                 for part in candidate.content.parts:

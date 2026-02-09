@@ -840,31 +840,48 @@ class GeminiTestThread(QThread):
             import google.generativeai as genai
             genai.configure(api_key=self.api_key)
             
-            # List of models to try. 
-            # We will try the most likely ones first.
-            # Limiting to 2 attempts to prevent long "freeze" feeling.
-            models_to_try = [
-                'gemini-1.5-flash',
-                'gemini-pro'
-            ]
-            
-            last_error = None
-            success = False
-            
-            # Try to list models first to quickly validate key and connection
-            # If list_models fails, it's likely an auth or network error, so we fail early.
+            # List available models from the API
+            available_models = []
             try:
-                # fast check
-                list(genai.list_models(page_size=1))
+                for m in genai.list_models():
+                    if 'generateContent' in m.supported_generation_methods:
+                        # Clean up model name (remove 'models/' prefix if present)
+                        name = m.name
+                        if name.startswith('models/'):
+                            name = name.replace('models/', '')
+                        available_models.append(name)
             except Exception as e:
                 self.finished.emit(False, f"Connection/Auth Error: {str(e)}")
                 return
+            
+            if not available_models:
+                self.finished.emit(False, "No models available for your API key.")
+                return
+
+            # Prioritize models
+            models_to_try = []
+            
+            # 1. Flash (Fastest)
+            for m in available_models:
+                if 'flash' in m.lower():
+                    models_to_try.append(m)
+            
+            # 2. Pro (Stable)
+            for m in available_models:
+                if 'pro' in m.lower() and m not in models_to_try:
+                    models_to_try.append(m)
+                    
+            # 3. Others (Fallback)
+            for m in available_models:
+                if m not in models_to_try:
+                    models_to_try.append(m)
+            
+            last_error = None
+            success = False
 
             for model_name in models_to_try:
                 try:
                     model = genai.GenerativeModel(model_name)
-                    # We can't easily set a timeout on generate_content in the library,
-                    # but since we checked connection above, this should be faster.
                     response = model.generate_content("Say 'Hello!'")
                     
                     if response and response.text:
