@@ -7,7 +7,7 @@ Configure AI API keys and view setup instructions.
 import os
 import subprocess
 import sys
-from qgis.PyQt.QtCore import Qt, QSettings, QUrl, QProcess
+from qgis.PyQt.QtCore import Qt, QSettings, QUrl, QProcess, QThread, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -708,55 +708,6 @@ class SettingsDialog(QDialog):
         )
             
     def test_gemini_connection(self):
-        """Test Gemini API connection."""
-        api_key = self.gemini_key_input.text().strip()
-        
-        if not api_key:
-            QMessageBox.warning(
-                self, 
-                "No API Key", 
-                "Please enter your API key first!\n\n"
-                "If you don't have one:\n"
-                "1. Click 'Open Google AI Studio'\n"
-                "2. Sign in with Google\n"
-                "3. Create a new key"
-            )
-            return
-            
-        self.gemini_test_result.setText("⏳ Testing...")
-        self.gemini_test_result.setStyleSheet("color: orange;")
-        QApplication.processEvents()
-        
-from qgis.PyQt.QtCore import QThread, pyqtSignal
-
-class GeminiTestThread(QThread):
-    """Thread for testing Gemini API connection."""
-    finished = pyqtSignal(bool, str) # success, message
-
-    def __init__(self, api_key):
-        super().__init__()
-        self.api_key = api_key
-
-    def run(self):
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
-            response = model.generate_content("Say 'Hello ArcheoGlyph!' in one line.")
-            
-            if response and response.text:
-                self.finished.emit(True, response.text)
-            else:
-                self.finished.emit(False, "No response from AI")
-                
-        except ImportError:
-            self.finished.emit(False, "Package 'google-generativeai' not installed")
-        except Exception as e:
-            self.finished.emit(False, str(e))
-
-
-    def test_gemini_connection(self):
         """Test Gemini API connection (Async)."""
         api_key = self.gemini_key_input.text().strip()
         
@@ -874,3 +825,31 @@ class GeminiTestThread(QThread):
                 f"3. The URL is correct\n\n"
                 f"Error: {str(e)}"
             )
+
+
+class GeminiTestThread(QThread):
+    """Thread for testing Gemini API connection."""
+    finished = pyqtSignal(bool, str) # success, message
+
+    def __init__(self, api_key):
+        super().__init__()
+        self.api_key = api_key
+
+    def run(self):
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            response = model.generate_content("Say 'Hello ArcheoGlyph!' in one line.")
+            
+            if response and response.text:
+                self.finished.emit(True, response.text)
+            else:
+                self.finished.emit(False, "No response from AI")
+                
+        except ImportError:
+            self.finished.emit(False, "Package 'google-generativeai' not installed")
+        except Exception as e:
+            self.finished.emit(False, str(e))
+
