@@ -7,7 +7,7 @@ Configure AI API keys and view setup instructions.
 import os
 import subprocess
 import sys
-from qgis.PyQt.QtCore import Qt, QSettings, QUrl
+from qgis.PyQt.QtCore import Qt, QSettings, QUrl, QProcess
 from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
