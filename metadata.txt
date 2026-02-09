@@ -1,0 +1,30 @@
+[general]
+name=ArcheoGlyph
+qgisMinimumVersion=3.0
+description=Archaeological Symbol Generator - Create cute, visually accessible symbols from artifact images
+version=0.1.0
+author=Jinseo Hwang
+email=your.email@example.com
+
+about=ArcheoGlyph helps archaeologists create beautiful, standardized symbols for their GIS maps. Upload artifact or feature images and generate cute, recognizable symbols using AI (Google Gemini or local Stable Diffusion) or built-in templates. Features include color adjustment, proportional sizing based on data count, and seamless integration with QGIS symbol library.
+
+tracker=https://github.com/yourusername/ArcheoGlyph/issues
+repository=https://github.com/yourusername/ArcheoGlyph
+
+changelog=
+    0.1.0 - Initial release
+        * Image upload and symbol generation
+        * Google Gemini AI integration
+        * Local Stable Diffusion support
+        * Built-in artifact templates
+        * Color adjustment
+        * Proportional sizing by data count
+        * QGIS symbol library integration
+
+tags=archaeology, symbols, icons, artifacts, AI, image generation, GIS, mapping
+
+homepage=https://github.com/yourusername/ArcheoGlyph
+category=Sketching
+icon=resources/icon.svg
+experimental=True
+deprecated=False
