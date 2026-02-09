@@ -591,13 +591,13 @@ class SettingsDialog(QDialog):
         )
         
     def install_gemini_package(self):
-        """Install google-generativeai package."""
+        """Install google-generativeai package using QProcess (Async)."""
         reply = QMessageBox.question(
             self,
             "Install Package",
             "This will install 'google-generativeai' package.\n\n"
-            "⏱️ This takes 1-2 minutes.\n"
-            "⚠️ QGIS may appear frozen - please be patient!\n\n"
+            "The installer will run in the background.\n"
+            "You can continue using QGIS while it installs.\n\n"
             "Continue?",
             QMessageBox.Yes | QMessageBox.No
         )
@@ -607,99 +607,80 @@ class SettingsDialog(QDialog):
             
         self.install_btn.setEnabled(False)
         self.install_btn.setText("⏳ Installing...")
-        self.install_status.setText("Please wait...")
+        self.install_status.setText("Starting...")
         self.install_status.setStyleSheet("color: orange;")
         
-        # Force UI update
-        QApplication.processEvents()
+        # Setup QProcess
+        from qgis.PyQt.QtCore import QProcess
         
-        try:
-            python_path = sys.executable
-            
-            # Try with --user flag first
-            result = subprocess.run(
-                [python_path, '-m', 'pip', 'install', '--user', 'google-generativeai'],
-                capture_output=True,
-                text=True,
-                timeout=300,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-            )
-            
-            QApplication.processEvents()
-            
-            if result.returncode == 0:
-                self.install_status.setText("✅ Installed!")
-                self.install_status.setStyleSheet("color: green; font-weight: bold;")
-                QMessageBox.information(
-                    self, 
-                    "Success! 🎉", 
-                    "Package installed successfully!\n\n"
-                    "Please RESTART QGIS to use Google Gemini.\n\n"
-                    "After restart:\n"
-                    "1. Get your API key (Step 2)\n"
-                    "2. Paste it and Save Settings"
-                )
+        self.process = QProcess(self)
+        self.process.readyReadStandardOutput.connect(self._handle_process_output)
+        self.process.readyReadStandardError.connect(self._handle_process_output)
+        self.process.finished.connect(self._handle_process_finished)
+        self.process.errorOccurred.connect(self._handle_process_error)
+        
+        python_path = sys.executable
+        # Use --user flag to avoid permission issues
+        args = ['-m', 'pip', 'install', '--user', 'google-generativeai']
+        
+        self.process.start(python_path, args)
+        
+    def _handle_process_output(self):
+        """Handle process output."""
+        data = self.process.readAllStandardOutput()
+        stderr = self.process.readAllStandardError()
+        
+        if data:
+            msg = bytes(data).decode('utf-8').strip()
+            # Show last line in status if it's not too long
+            if len(msg) < 50:
+                self.install_status.setText(f"Installing: {msg}")
             else:
-                # Retry without --user
-                result2 = subprocess.run(
-                    [python_path, '-m', 'pip', 'install', 'google-generativeai'],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-                )
+                self.install_status.setText("Installing...")
                 
-                if result2.returncode == 0:
-                    self.install_status.setText("✅ Installed!")
-                    self.install_status.setStyleSheet("color: green; font-weight: bold;")
-                    QMessageBox.information(
-                        self, 
-                        "Success! 🎉", 
-                        "Package installed successfully!\n\n"
-                        "Please RESTART QGIS to use Google Gemini."
-                    )
-                else:
-                    self.install_status.setText("❌ Failed")
-                    self.install_status.setStyleSheet("color: red;")
-                    QMessageBox.warning(
-                        self,
-                        "Installation Failed",
-                        "Automatic installation failed.\n\n"
-                        "Please install manually:\n"
-                        "1. Open Command Prompt (cmd)\n"
-                        "2. Type: pip install google-generativeai\n"
-                        "3. Press Enter and wait\n"
-                        "4. Restart QGIS"
-                    )
-                
-        except subprocess.TimeoutExpired:
-            self.install_status.setText("❌ Timeout")
-            self.install_status.setStyleSheet("color: red;")
-            QMessageBox.warning(
+    def _handle_process_finished(self, exit_code, exit_status):
+        """Handle install completion."""
+        self.install_btn.setEnabled(True)
+        self.install_btn.setText("📦 Install google-generativeai")
+        
+        if exit_code == 0 and exit_status == QProcess.NormalExit:
+            self.install_status.setText("✅ Installed!")
+            self.install_status.setStyleSheet("color: green; font-weight: bold;")
+            QMessageBox.information(
                 self, 
-                "Timeout", 
-                "Installation timed out.\n\n"
+                "Success! 🎉", 
+                "Package installed successfully!\n\n"
+                "Please RESTART QGIS to apply changes."
+            )
+        else:
+            self.install_status.setText("❌ Failed")
+            self.install_status.setStyleSheet("color: red;")
+            
+            # Try to read error details
+            error_data = self.process.readAllStandardError()
+            error_msg = bytes(error_data).decode('utf-8') if error_data else "Unknown error"
+            
+            QMessageBox.warning(
+                self,
+                "Installation Failed",
+                f"Automatic installation failed (Exit Code: {exit_code}).\n\n"
                 "Please install manually:\n"
-                "1. Open Command Prompt (cmd)\n"
-                "2. Type: pip install google-generativeai\n"
-                "3. Restart QGIS"
+                "1. Open Command Prompt\n"
+                "2. Run: pip install google-generativeai"
             )
             
-        except Exception as e:
-            self.install_status.setText("❌ Error")
-            self.install_status.setStyleSheet("color: red;")
-            QMessageBox.warning(
-                self, 
-                "Error", 
-                f"Error: {str(e)}\n\n"
-                "Please install manually:\n"
-                "1. Open Command Prompt (cmd)\n"
-                "2. Type: pip install google-generativeai"
-            )
-            
-        finally:
-            self.install_btn.setEnabled(True)
-            self.install_btn.setText("📦 Install google-generativeai")
+    def _handle_process_error(self, error):
+        """Handle process start error."""
+        self.install_btn.setEnabled(True)
+        self.install_btn.setText("📦 Install google-generativeai")
+        self.install_status.setText("❌ Error")
+        self.install_status.setStyleSheet("color: red;")
+        
+        QMessageBox.warning(
+            self,
+            "Process Error",
+            f"Failed to start installer.\nError code: {error}"
+        )
             
     def test_gemini_connection(self):
         """Test Gemini API connection."""
