@@ -5,7 +5,7 @@ ArcheoGlyph - Main Dialog UI
 
 import os
 import base64
-from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal
+from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread
 from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -14,6 +14,23 @@ from qgis.PyQt.QtWidgets import (
     QFrame, QSizePolicy, QWidget, QScrollArea
 )
 from qgis.core import QgsProject, QgsVectorLayer
+
+
+class GenerationThread(QThread):
+    """Thread for running generation tasks."""
+    finished = pyqtSignal(object, str) # result (QPixmap), error_message
+
+    def __init__(self, generator_func, **kwargs):
+        super().__init__()
+        self.generator_func = generator_func
+        self.kwargs = kwargs
+
+    def run(self):
+        try:
+            result = self.generator_func(**self.kwargs)
+            self.finished.emit(result, "")
+        except Exception as e:
+            self.finished.emit(None, str(e))
 
 
 class ImageDropArea(QLabel):
@@ -137,6 +154,7 @@ class ArcheoGlyphDialog(QDialog):
         self.iface = iface
         self.plugin_dir = os.path.dirname(os.path.dirname(__file__))
         self.current_color = QColor("#8B4513")  # Default brown for artifacts
+        self.generation_thread = None
         
         self.setup_ui()
         
@@ -364,91 +382,67 @@ class ArcheoGlyphDialog(QDialog):
             return
             
         self.progress_bar.setVisible(True)
-        self.progress_bar.setValue(0)
+        self.progress_bar.setRange(0, 0) # Indeterminate mode since we can't track exact progress in thread
         self.generate_btn.setEnabled(False)
+        self.save_btn.setEnabled(False)
+        self.apply_btn.setEnabled(False)
         
         try:
+            target_func = None
+            kwargs = {}
+            
             if self.gemini_radio.isChecked():
-                self._generate_with_gemini()
+                from ..generators.gemini_generator import GeminiGenerator
+                generator = GeminiGenerator()
+                target_func = generator.generate
+                kwargs = {
+                    'image_path': self.image_drop.image_path,
+                    'style': self.style_combo.currentText(),
+                    'color': self.current_color.name()
+                }
             elif self.local_radio.isChecked():
-                self._generate_with_local_sd()
+                from ..generators.local_generator import LocalGenerator
+                generator = LocalGenerator()
+                target_func = generator.generate
+                kwargs = {
+                    'image_path': self.image_drop.image_path,
+                    'style': self.style_combo.currentText(),
+                    'color': self.current_color.name()
+                }
             else:
-                self._generate_from_template()
-                
-            self.save_btn.setEnabled(True)
-            self.apply_btn.setEnabled(True)
+                from ..generators.template_generator import TemplateGenerator
+                generator = TemplateGenerator(self.plugin_dir)
+                target_func = generator.generate
+                kwargs = {
+                    'template_type': self.template_combo.currentText(),
+                    'color': self.current_color.name()
+                }
+            
+            if target_func:
+                self.generation_thread = GenerationThread(target_func, **kwargs)
+                self.generation_thread.finished.connect(self.on_generation_finished)
+                self.generation_thread.start()
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Generation failed: {str(e)}")
-        finally:
-            self.progress_bar.setVisible(False)
-            self.generate_btn.setEnabled(True)
+            self.on_generation_finished(None, str(e))
+
+    def on_generation_finished(self, result, error_message):
+        """Handle generation results."""
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setRange(0, 100) # Reset to normal
+        self.generate_btn.setEnabled(True)
+        
+        if error_message:
+            QMessageBox.critical(self, "Error", f"Generation failed: {error_message}")
+            return
             
-    def _generate_with_gemini(self):
-        """Generate symbol using Google Gemini API."""
-        from ..generators.gemini_generator import GeminiGenerator
-        
-        generator = GeminiGenerator()
-        style = self.style_combo.currentText()
-        
-        self.progress_bar.setValue(30)
-        
-        result = generator.generate(
-            image_path=self.image_drop.image_path,
-            style=style,
-            color=self.current_color.name()
-        )
-        
-        self.progress_bar.setValue(80)
-        
         if result:
             self.preview_label.set_preview(result)
+            self.save_btn.setEnabled(True)
+            self.apply_btn.setEnabled(True)
+        else:
+            QMessageBox.warning(self, "Failed", "Generation returned no result.")
             
-        self.progress_bar.setValue(100)
-        
-    def _generate_with_local_sd(self):
-        """Generate symbol using local Stable Diffusion."""
-        from ..generators.local_generator import LocalGenerator
-        
-        generator = LocalGenerator()
-        style = self.style_combo.currentText()
-        
-        self.progress_bar.setValue(30)
-        
-        result = generator.generate(
-            image_path=self.image_drop.image_path,
-            style=style,
-            color=self.current_color.name()
-        )
-        
-        self.progress_bar.setValue(80)
-        
-        if result:
-            self.preview_label.set_preview(result)
-            
-        self.progress_bar.setValue(100)
-        
-    def _generate_from_template(self):
-        """Generate symbol from template."""
-        from ..generators.template_generator import TemplateGenerator
-        
-        generator = TemplateGenerator(self.plugin_dir)
-        template_type = self.template_combo.currentText()
-        
-        self.progress_bar.setValue(50)
-        
-        result = generator.generate(
-            template_type=template_type,
-            color=self.current_color.name()
-        )
-        
-        self.progress_bar.setValue(80)
-        
-        if result:
-            self.preview_label.set_preview(result)
-            
-        self.progress_bar.setValue(100)
-        
     def save_to_library(self):
         """Save generated symbol to QGIS symbol library."""
         if not self.preview_label.generated_image:
@@ -509,4 +503,3 @@ class ArcheoGlyphDialog(QDialog):
         
         dialog = SettingsDialog(self)
         dialog.exec_()
-
