@@ -13,8 +13,9 @@ from qgis.core import (
     QgsRasterMarkerSymbolLayer, QgsSingleSymbolRenderer,
     QgsGraduatedSymbolRenderer, QgsRendererRange,
     QgsClassificationMethod, QgsApplication,
-    QgsStyle
+    QgsStyle, QgsUnitTypes
 )
+import time as import_time
 
 
 class SymbolManager:
@@ -89,8 +90,11 @@ class SymbolManager:
         :return: True if successful
         """
         try:
-            # Save temp image
-            temp_path = os.path.join(tempfile.gettempdir(), 'archeoglyph_temp.png')
+            # Save to a unique temp file to prevent overwriting previous symbols on other layers
+            # We use delete=False so QGIS can access the file. 
+            # Note: These files will persist in the temp dir until OS cleanup.
+            timestamp = int(import_time.time() * 1000)
+            temp_path = os.path.join(tempfile.gettempdir(), f'archeoglyph_symbol_{timestamp}_{os.urandom(4).hex()}.png')
             symbol_image.save(temp_path, "PNG")
             
             if size_mode == 0:
@@ -113,7 +117,7 @@ class SymbolManager:
         
         raster_layer = QgsRasterMarkerSymbolLayer(image_path)
         raster_layer.setSize(size / 10.0)  # Convert to mm
-        raster_layer.setSizeUnit(0)  # Millimeters
+        raster_layer.setSizeUnit(QgsUnitTypes.RenderMillimeters)
         symbol.appendSymbolLayer(raster_layer)
         
         renderer = QgsSingleSymbolRenderer(symbol)

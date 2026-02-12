@@ -12,7 +12,8 @@ from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QGroupBox, QTabWidget, QWidget, QTextBrowser,
-    QMessageBox, QProgressDialog, QScrollArea, QFrame, QApplication
+    QMessageBox, QProgressDialog, QScrollArea, QFrame, QApplication,
+    QCheckBox, QComboBox
 )
 
 
@@ -96,15 +97,19 @@ class SettingsDialog(QDialog):
         gemini_tab = self._create_gemini_tab()
         tabs.addTab(gemini_tab, "🌐 Google Gemini")
         
-        # Tab 2: Local Stable Diffusion
+        # Tab 2: Hugging Face (New)
+        hf_tab = self._create_huggingface_tab()
+        tabs.addTab(hf_tab, "🤗 Hugging Face")
+        
+        # Tab 3: Local Stable Diffusion
         local_tab = self._create_local_sd_tab()
         tabs.addTab(local_tab, "💻 Local SD")
         
-        # Tab 3: Quick Start
+        # Tab 4: Quick Start
         quickstart_tab = self._create_quickstart_tab()
         tabs.addTab(quickstart_tab, "🚀 Quick Start")
         
-        # Tab 4: Help
+        # Tab 5: Help
         help_tab = self._create_help_tab()
         tabs.addTab(help_tab, "❓ Help")
         
@@ -136,6 +141,80 @@ class SettingsDialog(QDialog):
         
         layout.addLayout(btn_layout)
         
+    def _create_huggingface_tab(self):
+        """Create the Hugging Face settings tab."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(15)
+        
+        # Introduction
+        info_label = QLabel(
+            "<h3>🤗 Hugging Face Inference API</h3>"
+            "<p>Use thousands of open-source AI models for free."
+            "Requires a free Hugging Face account and token.</p>"
+        )
+        info_label.setTextFormat(Qt.RichText)
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        
+        # Token Input
+        key_group = QGroupBox("API Token")
+        key_layout = QVBoxLayout(key_group)
+        
+        link_label = QLabel(
+            '1. Get a token from: <a href="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</a>'
+        )
+        link_label.setOpenExternalLinks(True)
+        key_layout.addWidget(link_label)
+        
+        self.hf_key_input = QLineEdit()
+        self.hf_key_input.setEchoMode(QLineEdit.Password)
+        self.hf_key_input.setPlaceholderText("hf_...")
+        key_layout.addWidget(self.hf_key_input)
+        
+        # Show/Hide Checkbox
+        show_cb = QCheckBox("Show Token")
+        show_cb.stateChanged.connect(
+            lambda state: self.hf_key_input.setEchoMode(
+                QLineEdit.Normal if state == Qt.Checked else QLineEdit.Password
+            )
+        )
+        key_layout.addWidget(show_cb)
+        layout.addWidget(key_group)
+
+        # Model Selection
+        model_group = QGroupBox("Model Selection")
+        model_layout = QVBoxLayout(model_group)
+
+        model_help = QLabel(
+            "Specify the Model ID to use (e.g., 'runwayml/stable-diffusion-v1-5'). "
+            "If the default model returns error 410 or 503, try changing this."
+        )
+        model_help.setWordWrap(True)
+        model_help.setStyleSheet("color: #666; font-size: 11px;")
+        model_layout.addWidget(model_help)
+
+        self.hf_model_input = QLineEdit()
+        self.hf_model_input.setText("stabilityai/stable-diffusion-2-1") # Default reliable model
+        self.hf_model_input.setPlaceholderText("organization/model-name")
+        model_layout.addWidget(self.hf_model_input)
+        
+        layout.addWidget(model_group)
+        
+        # Connection Test
+        test_btn = QPushButton("✅ Test Hugging Face Connection")
+        test_btn.clicked.connect(self.test_huggingface_connection)
+        layout.addWidget(test_btn)
+        
+        self.hf_test_result = QLabel("")
+        layout.addWidget(self.hf_test_result)
+        
+        layout.addStretch()
+        scroll.setWidget(content)
+        return scroll
+
     def _create_gemini_tab(self):
         """Create Google Gemini settings tab with detailed instructions."""
         scroll = QScrollArea()
@@ -399,7 +478,7 @@ class SettingsDialog(QDialog):
             <li><b>Download Automatic1111 WebUI</b>:
                 <br><code>git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git</code></li>
             <li><b>Download a model</b> from <a href="https://civitai.com">Civitai</a>
-                <br>Recommended: "Anything V5" for cute style</li>
+                <br>Recommended: "Anything V5" or "Deliberate V2"</li>
             <li><b>Place the model</b> (.safetensors file) in <code>models/Stable-diffusion/</code></li>
             <li><b>Edit webui-user.bat</b> and add: <code>set COMMANDLINE_ARGS=--api</code></li>
             <li><b>Run webui-user.bat</b> and wait for it to start</li>
@@ -448,8 +527,22 @@ class SettingsDialog(QDialog):
         ))
         layout.addWidget(no_setup)
         
+        # Hugging Face option
+        hf_opt = QGroupBox("Option 2: Use AI (Hugging Face - Free)")
+        hf_layout = QVBoxLayout(hf_opt)
+        hf_layout.addWidget(QLabel(
+            "<ol>"
+            "<li>Go to the <b>Hugging Face</b> tab</li>"
+            "<li>Click link to get <b>free Token</b></li>"
+            "<li>Paste key and click <b>Save Settings</b></li>"
+            "<li>Restart QGIS</li>"
+            "</ol>"
+            "<p>✨ <i>Generate unlimited free icons!</i></p>"
+        ))
+        layout.addWidget(hf_opt)
+
         # Gemini option
-        gemini_opt = QGroupBox("Option 2: Use AI (Google Gemini)")
+        gemini_opt = QGroupBox("Option 3: Use AI (Google Gemini)")
         gemini_layout = QVBoxLayout(gemini_opt)
         gemini_layout.addWidget(QLabel(
             "<ol>"
@@ -485,8 +578,8 @@ class SettingsDialog(QDialog):
         <h2>📚 ArcheoGlyph Help</h2>
         
         <h3>🎨 What is ArcheoGlyph?</h3>
-        <p>ArcheoGlyph helps archaeologists create beautiful, standardized symbols for GIS maps. 
-        Upload an artifact photo or select a template, and the plugin generates a cute, 
+        <p>ArcheoGlyph helps archaeologists create accurate, standardized symbols for GIS maps. 
+        Upload an artifact photo or select a template, and the plugin generates a precise, 
         recognizable symbol perfect for archaeological documentation.</p>
         
         <h3>🔧 Generation Modes</h3>
@@ -497,9 +590,19 @@ class SettingsDialog(QDialog):
                 <th>Best For</th>
             </tr>
             <tr>
+                <td><b>Auto Trace ✂</b></td>
+                <td>Nothing!</td>
+                <td>Fast & accurate silhouette from photo</td>
+            </tr>
+            <tr>
+                <td><b>AI (Hugging Face)</b></td>
+                <td>Free Token</td>
+                <td>Icon generation (Free)</td>
+            </tr>
+            <tr>
                 <td><b>AI (Gemini)</b></td>
                 <td>API Key + Internet</td>
-                <td>Custom images, best quality</td>
+                <td>Custom stylized symbols (Smart)</td>
             </tr>
             <tr>
                 <td><b>AI (Local SD)</b></td>
@@ -509,15 +612,15 @@ class SettingsDialog(QDialog):
             <tr>
                 <td><b>Template</b></td>
                 <td>Nothing!</td>
-                <td>Quick start, standardized symbols</td>
+                <td>Standardized category symbols</td>
             </tr>
         </table>
         
         <h3>🎯 Symbol Styles</h3>
         <ul>
-            <li><b>Cute/Kawaii</b> - Rounded, adorable, colorful (best for presentations)</li>
-            <li><b>Minimal</b> - Simple line art, clean (best for academic papers)</li>
-            <li><b>Classic</b> - Traditional archaeological drawing style</li>
+            <li><b>Colored Silhouette (채색 실루엣)</b> - Flat-colored accurate artifact shape (best for presentations)</li>
+            <li><b>Line Drawing (선화)</b> - Precise outline only, monochrome (best for academic papers)</li>
+            <li><b>Publication (실측 도면)</b> - Stippling + cross-hatching, B&W (publication quality)</li>
         </ul>
         
         <h3>📊 Size Scaling Options</h3>
@@ -554,7 +657,14 @@ class SettingsDialog(QDialog):
             self.gemini_key_input.setEchoMode(QLineEdit.Normal)
         else:
             self.gemini_key_input.setEchoMode(QLineEdit.Password)
-            
+
+    def _toggle_hf_key_visibility(self):
+        """Toggle Hugging Face Key visibility."""
+        if self.hf_key_input.echoMode() == QLineEdit.Password:
+            self.hf_key_input.setEchoMode(QLineEdit.Normal)
+        else:
+            self.hf_key_input.setEchoMode(QLineEdit.Password)
+
     def _open_sd_guide(self):
         """Open local SD setup guide."""
         QDesktopServices.openUrl(
@@ -564,9 +674,19 @@ class SettingsDialog(QDialog):
     def load_settings(self):
         """Load saved settings."""
         gemini_key = self.settings.value('ArcheoGlyph/gemini_api_key', '')
+        hf_key = self.settings.value('ArcheoGlyph/huggingface_api_key', '')
+        hf_model = self.settings.value('ArcheoGlyph/hf_model_id', 'stabilityai/stable-diffusion-2-1')
+        
+        # MIGRATION: Force update if old default is still saved
+        if hf_model == 'runwayml/stable-diffusion-v1-5':
+            hf_model = 'stabilityai/stable-diffusion-2-1'
+            self.settings.setValue('ArcheoGlyph/hf_model_id', hf_model)
+            
         sd_url = self.settings.value('ArcheoGlyph/sd_server', 'http://127.0.0.1:7860')
         
         self.gemini_key_input.setText(gemini_key)
+        self.hf_key_input.setText(hf_key)
+        self.hf_model_input.setText(hf_model)
         self.sd_url_input.setText(sd_url)
         
         # Check if package is installed
@@ -581,6 +701,8 @@ class SettingsDialog(QDialog):
     def save_settings(self):
         """Save settings."""
         self.settings.setValue('ArcheoGlyph/gemini_api_key', self.gemini_key_input.text())
+        self.settings.setValue('ArcheoGlyph/huggingface_api_key', self.hf_key_input.text())
+        self.settings.setValue('ArcheoGlyph/hf_model_id', self.hf_model_input.text())
         self.settings.setValue('ArcheoGlyph/sd_server', self.sd_url_input.text())
         
         QMessageBox.information(
@@ -589,6 +711,63 @@ class SettingsDialog(QDialog):
             "Your settings have been saved!\n\n"
             "If you installed a new package, please restart QGIS."
         )
+
+    def test_huggingface_connection(self):
+        """Test Hugging Face connection."""
+        import requests
+        api_key = self.hf_key_input.text().strip()
+        
+        if not api_key:
+            QMessageBox.warning(self, "No Token", "Please enter Hugging Face token.")
+            return
+
+        self.hf_test_result.setText("⏳ Testing...")
+        QApplication.processEvents()
+        
+        # Simple test query
+        # Simple test query
+        headers = {"Authorization": f"Bearer {api_key}"}
+        
+        # Use user-defined model ID
+        model_id = self.hf_model_input.text().strip()
+        if not model_id:
+            model_id = "stabilityai/stable-diffusion-2-1"
+            
+        API_URL = f"https://api-inference.huggingface.co/models/{model_id}"
+        
+        try:
+            # Check model availability only (head request or minimal payload)
+            # Actually making a real request is safer
+            response = requests.get(API_URL, headers=headers)
+            
+            # 200 OK means connected (even if model is loading, etc.)
+            # Wait, GET on inference API usually gives model info or 405.
+            # Let's try a very dummy POST
+            response = requests.post(
+                API_URL, 
+                headers=headers, 
+                json={"inputs": "test", "parameters": {"num_inference_steps": 1}}
+            )
+            
+            if response.status_code == 200:
+                self.hf_test_result.setText("✅ Connected!")
+                self.hf_test_result.setStyleSheet("color: green; font-weight: bold;")
+                QMessageBox.information(self, "Success", "Connected to Hugging Face successfully!")
+            elif response.status_code == 401:
+                self.hf_test_result.setText("❌ Invalid Token")
+                self.hf_test_result.setStyleSheet("color: red;")
+            elif "loading" in response.text.lower():
+                self.hf_test_result.setText("⚠️ Loading...")
+                self.hf_test_result.setStyleSheet("color: orange;")
+                QMessageBox.information(self, "Loading", "Connected, but model is initializing.")
+            else:
+                self.hf_test_result.setText(f"❌ Error {response.status_code}")
+                self.hf_test_result.setStyleSheet("color: red;")
+                
+        except Exception as e:
+            self.hf_test_result.setText("❌ Failed")
+            self.hf_test_result.setStyleSheet("color: red;")
+            QMessageBox.warning(self, "Error", str(e))
         
     def install_gemini_package(self):
         """Install google-generativeai package using QProcess (Async)."""
@@ -861,20 +1040,26 @@ class GeminiTestThread(QThread):
             # Prioritize models
             models_to_try = []
             
-            # 1. Flash (Fastest)
-            for m in available_models:
-                if 'flash' in m.lower():
-                    models_to_try.append(m)
+            # Exclusion list (same as generator)
+            excluded_keywords = ['deep-research', 'experimental']
             
-            # 2. Pro (Stable)
+            def is_excluded(name):
+                return any(keyword in name.lower() for keyword in excluded_keywords)
+            
+            # 1. Flash (Fastest) & Pro (Stable)
+            # We specifically look for stable versions first
+            preferred_models = ['gemini-3-flash-preview', 'gemini-2.0-flash', 'gemini-1.5-flash']
+            
+            for pref in preferred_models:
+                for m in available_models:
+                    if pref in m and not is_excluded(m):
+                        models_to_try.append(m)
+            
+            # 2. Others (Fallback) - with strict filtering
             for m in available_models:
-                if 'pro' in m.lower() and m not in models_to_try:
-                    models_to_try.append(m)
-                    
-            # 3. Others (Fallback)
-            for m in available_models:
-                if m not in models_to_try:
-                    models_to_try.append(m)
+                if m not in models_to_try and not is_excluded(m):
+                    if 'flash' in m.lower() or 'pro' in m.lower():
+                        models_to_try.append(m)
             
             last_error = None
             success = False

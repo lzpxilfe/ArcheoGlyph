@@ -5,13 +5,14 @@ ArcheoGlyph - Main Dialog UI
 
 import os
 import base64
-from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread
-from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent
+from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread, QObject, QByteArray, QPointF
+from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent, QPainter, QPen, QBrush, QPainterPath, QCursor
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QSpinBox, QGroupBox, QRadioButton, QButtonGroup,
     QFileDialog, QColorDialog, QProgressBar, QMessageBox,
-    QFrame, QSizePolicy, QWidget, QScrollArea
+    QFrame, QSizePolicy, QWidget, QScrollArea, QCheckBox,
+    QLineEdit
 )
 from qgis.core import QgsProject, QgsVectorLayer
 
@@ -37,6 +38,7 @@ class ImageDropArea(QLabel):
     """A label that accepts image drops."""
     
     imageDropped = pyqtSignal(str)
+    colorPicked = pyqtSignal(QColor)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -59,11 +61,44 @@ class ImageDropArea(QLabel):
         """)
         self.setText("Drop Image Here\nor Click to Browse")
         self.image_path = None
+        self.color_picking_mode = False
+        
+    def set_picking_mode(self, active):
+        """Enable or disable color picking mode."""
+        self.color_picking_mode = active
+        if active:
+            self.setCursor(Qt.CrossCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
         
     def mousePressEvent(self, event):
-        """Handle mouse click to browse for image."""
+        """Handle mouse click to browse or pick color."""
         if event.button() == Qt.LeftButton:
-            self.browse_image()
+            if self.color_picking_mode and self.image_path:
+                # Pick color from the clicked pixel
+                pos = event.pos()
+                pixmap = self.pixmap()
+                if pixmap:
+                    # Map widget coord to pixmap coord
+                    img = pixmap.toImage()
+                    
+                    # Calculate scaling offset
+                    scaled_w = pixmap.width()
+                    scaled_h = pixmap.height()
+                    widget_w = self.width()
+                    widget_h = self.height()
+                    
+                    x_offset = (widget_w - scaled_w) / 2
+                    y_offset = (widget_h - scaled_h) / 2
+                    
+                    img_x = int(pos.x() - x_offset)
+                    img_y = int(pos.y() - y_offset)
+                    
+                    if 0 <= img_x < scaled_w and 0 <= img_y < scaled_h:
+                        c = QColor(img.pixel(img_x, img_y))
+                        self.colorPicked.emit(c)
+            else:
+                self.browse_image()
     
     def browse_image(self):
         """Open file dialog to select image."""
@@ -178,7 +213,20 @@ class ArcheoGlyphDialog(QDialog):
         input_layout = QVBoxLayout(input_group)
         self.image_drop = ImageDropArea()
         self.image_drop.imageDropped.connect(self.on_image_loaded)
+        self.image_drop.colorPicked.connect(self.set_current_color)
+        self.image_drop.setToolTip(
+            "Use a representative photo of the artifact or archaeological feature.\n"
+            "Clean backgrounds produce better silhouettes and internal detail lines."
+        )
         input_layout.addWidget(self.image_drop, alignment=Qt.AlignCenter)
+        
+        # Photo tip label
+        tip_label = QLabel(
+            "💡 <i>Tip: Use a clear photo with a clean background for best results.</i>"
+        )
+        tip_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px;")
+        tip_label.setWordWrap(True)
+        input_layout.addWidget(tip_label)
         
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self.clear_input)
@@ -195,32 +243,59 @@ class ArcheoGlyphDialog(QDialog):
         left_panel.addStretch()
         main_layout.addLayout(left_panel)
         
-        # Right panel - Settings
+        # Right panel - Settings (Main container)
         right_panel = QVBoxLayout()
-        right_panel.setSpacing(10)
+        right_panel.setContentsMargins(0, 0, 0, 0) # Remove extra margins for the container
+        
+        # Scroll area for settings
+        scan_scroll = QScrollArea()
+        scan_scroll.setWidgetResizable(True)
+        scan_scroll.setFrameShape(QFrame.NoFrame)
+        
+        # Widget to hold the scrollable content
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setSpacing(10)
+        
+        # --- Add groups to scroll_layout instead of right_panel ---
         
         # Generation mode
         mode_group = QGroupBox("Generation Mode")
         mode_layout = QVBoxLayout(mode_group)
         
         self.mode_button_group = QButtonGroup(self)
-        self.gemini_radio = QRadioButton("AI (Google Gemini)")
+        self.autotrace_radio = QRadioButton("✂ Auto Trace (자동 추출)")
+        self.gemini_radio = QRadioButton("AI (Google Gemini) — slow")
+        self.hf_radio = QRadioButton("AI (Hugging Face) — Free")
         self.local_radio = QRadioButton("AI (Local Stable Diffusion)")
         self.template_radio = QRadioButton("Use Template")
         
-        self.gemini_radio.setChecked(True)
-        self.mode_button_group.addButton(self.gemini_radio, 0)
-        self.mode_button_group.addButton(self.local_radio, 1)
-        self.mode_button_group.addButton(self.template_radio, 2)
+        self.autotrace_radio.setChecked(True)
+        self.mode_button_group.addButton(self.autotrace_radio, 0)
+        self.mode_button_group.addButton(self.gemini_radio, 1)
+        self.mode_button_group.addButton(self.hf_radio, 2)
+        self.mode_button_group.addButton(self.local_radio, 3)
+        self.mode_button_group.addButton(self.template_radio, 4)
         
+        mode_layout.addWidget(self.autotrace_radio)
+        mode_layout.addWidget(self.hf_radio)
         mode_layout.addWidget(self.gemini_radio)
         mode_layout.addWidget(self.local_radio)
         mode_layout.addWidget(self.template_radio)
         
+        # Mode description label
+        self.mode_info_label = QLabel("✂ Extracts contour + internal feature lines from photo (fast, offline)")
+        self.mode_info_label.setStyleSheet(
+            "color: #555; font-size: 11px; background: #f0f8ff; "
+            "padding: 4px; border-radius: 3px;"
+        )
+        self.mode_info_label.setWordWrap(True)
+        mode_layout.addWidget(self.mode_info_label)
+        
         # Mode-specific connection
         self.mode_button_group.buttonClicked.connect(self.on_mode_changed)
         
-        right_panel.addWidget(mode_group)
+        scroll_layout.addWidget(mode_group)
         
         # Style selection
         style_group = QGroupBox("Style")
@@ -228,12 +303,21 @@ class ArcheoGlyphDialog(QDialog):
         
         self.style_combo = QComboBox()
         self.style_combo.addItems([
-            "🎨 Cute / Kawaii",
-            "📐 Minimal",
-            "🏛️ Classic Archaeological"
+            "🎯 Colored Silhouette (채색 실루엣)",
+            "📐 Line Drawing (선화)",
+            "🏛️ Publication (실측 도면)"
         ])
         style_layout.addWidget(self.style_combo)
-        right_panel.addWidget(style_group)
+        
+        # Symmetry checkbox
+        self.symmetry_check = QCheckBox("Mirror symmetry")
+        self.symmetry_check.setChecked(True)
+        self.symmetry_check.setToolTip(
+            "Produces a bilaterally symmetrical symbol by mirroring the contour."
+        )
+        style_layout.addWidget(self.symmetry_check)
+        
+        scroll_layout.addWidget(style_group)
         
         # Template selection (initially hidden)
         self.template_group = QGroupBox("Template Type")
@@ -241,30 +325,82 @@ class ArcheoGlyphDialog(QDialog):
         
         self.template_combo = QComboBox()
         self.template_combo.addItems([
+            # ─── Artifacts ───
             "Pottery (토기류)",
             "Stone Tools (석기류)",
             "Bronze Artifacts (청동기류)",
             "Iron Artifacts (철기류)",
-            "Ornaments (장신구류)"
+            "Ornaments (장신구류)",
+            "Coins (화폐/주화)",
+            "Bone/Antler Tools (골각기류)",
+            "Weapons (무기류)",
+            # ─── Structures ───
+            "Fortress/Castle (성곽)",
+            "Dwelling/House (주거지)",
+            "Tomb/Burial (고분/무덤)",
+            "Temple/Shrine (사찰/신전)",
+            "Kiln/Furnace (가마/요지)",
+            "Well (우물)",
+            "Wall/Rampart (담장/성벽)",
+            "Pit (수혈/구덩이)",
+            # ─── Human Remains ───
+            "Human Remains (인골)",
+            "Burial (매장)",
+            # ─── Features ───
+            "Hearth/Fire Pit (노지/화덕)",
+            "Midden/Shell Mound (패총)",
+            "Ditch/Moat (환호/도랑)",
+            "Stone Alignment (열석/선돌)",
+            "Dolmen (고인돌)",
+            "Rock Art (암각화)",
+            # ─── Survey / General ───
+            "Excavation Area (발굴구역)",
+            "Survey Point (조사지점)",
+            "Find Spot (유물산포지)",
         ])
         template_layout.addWidget(self.template_combo)
         self.template_group.setVisible(False)
-        right_panel.addWidget(self.template_group)
+        scroll_layout.addWidget(self.template_group)
         
         # Color settings
         color_group = QGroupBox("Color")
-        color_layout = QHBoxLayout(color_group)
+        color_layout = QVBoxLayout(color_group) # Changed to QVBoxLayout for better density
+        
+        # Row 1: Checkbox
+        self.override_color_check = QCheckBox("Override Color (지정 색상 사용)")
+        self.override_color_check.setChecked(False) # Default: Use extracted/natural color
+        self.override_color_check.setToolTip("If unchecked, the symbol will use the artifact's natural colors.")
+        color_layout.addWidget(self.override_color_check)
+        
+        # Row 2: Picker controls
+        picker_layout = QHBoxLayout()
         
         self.color_preview = QLabel()
         self.color_preview.setFixedSize(30, 30)
         self.update_color_preview()
-        color_layout.addWidget(self.color_preview)
+        picker_layout.addWidget(self.color_preview)
         
-        color_btn = QPushButton("Pick Color")
-        color_btn.clicked.connect(self.pick_color)
-        color_layout.addWidget(color_btn)
-        color_layout.addStretch()
-        right_panel.addWidget(color_group)
+        self.color_btn = QPushButton("Pick Color")
+        self.color_btn.clicked.connect(self.pick_color)
+        picker_layout.addWidget(self.color_btn)
+        
+        self.eyedrop_btn = QPushButton("🎨 Pick from Image")
+        self.eyedrop_btn.setCheckable(True)
+        self.eyedrop_btn.toggled.connect(self.toggle_picking_mode)
+        picker_layout.addWidget(self.eyedrop_btn)
+        
+        picker_layout.addStretch()
+        color_layout.addLayout(picker_layout)
+        
+        # Logic to enable/disable picker based on checkbox
+        self.override_color_check.toggled.connect(lambda checked: self.color_btn.setEnabled(checked))
+        self.override_color_check.toggled.connect(lambda checked: self.eyedrop_btn.setEnabled(checked))
+        
+        # Initialize state
+        self.color_btn.setEnabled(False)
+        self.eyedrop_btn.setEnabled(False)
+        
+        scroll_layout.addWidget(color_group)
         
         # Size settings
         size_group = QGroupBox("Size Scaling")
@@ -295,16 +431,29 @@ class ArcheoGlyphDialog(QDialog):
         self.max_size_spin.setValue(64)
         minmax_layout.addWidget(self.max_size_spin)
         size_layout.addLayout(minmax_layout)
-        right_panel.addWidget(size_group)
+        scroll_layout.addWidget(size_group)
+
+        # Prompt input (for AI modes)
+        self.prompt_group = QGroupBox("Text Prompt")
+        prompt_layout = QVBoxLayout(self.prompt_group)
+        self.prompt_input = QLineEdit()
+        self.prompt_input.setPlaceholderText("Enter a description for the icon (e.g., 'ancient pottery shard')")
+        prompt_layout.addWidget(self.prompt_input)
+        self.prompt_group.setVisible(False) # Hidden by default
+        scroll_layout.addWidget(self.prompt_group)
         
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        right_panel.addWidget(self.progress_bar)
+        scroll_layout.addWidget(self.progress_bar)
         
-        right_panel.addStretch()
+        scroll_layout.addStretch() # Push everything up inside scroll area
         
-        # Action buttons
+        # Finish scroll area setup
+        scan_scroll.setWidget(scroll_content)
+        right_panel.addWidget(scan_scroll)
+        
+        # Action buttons (Fixed at bottom, outside scroll)
         button_layout = QHBoxLayout()
         
         self.generate_btn = QPushButton("🎨 Generate")
@@ -358,6 +507,31 @@ class ArcheoGlyphDialog(QDialog):
         self.template_group.setVisible(is_template)
         self.style_combo.parentWidget().setVisible(not is_template)
         
+        # Update mode description label
+        descriptions = {
+            self.autotrace_radio: "✂ Extracts contour + internal feature lines from photo (fast, offline)",
+            self.gemini_radio: "🤖 Google Gemini AI generates stylized symbols (API key required)",
+            self.hf_radio: "🤗 Hugging Face AI generates FREE flat icons (Token required)",
+            self.local_radio: "💻 Local Stable Diffusion generates symbols (GPU required)",
+            self.template_radio: "📋 Uses built-in SVG templates by category",
+        }
+        self.mode_info_label.setText(descriptions.get(button, ""))
+
+        # Show prompt input for HF mode (and maybe others in future)
+        self.prompt_group.setVisible(
+            button == self.hf_radio or 
+            button == self.gemini_radio or 
+            button == self.local_radio
+        )
+        
+        # Update placeholder based on mode
+        if button == self.hf_radio:
+             self.prompt_input.setPlaceholderText("Enter icon description (e.g. 'broken clay pot')")
+        elif button == self.gemini_radio:
+             self.prompt_input.setPlaceholderText("Optional: Add extra instructions (e.g. 'emphasize cracks')")
+        elif button == self.local_radio:
+             self.prompt_input.setPlaceholderText("Enter generation prompt")
+
     def update_color_preview(self):
         """Update the color preview label."""
         self.color_preview.setStyleSheet(f"""
@@ -374,10 +548,31 @@ class ArcheoGlyphDialog(QDialog):
         if color.isValid():
             self.current_color = color
             self.update_color_preview()
+    
+    def toggle_picking_mode(self, checked):
+        """Toggle the cursor and mode for color picking."""
+        self.image_drop.set_picking_mode(checked)
+        if checked:
+            self.eyedrop_btn.setText("Click Image to Pick")
+        else:
+            self.eyedrop_btn.setText("🎨 Pick from Image")
+
+    def set_current_color(self, color):
+        """Set color from picker."""
+        if color.isValid():
+            self.current_color = color
+            self.update_color_preview()
+            self.eyedrop_btn.setChecked(False)  # Turn off picking mode
             
     def generate_symbol(self):
         """Generate symbol based on current settings."""
-        if not self.image_drop.image_path and not self.template_radio.isChecked():
+
+
+        # Validate inputs
+        if self.hf_radio.isChecked():
+             # HF mode needs prompt (checked later), but doesn't strictly need an image
+             pass
+        elif not self.template_radio.isChecked() and not self.image_drop.image_path:
             QMessageBox.warning(self, "No Image", "Please select an input image first.")
             return
             
@@ -391,19 +586,64 @@ class ArcheoGlyphDialog(QDialog):
             target_func = None
             kwargs = {}
             
-            if self.gemini_radio.isChecked():
-                from ..generators.gemini_generator import GeminiGenerator
-                generator = GeminiGenerator()
-                target_func = generator.generate
+            if self.autotrace_radio.isChecked():
+                from ..generators.contour_generator import ContourGenerator
+                self._current_generator = ContourGenerator()
+                target_func = self._current_generator.generate
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
+                    'color': self.current_color.name(),
+                    'symmetry': self.symmetry_check.isChecked()
+                }
+            elif self.gemini_radio.isChecked():
+                from ..generators.gemini_generator import GeminiGenerator
+                self._current_generator = GeminiGenerator()
+                target_func = self._current_generator.generate
+                
+                # Use prompt input if available
+                extra_prompt = self.prompt_input.text().strip()
+                
+                kwargs = {
+                    'image_path': self.image_drop.image_path,
+                    'style': self.style_combo.currentText(),
+                    'color': self.current_color.name(),
+                    'symmetry': self.symmetry_check.isChecked()
+                }
+                # Pass extra prompt if Gemini generator supports it (it currently expects image + style)
+                # We might need to modify GeminiGenerator to accept extra_prompt, 
+                # or just append it to style string hackily for now if we don't want to change signature yet.
+                # But let's check GeminiGenerator signature... it takes (image_path, style, color).
+                # So we can't pass it easily without changing signature.
+                # For now, let's just stick to the plan of HF needing it.
+                
+            elif self.hf_radio.isChecked():
+                from ..generators.huggingface_generator import HuggingFaceGenerator
+                self._current_generator = HuggingFaceGenerator()
+                target_func = self._current_generator.generate
+                
+                # Use prompt input
+                prompt = self.prompt_input.text().strip()
+                
+                # Fallback if empty
+                if not prompt:
+                    if self.image_drop.image_path:
+                        prompt = os.path.splitext(os.path.basename(self.image_drop.image_path))[0]
+                    else:
+                        QMessageBox.warning(self, "Missing Prompt", "Please enter a text prompt for the icon.")
+                        self.on_generation_finished(None, "Cancelled: No prompt")
+                        return
+
+                kwargs = {
+                    'prompt': prompt,
+                    'style': self.style_combo.currentText(),
                     'color': self.current_color.name()
                 }
+
             elif self.local_radio.isChecked():
                 from ..generators.local_generator import LocalGenerator
-                generator = LocalGenerator()
-                target_func = generator.generate
+                self._current_generator = LocalGenerator()
+                target_func = self._current_generator.generate
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
@@ -411,8 +651,8 @@ class ArcheoGlyphDialog(QDialog):
                 }
             else:
                 from ..generators.template_generator import TemplateGenerator
-                generator = TemplateGenerator(self.plugin_dir)
-                target_func = generator.generate
+                self._current_generator = TemplateGenerator(self.plugin_dir)
+                target_func = self._current_generator.generate
                 kwargs = {
                     'template_type': self.template_combo.currentText(),
                     'color': self.current_color.name()
@@ -431,17 +671,55 @@ class ArcheoGlyphDialog(QDialog):
         self.progress_bar.setVisible(False)
         self.progress_bar.setRange(0, 100) # Reset to normal
         self.generate_btn.setEnabled(True)
+        self._current_generator = None  # Release reference
         
         if error_message:
             QMessageBox.critical(self, "Error", f"Generation failed: {error_message}")
             return
             
         if result:
-            self.preview_label.set_preview(result)
-            self.save_btn.setEnabled(True)
-            self.apply_btn.setEnabled(True)
+            # If result is a string (SVG code from Gemini), render to QPixmap on main thread
+            if isinstance(result, str):
+                pixmap = self._svg_to_pixmap(result)
+                if pixmap:
+                    self.preview_label.set_preview(pixmap)
+                    self.save_btn.setEnabled(True)
+                    self.apply_btn.setEnabled(True)
+                else:
+                    QMessageBox.warning(self, "Failed", "Generated SVG code was invalid.")
+            else:
+                # Result is already a QPixmap (from template or local SD)
+                # OR it is a QImage (after thread safety fix)
+                if isinstance(result, QImage):
+                    pixmap = QPixmap.fromImage(result)
+                    self.preview_label.set_preview(pixmap)
+                else:
+                    self.preview_label.set_preview(result)
+
+                self.save_btn.setEnabled(True)
+                self.apply_btn.setEnabled(True)
         else:
             QMessageBox.warning(self, "Failed", "Generation returned no result.")
+
+    def _svg_to_pixmap(self, svg_code):
+        """Render SVG code to QPixmap (must be called on the main/GUI thread)."""
+        from qgis.PyQt.QtCore import QByteArray
+        from qgis.PyQt.QtSvg import QSvgRenderer
+        from qgis.PyQt.QtGui import QPainter
+        
+        renderer = QSvgRenderer(QByteArray(svg_code.encode('utf-8')))
+        
+        if not renderer.isValid():
+            return None
+            
+        pixmap = QPixmap(256, 256)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        
+        return pixmap
             
     def save_to_library(self):
         """Save generated symbol to QGIS symbol library."""

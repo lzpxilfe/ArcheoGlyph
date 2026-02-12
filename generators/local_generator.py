@@ -8,9 +8,8 @@ Supports both ComfyUI and Automatic1111 WebUI backends.
 import os
 import json
 import base64
-import requests
 import tempfile
-from qgis.PyQt.QtGui import QPixmap, QImage
+from qgis.PyQt.QtGui import QImage
 from qgis.PyQt.QtCore import QSettings
 
 
@@ -33,19 +32,19 @@ class LocalGenerator:
     
     # Style prompts for different archaeological symbol styles
     STYLE_PROMPTS = {
-        "🎨 Cute / Kawaii": (
-            "cute kawaii icon, chibi style, archaeological artifact, "
-            "rounded shapes, soft colors, friendly, simple clean design, "
-            "map symbol, transparent background, centered, high contrast, "
+        "🎯 Colored Silhouette (채색 실루엣)": (
+            "accurate archaeological artifact silhouette, flat color fill, "
+            "clean shape, precise outline, map symbol, "
+            "transparent background, centered, high contrast, "
             "digital art, vector style"
         ),
-        "📐 Minimal": (
+        "📐 Line Drawing (선화)": (
             "minimalist line art icon, archaeological artifact, "
             "simple geometric shapes, clean lines, monochrome, "
             "technical drawing style, transparent background, centered, "
             "vector illustration, blueprint style"
         ),
-        "🏛️ Classic Archaeological": (
+        "🏛️ Publication (실측 도면)": (
             "classic archaeological illustration, artifact drawing, "
             "stippling cross-hatching, academic professional, publication quality, "
             "transparent background, centered, scientific illustration, "
@@ -75,6 +74,7 @@ class LocalGenerator:
     def test_connection(self):
         """Test connection to the local SD server."""
         try:
+            import requests
             if self.backend == 'automatic1111':
                 response = requests.get(f"{self.server_url}/sdapi/v1/sd-models", timeout=5)
             else:
@@ -90,7 +90,7 @@ class LocalGenerator:
         :param image_path: Path to the input artifact image
         :param style: Style preset name
         :param color: Optional hex color for the symbol
-        :return: QPixmap of generated symbol or None on failure
+        :return: QImage of generated symbol or None on failure
         """
         if not self.test_connection():
             raise ConnectionError(
@@ -98,7 +98,7 @@ class LocalGenerator:
                 "Please ensure the server is running."
             )
             
-        prompt = self.STYLE_PROMPTS.get(style, self.STYLE_PROMPTS["🎨 Cute / Kawaii"])
+        prompt = self.STYLE_PROMPTS.get(style, self.STYLE_PROMPTS["🎯 Colored Silhouette (채색 실루엣)"])
         
         if color:
             prompt += f", {color} color scheme"
@@ -110,6 +110,7 @@ class LocalGenerator:
             
     def _generate_a1111(self, image_path, prompt):
         """Generate using Automatic1111 WebUI API."""
+        import requests
         # Read and encode the input image
         with open(image_path, 'rb') as f:
             image_data = base64.b64encode(f.read()).decode('utf-8')
@@ -137,7 +138,7 @@ class LocalGenerator:
             if 'images' in result and len(result['images']) > 0:
                 image_base64 = result['images'][0]
                 image_bytes = base64.b64decode(image_base64)
-                return self._bytes_to_pixmap(image_bytes)
+                return self._bytes_to_image(image_bytes)
                 
         return None
         
@@ -151,11 +152,11 @@ class LocalGenerator:
             "Please use Automatic1111 WebUI for now."
         )
         
-    def _bytes_to_pixmap(self, image_bytes):
-        """Convert raw bytes to QPixmap."""
+    def _bytes_to_image(self, image_bytes):
+        """Convert raw bytes to QImage."""
         image = QImage()
         image.loadFromData(image_bytes)
-        return QPixmap.fromImage(image)
+        return image
         
     @staticmethod
     def get_setup_instructions():
@@ -194,15 +195,15 @@ Coming soon...
 
 ## Recommended Models for Icon Generation
 
-1. **For Cute/Kawaii style:**
+1. **For Colored Silhouette style:**
    - Anything V5
    - Counterfeit V3
 
-2. **For Minimal style:**
+2. **For Line Drawing style:**
    - Deliberate V2
    - SD 1.5 with LoRA
 
-3. **For Classic style:**
+3. **For Publication style:**
    - Realistic Vision V5
    - SDXL Base
 

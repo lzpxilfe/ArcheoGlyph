@@ -10,8 +10,9 @@ Generate cute, visually accessible symbols from archaeological artifact and feat
 
 ## Features
 
-- 🎨 **AI Symbol Generation** - Google Gemini or local Stable Diffusion
-- 📐 **Multiple Styles** - Cute/Kawaii, Minimal, Classic Archaeological
+- 🎨 **AI Symbol Generation** - Google Gemini (Vector Game Style) or Hugging Face (Icon Style)
+- 📐 **Multiple Styles** - colored Silhouette (Game Asset), Line Drawing, Publication (Stippling)
+- 🖌️ **Auto-Color** - Automatically detects artifact color from image
 - 🖼️ **Template Library** - Built-in templates for common artifact types
 - 🎯 **Color Adjustment** - HSL-based color customization
 - 📊 **Proportional Sizing** - Data-driven symbol scaling
@@ -55,6 +56,11 @@ For offline use, see [AI Setup Guide](docs/ai_setup_guide.md)
 2. Download a model (Anything V5 recommended)
 3. Run with `--api` flag
 4. Configure server URL in plugin
+
+### Hugging Face (Free)
+1. Get free Token from [Hugging Face Settings](https://huggingface.co/settings/tokens)
+2. Enter Token in plugin settings
+3. **Default Model**: `stabilityai/stable-diffusion-2-1` (Automatically configured)
 
 ### No AI Required
 

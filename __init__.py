@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ArcheoGlyph - Archaeological Symbol Generator for QGIS
-A QGIS plugin that generates cute, visually accessible symbols from 
+A QGIS plugin that generates accurate, standardized symbols from 
 archaeological artifact/feature images.
 """
 
