@@ -70,6 +70,7 @@ class ContourGenerator:
             processing_bgr = processing_img
 
         target_mask = self._get_mask(processing_bgr)
+        processing_bgr, target_mask = self._auto_upright(processing_bgr, target_mask)
 
         contours, _ = cv2.findContours(target_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         if not contours:
@@ -78,7 +79,7 @@ class ContourGenerator:
         final_color = color if color else self._extract_dominant_color(processing_bgr, target_mask)
 
         main_contour = max(contours, key=cv2.contourArea)
-        epsilon = 0.001 * cv2.arcLength(main_contour, True)
+        epsilon = 0.0016 * cv2.arcLength(main_contour, True)
         approx = cv2.approxPolyDP(main_contour, epsilon, True)
 
         style_key = normalize_style(style)
@@ -303,18 +304,216 @@ class ContourGenerator:
         return self._get_mask_opencv(bgr_img)
 
     def _get_mask_opencv(self, bgr_img):
-        """Default OpenCV-based silhouette extraction."""
-        hsv = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
+        """
+        OpenCV silhouette extraction with shadow suppression.
+        """
+        h, w = bgr_img.shape[:2]
+        if h < 8 or w < 8:
+            return np.zeros((h, w), dtype=np.uint8)
 
-        s_mask = cv2.threshold(s, 20, 255, cv2.THRESH_BINARY)[1]
-        v_mask = cv2.threshold(v, 90, 255, cv2.THRESH_BINARY_INV)[1]
-        target_mask = cv2.bitwise_or(s_mask, v_mask)
+        blurred = cv2.GaussianBlur(bgr_img, (5, 5), 0)
+        hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+        lab = cv2.cvtColor(blurred, cv2.COLOR_BGR2LAB)
+        _, s, _ = cv2.split(hsv)
 
-        kernel = np.ones((3, 3), np.uint8)
-        target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_CLOSE, kernel, iterations=4)
+        # Estimate background from border strips.
+        b = max(6, min(h, w) // 28)
+        border_pixels = np.concatenate([
+            lab[:b, :, :].reshape(-1, 3),
+            lab[-b:, :, :].reshape(-1, 3),
+            lab[:, :b, :].reshape(-1, 3),
+            lab[:, -b:, :].reshape(-1, 3),
+        ], axis=0)
+        bg = np.median(border_pixels, axis=0)
+
+        lab_f = lab.astype(np.float32)
+        bg_f = bg.astype(np.float32)
+
+        # Chroma distance (a,b) is much less sensitive to lighting/shadow than full Lab distance.
+        delta_ab = np.linalg.norm(lab_f[:, :, 1:3] - bg_f[1:3], axis=2)
+        delta_l = np.abs(lab_f[:, :, 0] - bg_f[0])
+
+        ab_scale = max(6.0, float(np.percentile(delta_ab, 99.0)))
+        l_scale = max(8.0, float(np.percentile(delta_l, 99.0)))
+        ab_u8 = np.clip((delta_ab / ab_scale) * 255.0, 0, 255).astype(np.uint8)
+        l_u8 = np.clip((delta_l / l_scale) * 255.0, 0, 255).astype(np.uint8)
+
+        _, chroma_mask = cv2.threshold(ab_u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, light_mask = cv2.threshold(l_u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        sat_mask = cv2.threshold(s, 16, 255, cv2.THRESH_BINARY)[1]
+
+        target_mask = cv2.bitwise_or(chroma_mask, cv2.bitwise_and(light_mask, sat_mask))
+
+        # If object is near-gray, relax to include luminance edges as fallback.
+        min_fg = int(h * w * 0.008)
+        if np.count_nonzero(target_mask) < min_fg:
+            target_mask = cv2.bitwise_or(target_mask, light_mask)
+
+        shadow_like = (
+            (s < 22)
+            & (delta_ab < float(np.percentile(delta_ab, 58.0)))
+            & (delta_l > float(np.percentile(delta_l, 72.0)))
+        )
+        target_mask[shadow_like] = 0
+
+        kernel3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        kernel5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_OPEN, kernel3, iterations=1)
+        target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_CLOSE, kernel5, iterations=2)
+
+        refined = self._refine_with_grabcut(blurred, target_mask)
+        if refined is not None:
+            target_mask = refined
+
+        target_mask = self._select_primary_component(target_mask)
+        target_mask = self._smooth_mask_edges(target_mask)
         return target_mask
+
+    def _select_primary_component(self, mask):
+        """Keep the best foreground component by size + center + tallness score."""
+        h, w = mask.shape[:2]
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return mask
+
+        cx_ref = w * 0.5
+        cy_ref = h * 0.5
+        best = None
+        best_score = -1.0
+
+        min_area = max(120.0, (h * w) * 0.002)
+        for c in contours:
+            area = float(cv2.contourArea(c))
+            if area < min_area:
+                continue
+            x, y, cw, ch = cv2.boundingRect(c)
+            cx = x + (cw * 0.5)
+            cy = y + (ch * 0.5)
+            d = ((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5
+            d_norm = d / max(1.0, (w * w + h * h) ** 0.5)
+            tall = ch / max(1.0, float(cw))
+            tall_norm = min(1.0, tall / 2.2)
+            score = area * (1.0 - min(0.95, d_norm)) * (0.6 + 0.4 * tall_norm)
+            if score > best_score:
+                best_score = score
+                best = c
+
+        if best is None:
+            best = max(contours, key=cv2.contourArea)
+
+        out = np.zeros((h, w), dtype=np.uint8)
+        cv2.drawContours(out, [best], -1, 255, thickness=cv2.FILLED)
+        return out
+
+    def _refine_with_grabcut(self, bgr_img, init_mask):
+        """Refine foreground/background split with GrabCut when available."""
+        try:
+            h, w = init_mask.shape[:2]
+            if np.count_nonzero(init_mask) < 120:
+                return None
+
+            gc_mask = np.full((h, w), cv2.GC_PR_BGD, dtype=np.uint8)
+
+            border = max(6, min(h, w) // 24)
+            gc_mask[:border, :] = cv2.GC_BGD
+            gc_mask[-border:, :] = cv2.GC_BGD
+            gc_mask[:, :border] = cv2.GC_BGD
+            gc_mask[:, -border:] = cv2.GC_BGD
+            gc_mask[init_mask > 0] = cv2.GC_PR_FGD
+
+            kernel5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            sure_fg = cv2.erode(init_mask, kernel5, iterations=1)
+            sure_bg = cv2.bitwise_not(cv2.dilate(init_mask, kernel5, iterations=2))
+            gc_mask[sure_fg > 0] = cv2.GC_FGD
+            gc_mask[sure_bg > 0] = cv2.GC_BGD
+
+            bgd_model = np.zeros((1, 65), np.float64)
+            fgd_model = np.zeros((1, 65), np.float64)
+            cv2.grabCut(bgr_img, gc_mask, None, bgd_model, fgd_model, 3, cv2.GC_INIT_WITH_MASK)
+
+            fg = np.where(
+                (gc_mask == cv2.GC_FGD) | (gc_mask == cv2.GC_PR_FGD),
+                255, 0
+            ).astype(np.uint8)
+            if np.count_nonzero(fg) < 120:
+                return None
+            return self._smooth_mask_edges(fg)
+        except Exception:
+            return None
+
+    def _auto_upright(self, bgr_img, mask):
+        """
+        Slightly rotate tall objects to upright orientation.
+        Avoids small camera-tilt artifacts in Auto Trace outputs.
+        """
+        try:
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            if not contours:
+                return bgr_img, mask
+
+            main = max(contours, key=cv2.contourArea)
+            x, y, w_box, h_box = cv2.boundingRect(main)
+            if h_box <= (w_box * 1.12):
+                return bgr_img, mask
+
+            h, w = mask.shape[:2]
+            margin_left = x
+            margin_top = y
+            margin_right = w - (x + w_box)
+            margin_bottom = h - (y + h_box)
+            min_margin = min(margin_left, margin_top, margin_right, margin_bottom)
+            if min_margin < max(6, int(max(w_box, h_box) * 0.02)):
+                return bgr_img, mask
+
+            pts = main.reshape(-1, 2).astype(np.float32)
+            if pts.shape[0] < 10:
+                return bgr_img, mask
+
+            mean = np.mean(pts, axis=0)
+            centered = pts - mean
+            cov = np.cov(centered.T)
+            evals, evecs = np.linalg.eigh(cov)
+            axis = evecs[:, np.argmax(evals)]
+            angle = float(np.degrees(np.arctan2(axis[1], axis[0])))
+            target = 90.0 if angle >= 0.0 else -90.0
+            delta = angle - target
+
+            if abs(delta) < 1.8 or abs(delta) > 10.0:
+                return bgr_img, mask
+
+            m = cv2.getRotationMatrix2D((w * 0.5, h * 0.5), -delta, 1.0)
+            rot_bgr = cv2.warpAffine(
+                bgr_img, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+            )
+            rot_mask = cv2.warpAffine(
+                mask, m, (w, h), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0
+            )
+            rot_mask = self._select_primary_component(rot_mask)
+            rot_mask = self._smooth_mask_edges(rot_mask)
+            return rot_bgr, rot_mask
+        except Exception:
+            return bgr_img, mask
+
+    def _smooth_mask_edges(self, mask):
+        """Smooth jagged edges and fill tiny holes in binary mask."""
+        if mask is None:
+            return None
+
+        blurred = cv2.GaussianBlur(mask, (0, 0), 1.05)
+        smoothed = cv2.threshold(blurred, 116, 255, cv2.THRESH_BINARY)[1]
+
+        kernel3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        kernel5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        smoothed = cv2.morphologyEx(smoothed, cv2.MORPH_OPEN, kernel3, iterations=1)
+        smoothed = cv2.morphologyEx(smoothed, cv2.MORPH_CLOSE, kernel5, iterations=2)
+
+        # Fill enclosed holes so highlights do not punch through silhouette.
+        h, w = smoothed.shape[:2]
+        flood = smoothed.copy()
+        flood_mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
+        cv2.floodFill(flood, flood_mask, (0, 0), 255)
+        holes = cv2.bitwise_not(flood)
+        return cv2.bitwise_or(smoothed, holes)
 
     def _get_mask_sam(self, bgr_img):
         """
