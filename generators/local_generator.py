@@ -5,13 +5,11 @@ Generates stylized archaeological symbols using local Stable Diffusion.
 Supports both ComfyUI and Automatic1111 WebUI backends.
 """
 
-import os
-import json
 import base64
-import tempfile
 from qgis.PyQt.QtGui import QImage
 from qgis.PyQt.QtCore import QSettings
 
+from .style_control_utils import resolve_style_controls, style_controls_prompt_hint
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -96,7 +94,15 @@ class LocalGenerator:
         except Exception:
             return False
             
-    def generate(self, image_path, style, color=None):
+    def generate(
+        self,
+        image_path,
+        style,
+        color=None,
+        factuality=None,
+        symbolic_looseness=None,
+        exaggeration=None,
+    ):
         """
         Generate a symbol from the input image using local Stable Diffusion.
         
@@ -112,6 +118,11 @@ class LocalGenerator:
             )
             
         prompt = self.STYLE_PROMPTS.get(self._normalize_style(style), self.STYLE_PROMPTS[STYLE_COLORED])
+        prompt += ", " + self._style_control_hint(
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
+        )
         
         if color:
             prompt += f", {color} color scheme"
@@ -158,6 +169,16 @@ class LocalGenerator:
     def _normalize_style(self, style):
         """Map style labels to canonical keys."""
         return normalize_style(style)
+
+    def _style_control_hint(self, factuality=None, symbolic_looseness=None, exaggeration=None):
+        """Read style sliders and convert to local prompt hints."""
+        controls = resolve_style_controls(
+            settings=self.settings,
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
+        )
+        return style_controls_prompt_hint(controls, prefix="style controls")
         
     def _generate_comfyui(self, image_path, prompt):
         """Generate using ComfyUI API."""

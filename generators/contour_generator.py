@@ -15,6 +15,12 @@ except ImportError:
 from qgis.PyQt.QtCore import QSettings
 
 from .style_utils import STYLE_LINE, STYLE_MEASURED, STYLE_TYPOLOGY, normalize_style
+from .style_control_utils import (
+    STYLE_CONTROL_EXAGGERATION,
+    STYLE_CONTROL_FACTUALITY,
+    STYLE_CONTROL_SYMBOLIC_LOOSENESS,
+    resolve_style_controls,
+)
 
 
 class ContourGenerator:
@@ -34,7 +40,16 @@ class ContourGenerator:
         array = np.asarray(data, dtype=np.uint8)
         return cv2.imdecode(array, cv2.IMREAD_UNCHANGED)
 
-    def generate(self, image_path, style=None, color=None, symmetry=False):
+    def generate(
+        self,
+        image_path,
+        style=None,
+        color=None,
+        symmetry=False,
+        factuality=None,
+        symbolic_looseness=None,
+        exaggeration=None,
+    ):
         """
         Generate contour SVG from image.
 
@@ -42,6 +57,9 @@ class ContourGenerator:
         :param style: style name
         :param color: optional fixed color (hex)
         :param symmetry: optional mirror symmetry
+        :param factuality: 0..100, higher keeps measured/documentary detail
+        :param symbolic_looseness: 0..100, higher simplifies toward symbolic output
+        :param exaggeration: 0..100, higher strengthens stylization emphasis
         :return: SVG string
         """
         if cv2 is None or np is None:
@@ -83,9 +101,27 @@ class ContourGenerator:
         is_publication = style_key == STYLE_MEASURED
         is_line_drawing = style_key == STYLE_LINE
         is_mono = is_line_drawing or is_publication
+        controls = resolve_style_controls(
+            settings=self.settings,
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
+        )
+        factuality_v = controls[STYLE_CONTROL_FACTUALITY] / 100.0
+        symbolic_v = controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS] / 100.0
+        exaggeration_v = controls[STYLE_CONTROL_EXAGGERATION] / 100.0
+        profile_count = int(round(self._clamp((0.8 + (2.6 * symbolic_v) + (1.2 * exaggeration_v) - (1.2 * factuality_v)), 0.0, 4.0)))
+        terminal_count = int(round(self._clamp((0.2 + (2.0 * symbolic_v) + (1.4 * exaggeration_v) - (0.9 * factuality_v)), 0.0, 4.0)))
+        texture_count = int(round(self._clamp((2.0 + (13.0 * factuality_v) - (8.0 * symbolic_v) - (5.0 * exaggeration_v)), 0.0, 18.0)))
+        line_detail_count = int(round(self._clamp((1.0 + (9.0 * factuality_v) - (6.0 * symbolic_v) - (4.0 * exaggeration_v)), 0.0, 12.0)))
 
         main_contour = max(contours, key=cv2.contourArea)
-        epsilon_factor = 0.0032 if is_typology else 0.0016
+        if is_typology:
+            base_epsilon = 0.0026
+        else:
+            base_epsilon = 0.0014
+        epsilon_factor = base_epsilon + (0.0018 * symbolic_v) + (0.0012 * exaggeration_v) - (0.0009 * factuality_v)
+        epsilon_factor = self._clamp(epsilon_factor, 0.0008, 0.0052)
         epsilon = epsilon_factor * cv2.arcLength(main_contour, True)
         approx = cv2.approxPolyDP(main_contour, epsilon, True)
 
@@ -120,22 +156,30 @@ class ContourGenerator:
                     path_data += f"L {pt[0]},{pt[1]} "
                 path_data += "Z"
 
-        profile_lines = self._estimate_profile_bands(target_mask, max_lines=3)
+        profile_lines = self._estimate_profile_bands(target_mask, max_lines=max(1, profile_count))
         spine_lines = self._estimate_spine_line(target_mask)
-        terminal_lines = self._estimate_terminal_bars(target_mask, max_lines=2)
+        terminal_target = terminal_count if is_typology else 2
+        terminal_lines = self._estimate_terminal_bars(
+            target_mask,
+            max_lines=terminal_target,
+        )
         texture_lines = self._extract_internal_lines(processing_bgr, target_mask, main_contour)
 
         if is_typology:
-            internal_lines = profile_lines[:3] + spine_lines[:1] + terminal_lines[:2]
+            internal_lines = profile_lines[:profile_count] + spine_lines[:1] + terminal_lines[:terminal_count]
         elif is_publication:
             # Publication mode keeps factual texture hints plus structural cues.
-            internal_lines = texture_lines[:14] + profile_lines[:2] + spine_lines[:1]
+            publication_profile = max(0, min(2, profile_count))
+            internal_lines = texture_lines[:texture_count] + profile_lines[:publication_profile] + spine_lines[:1]
         elif is_line_drawing:
-            # Line mode targets typological icon readability over photo texture.
-            internal_lines = profile_lines + spine_lines[:1]
+            # Line mode removes horizontal bars and keeps only vertical/diagonal factual cues.
+            line_lines = self._remove_near_horizontal_lines(texture_lines[:max(6, line_detail_count)] + spine_lines[:1])
+            internal_lines = line_lines[:max(1, line_detail_count)] if line_detail_count > 0 else []
         else:
             # Colored mode: symbolic structural lines only (avoid painterly/noisy interiors).
-            internal_lines = profile_lines + spine_lines[:1]
+            internal_lines = profile_lines[:max(1, profile_count)] + spine_lines[:1]
+            if factuality_v >= 0.7 and symbolic_v <= 0.4 and texture_count > 0:
+                internal_lines += self._remove_near_horizontal_lines(texture_lines)[:2]
 
         if is_typology:
             base_color = self._muted_hex(final_color, keep=0.66)
@@ -175,7 +219,7 @@ class ContourGenerator:
                     'stroke-width="1.00" stroke-linecap="round" stroke-linejoin="round"/>'
                 )
 
-            for line in terminal_lines[:2]:
+            for line in terminal_lines[:terminal_count]:
                 line_path = self._polyline_to_path(line)
                 if not line_path:
                     continue
@@ -223,6 +267,25 @@ class ContourGenerator:
 
         svg_output.append("</svg>")
         return "".join(svg_output)
+
+    def _clamp(self, value, lower, upper):
+        """Clamp numeric value into [lower, upper]."""
+        return max(lower, min(upper, value))
+
+    def _remove_near_horizontal_lines(self, lines, ratio=0.35):
+        """Drop near-horizontal lines to avoid crossbar artifacts in line style."""
+        filtered = []
+        for line in lines or []:
+            if not line or len(line) < 2:
+                continue
+            xs = [int(pt[0]) for pt in line]
+            ys = [int(pt[1]) for pt in line]
+            span_x = max(xs) - min(xs)
+            span_y = max(ys) - min(ys)
+            if span_x >= 8 and span_y <= (float(span_x) * float(ratio)):
+                continue
+            filtered.append(line)
+        return filtered
 
     def _polyline_to_path(self, points):
         """Convert list of points to SVG polyline path."""
@@ -292,12 +355,19 @@ class ContourGenerator:
         h = max(1, bot_y - top_y)
         step = max(2, h // 42)
 
+        axis_ratio = 0.5
         points = []
         for y in range(top_y, bot_y + 1, step):
             row_xs = np.where(mask[y] > 0)[0]
             if len(row_xs) < 2:
                 continue
-            x_mid = int((int(row_xs[0]) + int(row_xs[-1])) / 2)
+            left = int(row_xs[0])
+            right = int(row_xs[-1])
+            width = right - left
+            if width < 2:
+                continue
+            x_mid = int(left + (width * axis_ratio))
+            x_mid = max(left + 1, min(right - 1, x_mid))
             points.append([x_mid, y])
 
         if len(points) < 6:
@@ -431,6 +501,10 @@ class ContourGenerator:
         Estimate short terminal bars near top/bottom extremes.
         These emulate typological marker conventions seen in catalog symbols.
         """
+        target_lines = int(max(0, int(max_lines)))
+        if target_lines == 0:
+            return []
+
         ys, xs = np.where(mask > 0)
         if len(xs) < 80:
             return []
@@ -441,6 +515,7 @@ class ContourGenerator:
         if h < 20:
             return []
 
+        axis_ratio = 0.5
         rows = []
         for y in (top_y + int(h * 0.06), bot_y - int(h * 0.08)):
             if y < 0 or y >= mask.shape[0]:
@@ -448,19 +523,30 @@ class ContourGenerator:
             row = np.where(mask[y] > 0)[0]
             if len(row) < 6:
                 continue
-            x0 = int(row[0])
-            x1 = int(row[-1])
-            width = x1 - x0
+            left = int(row[0])
+            right = int(row[-1])
+            width = right - left
             if width < 10:
                 continue
-            margin = int(max(2, width * 0.30))
-            x0 += margin
-            x1 -= margin
-            if x1 - x0 < 6:
+            margin = int(max(2, width * 0.16))
+            span_left = left + margin
+            span_right = right - margin
+            if span_right - span_left < 6:
+                continue
+            axis_x = int(left + (width * axis_ratio))
+            half_len = max(3, int(width * 0.12))
+            x0 = max(span_left, axis_x - half_len)
+            x1 = min(span_right, axis_x + half_len)
+            if x1 - x0 < 4:
+                x0 = span_left
+                x1 = span_right
+            if x1 - x0 < 4:
                 continue
             rows.append([[x0, y], [x1, y]])
+            if len(rows) >= target_lines:
+                break
 
-        return rows[:max(1, int(max_lines))]
+        return rows[:target_lines]
 
     def _darken_hex(self, hex_color, factor):
         """Darken a hex color by multiplying channels by factor [0..1]."""

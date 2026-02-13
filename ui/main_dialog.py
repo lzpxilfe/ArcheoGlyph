@@ -1,22 +1,37 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ArcheoGlyph - Main Dialog UI
 """
 
 import os
-import base64
-from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread, QObject, QByteArray, QPointF, QRectF
-from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent, QPainter, QPen, QBrush, QPainterPath, QCursor
+from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread, QRectF, QSettings
+from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent, QPainter
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QSpinBox, QGroupBox, QRadioButton, QButtonGroup,
     QFileDialog, QColorDialog, QProgressBar, QMessageBox,
-    QFrame, QSizePolicy, QWidget, QScrollArea, QCheckBox,
-    QLineEdit
+    QFrame, QWidget, QScrollArea, QCheckBox,
+    QLineEdit, QTabWidget, QSlider
 )
-from qgis.core import QgsProject, QgsVectorLayer
+from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
 
+from ..defaults import (
+    DEFAULT_MAX_SYMBOL_SIZE_MM,
+    DEFAULT_MIN_SYMBOL_SIZE_MM,
+    PLUGIN_VERSION,
+)
 from ..generators.style_utils import STYLE_OPTIONS
+from ..generators.style_control_utils import (
+    STYLE_CONTROL_DEFAULTS,
+    STYLE_CONTROL_MAX,
+    STYLE_CONTROL_MIN,
+    STYLE_CONTROL_EXAGGERATION,
+    STYLE_CONTROL_FACTUALITY,
+    STYLE_CONTROL_SYMBOLIC_LOOSENESS,
+    resolve_style_controls,
+    save_style_controls,
+    style_controls_short_text,
+)
 
 
 class GenerationThread(QThread):
@@ -185,19 +200,33 @@ class PreviewLabel(QLabel):
 
 class ArcheoGlyphDialog(QDialog):
     """Main dialog for ArcheoGlyph plugin."""
+
+    MODE_DESCRIPTION = {
+        "autotrace": "Extracts contour + internal feature lines from photo (fast, offline)",
+        "gemini": "Google Gemini generates reference-constrained symbols (factual mode)",
+        "hf": "Hugging Face refines symbols from the reference image (token required, HF Prompt Adaptive v3)",
+        "local": "Local Stable Diffusion generates symbols (GPU required)",
+        "template": "Uses built-in SVG templates by category",
+    }
     
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
+        self.settings = QSettings()
         self.plugin_dir = os.path.dirname(os.path.dirname(__file__))
+        self.plugin_version = str(self.settings.value("ArcheoGlyph/code_version", PLUGIN_VERSION)).strip() or PLUGIN_VERSION
         self.current_color = QColor("#8B4513")  # Default brown for artifacts
         self.generation_thread = None
         
         self.setup_ui()
+
+        project = QgsProject.instance()
+        project.layersAdded.connect(lambda _layers: self.refresh_layer_list())
+        project.layersRemoved.connect(lambda _ids: self.refresh_layer_list())
         
     def setup_ui(self):
         """Initialize the user interface."""
-        self.setWindowTitle("ArcheoGlyph - Symbol Generator")
+        self.setWindowTitle(f"ArcheoGlyph v{self.plugin_version} - Symbol Generator")
         self.setMinimumSize(600, 500)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
@@ -224,7 +253,7 @@ class ArcheoGlyphDialog(QDialog):
         
         # Photo tip label
         tip_label = QLabel(
-            "💡 <i>Tip: Use a clear photo with a clean background for best results.</i>"
+            "<i>Tip: Use a clear photo with a clean background for best results.</i>"
         )
         tip_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px;")
         tip_label.setWordWrap(True)
@@ -266,7 +295,7 @@ class ArcheoGlyphDialog(QDialog):
         mode_layout = QVBoxLayout(mode_group)
         
         self.mode_button_group = QButtonGroup(self)
-        self.autotrace_radio = QRadioButton("✂ Auto Trace")
+        self.autotrace_radio = QRadioButton("Auto Trace")
         self.gemini_radio = QRadioButton("AI (Google Gemini)")
         self.hf_radio = QRadioButton("AI (Hugging Face)")
         self.local_radio = QRadioButton("AI (Local Stable Diffusion)")
@@ -286,7 +315,7 @@ class ArcheoGlyphDialog(QDialog):
         mode_layout.addWidget(self.template_radio)
         
         # Mode description label
-        self.mode_info_label = QLabel("✂ Extracts contour + internal feature lines from photo (fast, offline)")
+        self.mode_info_label = QLabel(self.MODE_DESCRIPTION["autotrace"])
         self.mode_info_label.setStyleSheet(
             "color: #555; font-size: 11px; background: #f0f8ff; "
             "padding: 4px; border-radius: 3px;"
@@ -300,22 +329,82 @@ class ArcheoGlyphDialog(QDialog):
         scroll_layout.addWidget(mode_group)
         
         # Style selection
-        style_group = QGroupBox("Style")
-        style_layout = QVBoxLayout(style_group)
-        
+        self.style_group = QGroupBox("Style")
+        style_layout = QVBoxLayout(self.style_group)
+        style_tabs = QTabWidget()
+
+        basic_tab = QWidget()
+        basic_layout = QVBoxLayout(basic_tab)
+
         self.style_combo = QComboBox()
         self.style_combo.addItems(STYLE_OPTIONS)
-        style_layout.addWidget(self.style_combo)
-        
+        basic_layout.addWidget(self.style_combo)
+
         # Symmetry checkbox
         self.symmetry_check = QCheckBox("Mirror symmetry")
         self.symmetry_check.setChecked(False)
         self.symmetry_check.setToolTip(
             "Produces a bilaterally symmetrical symbol by mirroring the contour."
         )
-        style_layout.addWidget(self.symmetry_check)
-        
-        scroll_layout.addWidget(style_group)
+        basic_layout.addWidget(self.symmetry_check)
+        basic_layout.addStretch()
+        style_tabs.addTab(basic_tab, "Basic")
+
+        params_tab = QWidget()
+        params_layout = QVBoxLayout(params_tab)
+
+        params_hint = QLabel(
+            "Adjust expression balance for symbol output."
+        )
+        params_hint.setWordWrap(True)
+        params_hint.setStyleSheet("color: #666; font-size: 11px;")
+        params_layout.addWidget(params_hint)
+        controls = resolve_style_controls(self.settings)
+
+        factual_layout = QHBoxLayout()
+        factual_layout.addWidget(QLabel("Factuality:"))
+        self.factuality_slider = QSlider(Qt.Horizontal)
+        self.factuality_slider.setRange(STYLE_CONTROL_MIN, STYLE_CONTROL_MAX)
+        self.factuality_slider.setValue(int(controls[STYLE_CONTROL_FACTUALITY]))
+        self.factuality_slider.setToolTip("0 = expressive symbol, 100 = measured/documentary.")
+        self.factuality_slider.valueChanged.connect(self._on_style_params_changed)
+        factual_layout.addWidget(self.factuality_slider)
+        self.factuality_value_label = QLabel(str(STYLE_CONTROL_DEFAULTS[STYLE_CONTROL_FACTUALITY]))
+        self.factuality_value_label.setMinimumWidth(34)
+        factual_layout.addWidget(self.factuality_value_label)
+        params_layout.addLayout(factual_layout)
+
+        symbolic_layout = QHBoxLayout()
+        symbolic_layout.addWidget(QLabel("Symbol Looseness:"))
+        self.symbolic_looseness_slider = QSlider(Qt.Horizontal)
+        self.symbolic_looseness_slider.setRange(STYLE_CONTROL_MIN, STYLE_CONTROL_MAX)
+        self.symbolic_looseness_slider.setValue(int(controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS]))
+        self.symbolic_looseness_slider.setToolTip("0 = tight measured shape, 100 = loose symbolic simplification.")
+        self.symbolic_looseness_slider.valueChanged.connect(self._on_style_params_changed)
+        symbolic_layout.addWidget(self.symbolic_looseness_slider)
+        self.symbolic_looseness_value_label = QLabel(str(STYLE_CONTROL_DEFAULTS[STYLE_CONTROL_SYMBOLIC_LOOSENESS]))
+        self.symbolic_looseness_value_label.setMinimumWidth(34)
+        symbolic_layout.addWidget(self.symbolic_looseness_value_label)
+        params_layout.addLayout(symbolic_layout)
+
+        exaggeration_layout = QHBoxLayout()
+        exaggeration_layout.addWidget(QLabel("Exaggeration:"))
+        self.exaggeration_slider = QSlider(Qt.Horizontal)
+        self.exaggeration_slider.setRange(STYLE_CONTROL_MIN, STYLE_CONTROL_MAX)
+        self.exaggeration_slider.setValue(int(controls[STYLE_CONTROL_EXAGGERATION]))
+        self.exaggeration_slider.setToolTip("0 = none, 100 = strong stylization and simplified emphasis.")
+        self.exaggeration_slider.valueChanged.connect(self._on_style_params_changed)
+        exaggeration_layout.addWidget(self.exaggeration_slider)
+        self.exaggeration_value_label = QLabel(str(STYLE_CONTROL_DEFAULTS[STYLE_CONTROL_EXAGGERATION]))
+        self.exaggeration_value_label.setMinimumWidth(34)
+        exaggeration_layout.addWidget(self.exaggeration_value_label)
+        params_layout.addLayout(exaggeration_layout)
+        params_layout.addStretch()
+        style_tabs.addTab(params_tab, "Parameters")
+
+        style_layout.addWidget(style_tabs)
+        scroll_layout.addWidget(self.style_group)
+        self._update_style_param_labels()
         
         # Template selection (initially hidden)
         self.template_group = QGroupBox("Template Type")
@@ -363,7 +452,7 @@ class ArcheoGlyphDialog(QDialog):
         self.color_btn.clicked.connect(self.pick_color)
         picker_layout.addWidget(self.color_btn)
         
-        self.eyedrop_btn = QPushButton("🎨 Pick from Image")
+        self.eyedrop_btn = QPushButton("Pick from Image")
         self.eyedrop_btn.setCheckable(True)
         self.eyedrop_btn.toggled.connect(self.toggle_picking_mode)
         picker_layout.addWidget(self.eyedrop_btn)
@@ -402,17 +491,28 @@ class ArcheoGlyphDialog(QDialog):
         minmax_layout = QHBoxLayout()
         minmax_layout.addWidget(QLabel("Min:"))
         self.min_size_spin = QSpinBox()
-        self.min_size_spin.setRange(8, 128)
-        self.min_size_spin.setValue(16)
+        self.min_size_spin.setRange(2, 128)
+        self.min_size_spin.setValue(int(DEFAULT_MIN_SYMBOL_SIZE_MM))
         minmax_layout.addWidget(self.min_size_spin)
         
         minmax_layout.addWidget(QLabel("Max:"))
         self.max_size_spin = QSpinBox()
-        self.max_size_spin.setRange(8, 256)
-        self.max_size_spin.setValue(64)
+        self.max_size_spin.setRange(2, 256)
+        self.max_size_spin.setValue(int(DEFAULT_MAX_SYMBOL_SIZE_MM))
         minmax_layout.addWidget(self.max_size_spin)
         size_layout.addLayout(minmax_layout)
         scroll_layout.addWidget(size_group)
+
+        # Target layer selection
+        layer_group = QGroupBox("Target Layer")
+        layer_layout = QHBoxLayout(layer_group)
+        self.layer_combo = QComboBox()
+        self.layer_combo.setToolTip("Choose the point layer that will receive the generated symbol.")
+        layer_layout.addWidget(self.layer_combo, 1)
+        refresh_layers_btn = QPushButton("Refresh")
+        refresh_layers_btn.clicked.connect(self.refresh_layer_list)
+        layer_layout.addWidget(refresh_layers_btn)
+        scroll_layout.addWidget(layer_group)
 
         # Prompt input (for AI modes)
         self.prompt_group = QGroupBox("Text Prompt")
@@ -437,7 +537,7 @@ class ArcheoGlyphDialog(QDialog):
         # Action buttons (Fixed at bottom, outside scroll)
         button_layout = QHBoxLayout()
         
-        self.generate_btn = QPushButton("🎨 Generate")
+        self.generate_btn = QPushButton("Generate")
         self.generate_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4a90d9;
@@ -456,23 +556,30 @@ class ArcheoGlyphDialog(QDialog):
         self.generate_btn.clicked.connect(self.generate_symbol)
         button_layout.addWidget(self.generate_btn)
         
-        self.save_btn = QPushButton("💾 Save to Library")
+        self.save_btn = QPushButton("Save to Library")
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self.save_to_library)
         button_layout.addWidget(self.save_btn)
         
-        self.apply_btn = QPushButton("📍 Apply to Layer")
+        self.apply_btn = QPushButton("Apply to Layer")
         self.apply_btn.setEnabled(False)
         self.apply_btn.clicked.connect(self.apply_to_layer)
         button_layout.addWidget(self.apply_btn)
         
         # Settings button
-        settings_btn = QPushButton("⚙️ Settings")
+        settings_btn = QPushButton("Settings")
         settings_btn.clicked.connect(self.open_settings)
         button_layout.addWidget(settings_btn)
         
         right_panel.addLayout(button_layout)
         main_layout.addLayout(right_panel)
+        self._set_mode_info_with_controls(show_controls=False)
+        self.refresh_layer_list()
+
+    def showEvent(self, event):
+        """Refresh layer choices whenever dialog is shown."""
+        super().showEvent(event)
+        self.refresh_layer_list()
         
     def on_image_loaded(self, file_path):
         """Handle when an image is loaded."""
@@ -486,17 +593,8 @@ class ArcheoGlyphDialog(QDialog):
         """Handle generation mode change."""
         is_template = button == self.template_radio
         self.template_group.setVisible(is_template)
-        self.style_combo.parentWidget().setVisible(not is_template)
-        
-        # Update mode description label
-        descriptions = {
-            self.autotrace_radio: "✂ Extracts contour + internal feature lines from photo (fast, offline)",
-            self.gemini_radio: "🤖 Google Gemini AI generates reference-constrained symbols (factual mode)",
-            self.hf_radio: "🤗 Hugging Face AI refines symbols from the reference image (token required, HF Prompt Adaptive v3)",
-            self.local_radio: "💻 Local Stable Diffusion generates symbols (GPU required)",
-            self.template_radio: "📋 Uses built-in SVG templates by category",
-        }
-        self.mode_info_label.setText(descriptions.get(button, ""))
+        self.style_group.setVisible(not is_template)
+        self._set_mode_info_with_controls(show_controls=False)
 
         # Show prompt input for HF mode (and maybe others in future)
         self.prompt_group.setVisible(
@@ -536,7 +634,7 @@ class ArcheoGlyphDialog(QDialog):
         if checked:
             self.eyedrop_btn.setText("Click Image to Pick")
         else:
-            self.eyedrop_btn.setText("🎨 Pick from Image")
+            self.eyedrop_btn.setText("Pick from Image")
 
     def set_current_color(self, color):
         """Set color from picker."""
@@ -562,11 +660,14 @@ class ArcheoGlyphDialog(QDialog):
         self.generate_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
         self.apply_btn.setEnabled(False)
+        # Ensure slider values are persisted before any generator reads QSettings.
+        self._persist_style_parameters()
         
         try:
             target_func = None
             kwargs = {}
             selected_color = self.current_color.name() if self.override_color_check.isChecked() else None
+            controls = self._current_style_controls()
             
             if self.autotrace_radio.isChecked():
                 from ..generators.contour_generator import ContourGenerator
@@ -576,7 +677,10 @@ class ArcheoGlyphDialog(QDialog):
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
                     'color': selected_color,
-                    'symmetry': self.symmetry_check.isChecked()
+                    'symmetry': self.symmetry_check.isChecked(),
+                    STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
+                    STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
+                    STYLE_CONTROL_EXAGGERATION: controls[STYLE_CONTROL_EXAGGERATION],
                 }
             elif self.gemini_radio.isChecked():
                 from ..generators.gemini_generator import GeminiGenerator
@@ -586,7 +690,10 @@ class ArcheoGlyphDialog(QDialog):
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
                     'color': selected_color,
-                    'symmetry': self.symmetry_check.isChecked()
+                    'symmetry': self.symmetry_check.isChecked(),
+                    STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
+                    STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
+                    STYLE_CONTROL_EXAGGERATION: controls[STYLE_CONTROL_EXAGGERATION],
                 }
                 
             elif self.hf_radio.isChecked():
@@ -612,7 +719,10 @@ class ArcheoGlyphDialog(QDialog):
                     'style': self.style_combo.currentText(),
                     'color': selected_color,
                     'image_path': self.image_drop.image_path,
-                    'symmetry': self.symmetry_check.isChecked()
+                    'symmetry': self.symmetry_check.isChecked(),
+                    STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
+                    STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
+                    STYLE_CONTROL_EXAGGERATION: controls[STYLE_CONTROL_EXAGGERATION],
                 }
 
             elif self.local_radio.isChecked():
@@ -622,7 +732,10 @@ class ArcheoGlyphDialog(QDialog):
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
-                    'color': selected_color
+                    'color': selected_color,
+                    STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
+                    STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
+                    STYLE_CONTROL_EXAGGERATION: controls[STYLE_CONTROL_EXAGGERATION],
                 }
             else:
                 from ..generators.template_generator import TemplateGenerator
@@ -647,6 +760,7 @@ class ArcheoGlyphDialog(QDialog):
         self.progress_bar.setRange(0, 100) # Reset to normal
         self.generate_btn.setEnabled(True)
         self._current_generator = None  # Release reference
+        self._set_mode_info_with_controls(show_controls=True)
         
         if error_message:
             QMessageBox.critical(self, "Error", f"Generation failed: {error_message}")
@@ -733,10 +847,10 @@ class ArcheoGlyphDialog(QDialog):
             
     def apply_to_layer(self):
         """Apply generated symbol to current layer."""
-        layer = self.iface.activeLayer()
+        layer = self._get_selected_layer()
         
-        if not layer or not isinstance(layer, QgsVectorLayer):
-            QMessageBox.warning(self, "No Layer", "Please select a vector layer first.")
+        if not layer:
+            QMessageBox.warning(self, "No Layer", "Please choose a point layer in Target Layer.")
             return
             
         if not self.preview_label.generated_image:
@@ -772,3 +886,103 @@ class ArcheoGlyphDialog(QDialog):
         
         dialog = SettingsDialog(self)
         dialog.exec_()
+
+    def _update_style_param_labels(self):
+        """Update labels for style parameter sliders."""
+        controls = self._current_style_controls()
+        self.factuality_value_label.setText(str(controls[STYLE_CONTROL_FACTUALITY]))
+        self.symbolic_looseness_value_label.setText(str(controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS]))
+        self.exaggeration_value_label.setText(str(controls[STYLE_CONTROL_EXAGGERATION]))
+
+    def _on_style_params_changed(self, _value):
+        """Handle slider changes."""
+        self._update_style_param_labels()
+        self._persist_style_parameters()
+
+    def _current_style_controls(self):
+        """Return normalized style controls from current slider values."""
+        return resolve_style_controls(
+            settings=None,
+            factuality=self.factuality_slider.value(),
+            symbolic_looseness=self.symbolic_looseness_slider.value(),
+            exaggeration=self.exaggeration_slider.value(),
+        )
+
+    def _active_mode_description(self):
+        """Return current mode description text."""
+        if self.gemini_radio.isChecked():
+            return self.MODE_DESCRIPTION["gemini"]
+        if self.hf_radio.isChecked():
+            return self.MODE_DESCRIPTION["hf"]
+        if self.local_radio.isChecked():
+            return self.MODE_DESCRIPTION["local"]
+        if self.template_radio.isChecked():
+            return self.MODE_DESCRIPTION["template"]
+        return self.MODE_DESCRIPTION["autotrace"]
+
+    def _set_mode_info_with_controls(self, show_controls=False, base_text=None):
+        """Update mode info label, optionally appending style-control values."""
+        text = str(base_text or self._active_mode_description())
+        if show_controls:
+            text += f" | Controls: {style_controls_short_text(self._current_style_controls())}"
+        self.mode_info_label.setText(text)
+
+    def _persist_style_parameters(self):
+        """Persist style parameter controls for generators."""
+        save_style_controls(self.settings, self._current_style_controls())
+
+    def refresh_layer_list(self):
+        """Refresh selectable point layers."""
+        if not hasattr(self, "layer_combo"):
+            return
+
+        previous_layer_id = self.layer_combo.currentData()
+        self.layer_combo.blockSignals(True)
+        self.layer_combo.clear()
+
+        point_layers = []
+        for layer in QgsProject.instance().mapLayers().values():
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            if layer.geometryType() != QgsWkbTypes.PointGeometry:
+                continue
+            point_layers.append(layer)
+
+        point_layers.sort(key=lambda layer: layer.name().lower())
+
+        if not point_layers:
+            self.layer_combo.addItem("No point layers available", "")
+            self.layer_combo.setEnabled(False)
+            self.layer_combo.blockSignals(False)
+            return
+
+        self.layer_combo.setEnabled(True)
+        for layer in point_layers:
+            self.layer_combo.addItem(layer.name(), layer.id())
+
+        target_layer_id = previous_layer_id
+        if not target_layer_id:
+            active = self.iface.activeLayer()
+            if isinstance(active, QgsVectorLayer) and active.geometryType() == QgsWkbTypes.PointGeometry:
+                target_layer_id = active.id()
+
+        selected_index = 0
+        for idx in range(self.layer_combo.count()):
+            if self.layer_combo.itemData(idx) == target_layer_id:
+                selected_index = idx
+                break
+        self.layer_combo.setCurrentIndex(selected_index)
+        self.layer_combo.blockSignals(False)
+
+    def _get_selected_layer(self):
+        """Return currently selected point layer."""
+        layer_id = self.layer_combo.currentData()
+        if not layer_id:
+            return None
+
+        layer = QgsProject.instance().mapLayer(layer_id)
+        if not isinstance(layer, QgsVectorLayer):
+            return None
+        if layer.geometryType() != QgsWkbTypes.PointGeometry:
+            return None
+        return layer

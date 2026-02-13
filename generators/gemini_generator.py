@@ -15,6 +15,12 @@ from qgis.PyQt.QtSvg import QSvgRenderer
 
 # Import ContourGenerator for hybrid workflow
 from .contour_generator import ContourGenerator
+from .style_control_utils import (
+    STYLE_CONTROL_EXAGGERATION,
+    STYLE_CONTROL_FACTUALITY,
+    STYLE_CONTROL_SYMBOLIC_LOOSENESS,
+    resolve_style_controls,
+)
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -130,7 +136,30 @@ class GeminiGenerator:
         """Map various style labels to canonical styles."""
         return normalize_style(style)
 
-    def generate(self, image_path, style=STYLE_COLORED, color="#000000", symmetry=False):
+    def _style_control_hint(self, factuality=None, symbolic_looseness=None, exaggeration=None):
+        """Read style sliders and return prompt guidance text."""
+        controls = resolve_style_controls(
+            settings=self.settings,
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
+        )
+        return (
+            f"\nSTYLE CONTROL: factuality={controls[STYLE_CONTROL_FACTUALITY]}/100, "
+            f"symbol_looseness={controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS]}/100, "
+            f"exaggeration={controls[STYLE_CONTROL_EXAGGERATION]}/100."
+        )
+
+    def generate(
+        self,
+        image_path,
+        style=STYLE_COLORED,
+        color="#000000",
+        symmetry=False,
+        factuality=None,
+        symbolic_looseness=None,
+        exaggeration=None,
+    ):
         """
         Generate a symbol from the input image using Gemini.
         Returns the SVG code as a string.
@@ -183,6 +212,11 @@ class GeminiGenerator:
 
         prompt = self._SHAPE_PREAMBLE + style_prompt
         prompt += self._NO_EXAGGERATION_RULES
+        prompt += self._style_control_hint(
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
+        )
         
         # Hybrid Workflow: Get Silhouette
         silhouette_bytes = None

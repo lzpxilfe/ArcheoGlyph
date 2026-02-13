@@ -15,6 +15,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox, QProgressDialog, QScrollArea, QFrame, QApplication,
     QCheckBox, QComboBox, QFileDialog
 )
+from ..defaults import HF_DEFAULT_MODEL_ID, HF_FALLBACK_MODEL_IDS, HF_LEGACY_MODEL_ALIASES
 
 
 class InfoLabel(QLabel):
@@ -189,7 +190,7 @@ class SettingsDialog(QDialog):
         model_layout = QVBoxLayout(model_group)
 
         model_help = QLabel(
-            "Specify the Model ID to use (e.g., 'Qwen/Qwen-Image-Edit-2509' or "
+            f"Specify the Model ID to use (e.g., '{HF_DEFAULT_MODEL_ID}' or "
             "'Qwen/Qwen-Image'). If a model returns 403/404/503, the plugin "
             "automatically tries modern fallback models."
         )
@@ -198,7 +199,7 @@ class SettingsDialog(QDialog):
         model_layout.addWidget(model_help)
 
         self.hf_model_input = QLineEdit()
-        self.hf_model_input.setText("Qwen/Qwen-Image-Edit-2509")
+        self.hf_model_input.setText(HF_DEFAULT_MODEL_ID)
         self.hf_model_input.setPlaceholderText("organization/model-name")
         model_layout.addWidget(self.hf_model_input)
         
@@ -738,7 +739,7 @@ class SettingsDialog(QDialog):
 
     def _normalize_hf_model_id(self, model_id):
         """Normalize model ID into 'organization/model-name' format."""
-        default = "Qwen/Qwen-Image-Edit-2509"
+        default = HF_DEFAULT_MODEL_ID
         value = (model_id or "").strip().replace("\\", "/")
         if not value:
             return default
@@ -753,13 +754,7 @@ class SettingsDialog(QDialog):
 
         value = "/".join([part.strip() for part in value.strip("/").split("/") if part.strip()])
 
-        aliases = {
-            "stabilityai/stable-diffusion-2-1": default,
-            "runwayml/stable-diffusion-v1-5": default,
-            "stable-diffusion-v1-5/stable-diffusion-v1-5": default,
-            "stabilityai/stable-diffusion-xl-base-1.0": default,
-        }
-        value = aliases.get(value, value)
+        value = HF_LEGACY_MODEL_ALIASES.get(value, value)
 
         if "/" not in value:
             return default
@@ -983,7 +978,7 @@ class SettingsDialog(QDialog):
         hf_key = self.settings.value('ArcheoGlyph/huggingface_api_key', '')
         hf_model = self.settings.value(
             'ArcheoGlyph/hf_model_id',
-            'Qwen/Qwen-Image-Edit-2509'
+            HF_DEFAULT_MODEL_ID
         )
         hf_model = self._normalize_hf_model_id(hf_model)
         self.settings.setValue('ArcheoGlyph/hf_model_id', hf_model)
@@ -1108,22 +1103,7 @@ class SettingsDialog(QDialog):
         }
 
         candidate_models = []
-        for mid in [
-            model_id,
-            "Qwen/Qwen-Image-Edit-2509",
-            "Qwen/Qwen-Image-Edit",
-            "Qwen/Qwen-Image",
-            "black-forest-labs/FLUX.2-dev",
-            "black-forest-labs/FLUX.1-Kontext-dev",
-            "black-forest-labs/FLUX.1-dev",
-            "black-forest-labs/FLUX.1-schnell",
-            "black-forest-labs/FLUX.1-Krea-dev",
-            "stabilityai/stable-diffusion-3.5-large",
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            "stable-diffusion-v1-5/stable-diffusion-v1-5",
-            "CompVis/stable-diffusion-v1-4",
-            "prompthero/openjourney",
-        ]:
+        for mid in [model_id] + list(HF_FALLBACK_MODEL_IDS) + list(HF_LEGACY_MODEL_ALIASES.keys()):
             normalized = self._normalize_hf_model_id(mid)
             if normalized not in candidate_models:
                 candidate_models.append(normalized)
@@ -1189,7 +1169,7 @@ class SettingsDialog(QDialog):
                     self,
                     "Model Not Found",
                     "No candidate model was found.\n"
-                    "Try 'Qwen/Qwen-Image-Edit-2509' or 'Qwen/Qwen-Image'."
+                    f"Try '{HF_DEFAULT_MODEL_ID}' or 'Qwen/Qwen-Image'."
                 )
             else:
                 status_text = str(last_status) if last_status is not None else "unknown"

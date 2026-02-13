@@ -6,7 +6,7 @@ version=0.1.0
 author=Jinseo Hwang
 email=your.email@example.com
 
-about=ArcheoGlyph helps archaeologists create factual, standardized symbols for GIS maps. Upload artifact or feature images and generate map-ready symbols using Auto Trace, AI (Hugging Face, Google Gemini, or local Stable Diffusion), or built-in templates. Features include style controls (Colored/Line/Measured), optional SAM segmentation, color adjustment, proportional sizing, and direct QGIS symbol library integration.
+about=ArcheoGlyph helps archaeologists create factual, standardized symbols for GIS maps. Upload artifact or feature images and generate map-ready symbols using Auto Trace, AI (Hugging Face, Google Gemini, or local Stable Diffusion), or built-in templates. Features include style controls (Colored/Typology/Line/Measured), optional SAM segmentation, target layer selection, color adjustment, proportional sizing, and direct QGIS symbol library integration.
 
 tracker=https://github.com/lzpxilfe/ArcheoGlyph/issues
 repository=https://github.com/lzpxilfe/ArcheoGlyph
@@ -14,12 +14,16 @@ repository=https://github.com/lzpxilfe/ArcheoGlyph
 changelog=
     0.1.0 - Stable baseline
         * English-first UI and naming
-        * Styles: Colored, Line, Measured
+        * Styles: Colored, Typology, Line, Measured
         * Reference-first HF generation (modern model fallback)
         * Gemini factual-mode safeguards with deterministic fallback
         * Optional SAM backend with beginner quick setup controls
         * Expanded built-in template catalog
         * Color adjustment and proportional sizing
+        * Target layer selector for Apply to Layer
+        * Default symbol size tuned to 10 mm
+        * Expression sliders: factuality, symbolic looseness, exaggeration
+        * Shared style-control utilities to reduce hardcoded duplicates
         * QGIS symbol library integration
 
 tags=archaeology, symbols, icons, artifacts, AI, image generation, GIS, mapping

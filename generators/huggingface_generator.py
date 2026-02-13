@@ -13,7 +13,9 @@ from qgis.PyQt.QtCore import QByteArray, QBuffer, QIODevice, QSettings, Qt
 from qgis.PyQt.QtGui import QImage, QPainter
 from qgis.PyQt.QtSvg import QSvgRenderer
 
+from ..defaults import HF_DEFAULT_MODEL_ID, HF_FALLBACK_MODEL_IDS, HF_LEGACY_MODEL_ALIASES
 from .contour_generator import ContourGenerator
+from .style_control_utils import resolve_style_controls, style_controls_prompt_hint
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -28,7 +30,7 @@ class HuggingFaceGenerator:
     Generator using Hugging Face Inference API for symbol creation.
     """
 
-    DEFAULT_MODEL_ID = "Qwen/Qwen-Image-Edit-2509"
+    DEFAULT_MODEL_ID = HF_DEFAULT_MODEL_ID
     INFERENCE_URL_TEMPLATE = "https://router.huggingface.co/hf-inference/models/{model_id}"
 
     def __init__(self):
@@ -66,13 +68,7 @@ class HuggingFaceGenerator:
 
         value = "/".join([part.strip() for part in value.strip("/").split("/") if part.strip()])
 
-        aliases = {
-            "stabilityai/stable-diffusion-2-1": self.DEFAULT_MODEL_ID,
-            "runwayml/stable-diffusion-v1-5": self.DEFAULT_MODEL_ID,
-            "stable-diffusion-v1-5/stable-diffusion-v1-5": self.DEFAULT_MODEL_ID,
-            "stabilityai/stable-diffusion-xl-base-1.0": self.DEFAULT_MODEL_ID,
-        }
-        value = aliases.get(value, value)
+        value = HF_LEGACY_MODEL_ALIASES.get(value, value)
 
         if "/" not in value:
             return self.DEFAULT_MODEL_ID
@@ -92,7 +88,16 @@ class HuggingFaceGenerator:
             text = response.text.strip()
             return text if text else ""
 
-    def _build_prompt(self, prompt, style=None, color=None, evidence_mode=False):
+    def _build_prompt(
+        self,
+        prompt,
+        style=None,
+        color=None,
+        evidence_mode=False,
+        factuality=None,
+        symbolic_looseness=None,
+        exaggeration=None,
+    ):
         """Build an evidence-focused generation prompt."""
         style_key = self._normalize_style(style)
         parts = [
@@ -131,6 +136,13 @@ class HuggingFaceGenerator:
             )
         if color:
             parts.append(f"material color constrained to {color}")
+        parts.append(
+            self._style_control_hint(
+                factuality=factuality,
+                symbolic_looseness=symbolic_looseness,
+                exaggeration=exaggeration,
+            )
+        )
         if prompt:
             parts.append(prompt)
         return ", ".join(parts)
@@ -142,6 +154,16 @@ class HuggingFaceGenerator:
             "ornament, decorative pattern, mosaic, tattoo pattern, mandala, collage texture, "
             "brush strokes, painterly texture, concept art, surreal art"
         )
+
+    def _style_control_hint(self, factuality=None, symbolic_looseness=None, exaggeration=None):
+        """Read style sliders and return compact prompt guidance."""
+        controls = resolve_style_controls(
+            settings=self.settings,
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
+        )
+        return style_controls_prompt_hint(controls, prefix="control hint")
 
     def _normalize_style(self, style):
         """Map style labels to canonical style keys."""
@@ -734,7 +756,17 @@ class HuggingFaceGenerator:
 
         return None
 
-    def generate(self, prompt, style=None, color=None, image_path=None, symmetry=False):
+    def generate(
+        self,
+        prompt,
+        style=None,
+        color=None,
+        image_path=None,
+        symmetry=False,
+        factuality=None,
+        symbolic_looseness=None,
+        exaggeration=None,
+    ):
         """
         Generate symbol image using HF API.
 
@@ -755,16 +787,7 @@ class HuggingFaceGenerator:
         self.settings.setValue('ArcheoGlyph/hf_model_id', self.model_id)
 
         models_to_try = [self.model_id]
-        for fallback in [
-            self.DEFAULT_MODEL_ID,
-            "Qwen/Qwen-Image-Edit-2509",
-            "Qwen/Qwen-Image-Edit",
-            "black-forest-labs/FLUX.1-Kontext-dev",
-            "black-forest-labs/FLUX.2-dev",
-            "black-forest-labs/FLUX.1-dev",
-            "black-forest-labs/FLUX.1-schnell",
-            "stabilityai/stable-diffusion-3.5-large",
-        ]:
+        for fallback in HF_FALLBACK_MODEL_IDS:
             normalized = self._normalize_model_id(fallback)
             if normalized not in models_to_try:
                 models_to_try.append(normalized)
@@ -787,7 +810,10 @@ class HuggingFaceGenerator:
             prompt=prompt,
             style=style,
             color=color,
-            evidence_mode=bool(image_path and os.path.exists(image_path))
+            evidence_mode=bool(image_path and os.path.exists(image_path)),
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
         )
 
         # 1) If reference image exists, try img2img/edit path first.
@@ -853,12 +879,7 @@ class HuggingFaceGenerator:
                     pass
 
                 img2img_models = []
-                for mid in [
-                    "Qwen/Qwen-Image-Edit-2509",
-                    "black-forest-labs/FLUX.2-dev",
-                    "black-forest-labs/FLUX.1-Kontext-dev",
-                    "Qwen/Qwen-Image-Edit",
-                ] + models_to_try:
+                for mid in list(HF_FALLBACK_MODEL_IDS) + models_to_try:
                     normalized = self._normalize_model_id(mid)
                     if normalized not in img2img_models:
                         img2img_models.append(normalized)
@@ -942,7 +963,7 @@ class HuggingFaceGenerator:
             hint_lines.append("Model may be gated. Accept model terms on Hugging Face or choose a public model.")
         if "NOT FOUND (404)" in full_log:
             hint_lines.append("Model id may be invalid or not deployed on this provider.")
-            hint_lines.append("Try 'Qwen/Qwen-Image-Edit-2509' or 'Qwen/Qwen-Image'.")
+            hint_lines.append(f"Try '{HF_DEFAULT_MODEL_ID}' or 'Qwen/Qwen-Image'.")
         if "GONE (410)" in full_log:
             hint_lines.append("Legacy endpoint is retired. Use router.huggingface.co/hf-inference/models/... endpoint.")
         if image_path:

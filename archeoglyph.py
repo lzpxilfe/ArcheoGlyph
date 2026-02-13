@@ -10,9 +10,7 @@ from qgis.PyQt.QtWidgets import QAction
 from qgis.core import QgsProject
 
 from .ui.main_dialog import ArcheoGlyphDialog
-
-PLUGIN_VERSION = "0.1.0"
-HF_DEFAULT_MODEL = "Qwen/Qwen-Image-Edit-2509"
+from .defaults import HF_DEFAULT_MODEL_ID, HF_LEGACY_MODEL_ALIASES, PLUGIN_VERSION
 
 
 class ArcheoGlyph:
@@ -58,17 +56,9 @@ class ArcheoGlyph:
         if saved_version == PLUGIN_VERSION:
             return
 
-        legacy_hf_models = {
-            "stabilityai/stable-diffusion-2-1",
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            "runwayml/stable-diffusion-v1-5",
-            "stable-diffusion-v1-5/stable-diffusion-v1-5",
-            "CompVis/stable-diffusion-v1-4",
-            "prompthero/openjourney",
-        }
         hf_model = str(settings.value('ArcheoGlyph/hf_model_id', '')).strip()
-        if not hf_model or hf_model in legacy_hf_models:
-            settings.setValue('ArcheoGlyph/hf_model_id', HF_DEFAULT_MODEL)
+        if not hf_model or hf_model in HF_LEGACY_MODEL_ALIASES:
+            settings.setValue('ArcheoGlyph/hf_model_id', HF_DEFAULT_MODEL_ID)
 
         # Safety migration: invalid SAM setup should not block Auto Trace.
         mask_backend = str(settings.value('ArcheoGlyph/mask_backend', 'opencv')).strip().lower()
