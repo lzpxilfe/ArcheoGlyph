@@ -14,6 +14,12 @@ from qgis.PyQt.QtGui import QImage, QPainter
 from qgis.PyQt.QtSvg import QSvgRenderer
 
 from .contour_generator import ContourGenerator
+from .style_utils import (
+    STYLE_COLORED,
+    STYLE_LINE,
+    STYLE_MEASURED,
+    normalize_style,
+)
 
 
 class HuggingFaceGenerator:
@@ -103,9 +109,9 @@ class HuggingFaceGenerator:
                 "preserve silhouette and edge geometry from the reference image",
                 "preserve observed chips wear cracks and asymmetry",
             ])
-        if style_key == "📐 Line":
+        if style_key == STYLE_LINE:
             parts.append("style hint: monochrome line drawing, clean contour and key internal lines")
-        elif style_key == "🏛️ Measured":
+        elif style_key == STYLE_MEASURED:
             parts.append("style hint: black and white measured drawing, technical publication style")
         else:
             parts.append("style hint: restrained flat symbol color, non-painterly")
@@ -123,13 +129,7 @@ class HuggingFaceGenerator:
 
     def _normalize_style(self, style):
         """Map style labels to canonical style keys."""
-        text = str(style or "").strip()
-        low = text.lower()
-        if ("measured" in low) or ("publication" in low):
-            return "🏛️ Measured"
-        if ("line" in low):
-            return "📐 Line"
-        return "🎨 Colored"
+        return normalize_style(style)
 
     def _parse_hex_rgb(self, hex_color):
         """Parse #RRGGBB to (r,g,b), return None if invalid."""
@@ -325,18 +325,18 @@ class HuggingFaceGenerator:
                         px.setAlpha(255)
                         out.setPixelColor(x, y, px)
 
-            if style_key == "🎨 Colored":
+            if style_key == STYLE_COLORED:
                 out = self._harmonize_colored_output(
                     out,
                     self._estimate_reference_rgb(image_path, mask_img, forced_hex=color)
                 )
             else:
-                out = self._harmonize_mono_output(out, publication=(style_key == "🏛️ Measured"))
+                out = self._harmonize_mono_output(out, publication=(style_key == STYLE_MEASURED))
 
             overlay_linework = str(
                 self.settings.value('ArcheoGlyph/hf_overlay_linework', 'false')
             ).strip().lower() in ("1", "true", "yes", "on")
-            if style_key in ("📐 Line", "🏛️ Measured"):
+            if style_key in (STYLE_LINE, STYLE_MEASURED):
                 overlay_linework = True
 
             if overlay_linework:

@@ -12,6 +12,13 @@ import tempfile
 from qgis.PyQt.QtGui import QImage
 from qgis.PyQt.QtCore import QSettings
 
+from .style_utils import (
+    STYLE_COLORED,
+    STYLE_LINE,
+    STYLE_MEASURED,
+    normalize_style,
+)
+
 
 class LocalGenerator:
     """Generator using local Stable Diffusion for symbol creation."""
@@ -32,19 +39,19 @@ class LocalGenerator:
     
     # Style prompts for different archaeological symbol styles
     STYLE_PROMPTS = {
-        "🎨 Colored": (
+        STYLE_COLORED: (
             "accurate archaeological artifact silhouette, flat color fill, "
             "clean shape, precise outline, map symbol, "
             "transparent background, centered, high contrast, "
             "digital art, vector style"
         ),
-        "📐 Line": (
+        STYLE_LINE: (
             "minimalist line art icon, archaeological artifact, "
             "simple geometric shapes, clean lines, monochrome, "
             "technical drawing style, transparent background, centered, "
             "vector illustration, blueprint style"
         ),
-        "🏛️ Measured": (
+        STYLE_MEASURED: (
             "classic archaeological illustration, artifact drawing, "
             "stippling cross-hatching, academic professional, publication quality, "
             "transparent background, centered, scientific illustration, "
@@ -80,7 +87,7 @@ class LocalGenerator:
             else:
                 response = requests.get(f"{self.server_url}/system_stats", timeout=5)
             return response.status_code == 200
-        except:
+        except Exception:
             return False
             
     def generate(self, image_path, style, color=None):
@@ -98,7 +105,7 @@ class LocalGenerator:
                 "Please ensure the server is running."
             )
             
-        prompt = self.STYLE_PROMPTS.get(self._normalize_style(style), self.STYLE_PROMPTS["🎨 Colored"])
+        prompt = self.STYLE_PROMPTS.get(self._normalize_style(style), self.STYLE_PROMPTS[STYLE_COLORED])
         
         if color:
             prompt += f", {color} color scheme"
@@ -144,13 +151,7 @@ class LocalGenerator:
 
     def _normalize_style(self, style):
         """Map style labels to canonical keys."""
-        text = str(style or "").strip()
-        low = text.lower()
-        if ("measured" in low) or ("publication" in low):
-            return "🏛️ Measured"
-        if ("line" in low):
-            return "📐 Line"
-        return "🎨 Colored"
+        return normalize_style(style)
         
     def _generate_comfyui(self, image_path, prompt):
         """Generate using ComfyUI API."""

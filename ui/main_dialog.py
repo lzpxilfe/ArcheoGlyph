@@ -16,6 +16,8 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.core import QgsProject, QgsVectorLayer
 
+from ..generators.style_utils import STYLE_OPTIONS
+
 
 class GenerationThread(QThread):
     """Thread for running generation tasks."""
@@ -302,11 +304,7 @@ class ArcheoGlyphDialog(QDialog):
         style_layout = QVBoxLayout(style_group)
         
         self.style_combo = QComboBox()
-        self.style_combo.addItems([
-            "🎨 Colored",
-            "📐 Line",
-            "🏛️ Measured"
-        ])
+        self.style_combo.addItems(STYLE_OPTIONS)
         style_layout.addWidget(self.style_combo)
         
         # Symmetry checkbox
@@ -584,22 +582,12 @@ class ArcheoGlyphDialog(QDialog):
                 from ..generators.gemini_generator import GeminiGenerator
                 self._current_generator = GeminiGenerator()
                 target_func = self._current_generator.generate
-                
-                # Use prompt input if available
-                extra_prompt = self.prompt_input.text().strip()
-                
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
                     'color': selected_color,
                     'symmetry': self.symmetry_check.isChecked()
                 }
-                # Pass extra prompt if Gemini generator supports it (it currently expects image + style)
-                # We might need to modify GeminiGenerator to accept extra_prompt, 
-                # or just append it to style string hackily for now if we don't want to change signature yet.
-                # But let's check GeminiGenerator signature... it takes (image_path, style, color).
-                # So we can't pass it easily without changing signature.
-                # For now, let's just stick to the plan of HF needing it.
                 
             elif self.hf_radio.isChecked():
                 from ..generators.huggingface_generator import HuggingFaceGenerator

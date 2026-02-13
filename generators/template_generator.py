@@ -427,14 +427,13 @@ class TemplateGenerator:
                 
             # Convert back to string
             return ET.tostring(root, encoding='unicode')
-            
-        except Exception as e:
+        except Exception:
             # Fallback to regex if XML parsing fails (for malformed SVGs)
             try:
                 with open(svg_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 return re.sub(r'fill="[^"]*"', f'fill="{color}"', content)
-            except:
+            except Exception:
                 return None
             
     def _svg_to_image(self, svg_data, size=256):

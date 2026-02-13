@@ -14,6 +14,8 @@ except ImportError:
     np = None
 from qgis.PyQt.QtCore import QSettings
 
+from .style_utils import STYLE_LINE, STYLE_MEASURED, normalize_style
+
 
 class ContourGenerator:
     """
@@ -79,10 +81,9 @@ class ContourGenerator:
         epsilon = 0.001 * cv2.arcLength(main_contour, True)
         approx = cv2.approxPolyDP(main_contour, epsilon, True)
 
-        style_text = style or ""
-        style_lower = style_text.lower()
-        is_publication = ("measured" in style_lower) or ("publication" in style_lower)
-        is_line_drawing = ("line" in style_lower)
+        style_key = normalize_style(style)
+        is_publication = style_key == STYLE_MEASURED
+        is_line_drawing = style_key == STYLE_LINE
         is_mono = is_line_drawing or is_publication
 
         svg_w = processing_bgr.shape[1]

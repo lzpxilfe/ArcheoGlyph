@@ -12,6 +12,12 @@ from qgis.PyQt.QtCore import QSettings
 
 # Import ContourGenerator for hybrid workflow
 from .contour_generator import ContourGenerator
+from .style_utils import (
+    STYLE_COLORED,
+    STYLE_LINE,
+    STYLE_MEASURED,
+    normalize_style,
+)
 
 class GeminiGenerator:
     """Generator using Google Gemini API for symbol creation."""
@@ -38,7 +44,7 @@ class GeminiGenerator:
 
     # Style prompts — only control RENDERING style, never the shape.
     STYLE_PROMPTS = {
-        "🎨 Colored": (
+        STYLE_COLORED: (
             "RENDERING STYLE: Premium Vector Game Asset / RPG Item Icon. "
             "1. SHAPE RULES: STICTLY TRACE the provided SILHOUETTE MASK (Image 2). The mask defines the EXACT geometry. "
             "   Do not deviate from the mask's outline. "
@@ -47,14 +53,14 @@ class GeminiGenerator:
             "4. AESTHETIC: Flat Design but with depth. Like a high-quality strategy game unit or resource icon. "
             "NO gradient meshes. NO realistic texture noise. Clean vector shapes."
         ),
-        "📐 Line": (
+        STYLE_LINE: (
             "RENDERING STYLE: Archaeological Line Drawing. "
             "Draw ONLY the precise outline of the artifact and major internal lines. "
             "Use clean, consistent black strokes (1-2px). "
             "NO shading, NO stippling, NO hatching, NO fill. "
             "Pure abstraction of the form. Transparent background."
         ),
-        "🏛️ Measured": (
+        STYLE_MEASURED: (
             "RENDERING STYLE: Traditional Archaeological Ink Illustration (Pen & Ink). "
             "Strictly MONOCHROME. "
             "1. OUTLINE: Precise fine line. "
@@ -111,15 +117,9 @@ class GeminiGenerator:
         
     def _normalize_style(self, style):
         """Map various style labels to canonical styles."""
-        text = str(style or "").strip()
-        low = text.lower()
-        if ("measured" in low) or ("publication" in low):
-            return "🏛️ Measured"
-        if ("line" in low):
-            return "📐 Line"
-        return "🎨 Colored"
+        return normalize_style(style)
 
-    def generate(self, image_path, style="🎨 Colored", color="#000000", symmetry=False):
+    def generate(self, image_path, style=STYLE_COLORED, color="#000000", symmetry=False):
         """
         Generate a symbol from the input image using Gemini.
         Returns the SVG code as a string.
@@ -147,9 +147,9 @@ class GeminiGenerator:
         # Build the full prompt
         # Build the full prompt
         style_key = self._normalize_style(style)
-        style_prompt = self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS["🎨 Colored"])
+        style_prompt = self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_COLORED])
         # Keep colored output non-exaggerated and documentary.
-        if style_key == "🎨 Colored":
+        if style_key == STYLE_COLORED:
             style_prompt = (
                 "RENDERING STYLE: Neutral archaeological plate symbol (NOT painting). "
                 "1. SHAPE RULES: Strictly trace the provided silhouette constraints. "
@@ -176,7 +176,7 @@ class GeminiGenerator:
                 "or asymmetrical objects."
             )
         
-        if color and style_key == "🎨 Colored":
+        if color and style_key == STYLE_COLORED:
              prompt += (
                  f"\n\nCOLOR INSTRUCTIONS:"
                  f"\n1. Detect and use the artifact's observed material color from the photo."
@@ -189,7 +189,7 @@ class GeminiGenerator:
              pass
              
         # Add Hybrid Logic Instructions to Prompt if applicable
-        if silhouette_bytes and style_key == "🎨 Colored":
+        if silhouette_bytes and style_key == STYLE_COLORED:
              prompt += "\n\nCRITICAL INSTRUCTION: I have provided TWO images. \nImage 1: Original Photo (Textural/Color Reference). \nImage 2: Black & White Silhouette (SHAPE CONSTRAINT). \n\nYOU MUST DRAW THE SYMBOL TO MATCH THE EXACT SHAPE OF IMAGE 2 (THE SILHOUETTE). IGNORE THE SHAPE OF IMAGE 1 IF IT DIFFERS. APPLY THE COLORS/TEXTURES OF IMAGE 1 ONTO THE SHAPE OF IMAGE 2."
 
         prompt += self._SVG_FORMAT
@@ -199,7 +199,7 @@ class GeminiGenerator:
         parts.append(prompt)
         parts.append({"mime_type": self._get_mime_type(image_path), "data": image_data}) # Image 1: Reference
         
-        if silhouette_bytes and style_key == "🎨 Colored":
+        if silhouette_bytes and style_key == STYLE_COLORED:
              parts.append({"mime_type": "image/png", "data": silhouette_bytes}) # Image 2: Mask
         
         # Priorities: Pro models (better vision) > Flash models (faster)
