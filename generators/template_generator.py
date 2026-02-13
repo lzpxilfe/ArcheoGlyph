@@ -14,152 +14,327 @@ from qgis.PyQt.QtSvg import QSvgRenderer
 class TemplateGenerator:
     """Generator using built-in SVG templates."""
     
-    # ── Comprehensive archaeological template categories ──
+    # Comprehensive archaeological template catalog (English-first)
     TEMPLATE_INFO = {
-        # ─── Artifacts (유물) ───
-        "Pottery (토기류)": {
+        # Artifacts
+        "Pottery": {
             "file": "pottery.svg",
             "default_color": "#8B4513",
             "category": "artifacts"
         },
-        "Stone Tools (석기류)": {
+        "Stone Tool": {
             "file": "stone_tool.svg",
             "default_color": "#708090",
             "category": "artifacts"
         },
-        "Bronze Artifacts (청동기류)": {
+        "Bronze Artifact": {
             "file": "bronze.svg",
             "default_color": "#CD7F32",
             "category": "artifacts"
         },
-        "Iron Artifacts (철기류)": {
+        "Iron Artifact": {
             "file": "iron.svg",
             "default_color": "#434343",
             "category": "artifacts"
         },
-        "Ornaments (장신구류)": {
+        "Ornament": {
             "file": "ornament.svg",
             "default_color": "#FFD700",
             "category": "artifacts"
         },
-        "Coins (화폐/주화)": {
+        "Coin": {
             "file": "coin.svg",
             "default_color": "#DAA520",
             "category": "artifacts"
         },
-        "Bone/Antler Tools (골각기류)": {
+        "Bone Tool": {
             "file": "bone_tool.svg",
             "default_color": "#F5DEB3",
             "category": "artifacts"
         },
-        "Weapons (무기류)": {
+        "Weapon": {
             "file": "weapon.svg",
             "default_color": "#696969",
             "category": "artifacts"
         },
+        "Arrowhead": {
+            "file": "arrowhead.svg",
+            "default_color": "#5F6A72",
+            "category": "artifacts"
+        },
+        "Blade": {
+            "file": "blade.svg",
+            "default_color": "#50565D",
+            "category": "artifacts"
+        },
+        "Scraper": {
+            "file": "scraper.svg",
+            "default_color": "#7A828B",
+            "category": "artifacts"
+        },
+        "Needle / Pin": {
+            "file": "needle_pin.svg",
+            "default_color": "#8A7F73",
+            "category": "artifacts"
+        },
+        "Bead": {
+            "file": "bead.svg",
+            "default_color": "#C68E3A",
+            "category": "artifacts"
+        },
+        "Bracelet / Ring": {
+            "file": "bracelet_ring.svg",
+            "default_color": "#C9A227",
+            "category": "artifacts"
+        },
+        "Seal / Stamp": {
+            "file": "seal_stamp.svg",
+            "default_color": "#8B5A2B",
+            "category": "artifacts"
+        },
+        "Spindle Whorl": {
+            "file": "spindle_whorl.svg",
+            "default_color": "#7C5C46",
+            "category": "artifacts"
+        },
+        "Chisel": {
+            "file": "chisel.svg",
+            "default_color": "#5B6168",
+            "category": "artifacts"
+        },
 
-        # ─── Structures (유구/건축) ───
-        "Fortress/Castle (성곽)": {
+        # Structures
+        "Fortress / Castle": {
             "file": "fortress.svg",
             "default_color": "#8B7355",
             "category": "structures"
         },
-        "Dwelling/House (주거지)": {
+        "Dwelling / House": {
             "file": "dwelling.svg",
             "default_color": "#A0522D",
             "category": "structures"
         },
-        "Tomb/Burial (고분/무덤)": {
+        "Tomb": {
             "file": "tomb.svg",
             "default_color": "#556B2F",
             "category": "structures"
         },
-        "Temple/Shrine (사찰/신전)": {
+        "Temple / Shrine": {
             "file": "temple.svg",
             "default_color": "#B22222",
             "category": "structures"
         },
-        "Kiln/Furnace (가마/요지)": {
+        "Kiln / Furnace": {
             "file": "kiln.svg",
             "default_color": "#D2691E",
             "category": "structures"
         },
-        "Well (우물)": {
+        "Well": {
             "file": "well.svg",
             "default_color": "#4682B4",
             "category": "structures"
         },
-        "Wall/Rampart (담장/성벽)": {
+        "Wall / Rampart": {
             "file": "wall.svg",
             "default_color": "#808080",
             "category": "structures"
         },
-        "Pit (수혈/구덩이)": {
+        "Pit": {
             "file": "pit.svg",
             "default_color": "#6B4226",
             "category": "structures"
         },
+        "Gate": {
+            "file": "gate.svg",
+            "default_color": "#8C6E4B",
+            "category": "structures"
+        },
+        "Road / Pavement": {
+            "file": "road_pavement.svg",
+            "default_color": "#8A8A8A",
+            "category": "structures"
+        },
+        "Bridge": {
+            "file": "bridge.svg",
+            "default_color": "#7A6C5D",
+            "category": "structures"
+        },
+        "Storage Pit": {
+            "file": "storage_pit.svg",
+            "default_color": "#6F4F37",
+            "category": "structures"
+        },
+        "Posthole": {
+            "file": "posthole.svg",
+            "default_color": "#5A4A3A",
+            "category": "structures"
+        },
+        "Workshop": {
+            "file": "workshop.svg",
+            "default_color": "#8C5A3C",
+            "category": "structures"
+        },
+        "Tower": {
+            "file": "tower.svg",
+            "default_color": "#707070",
+            "category": "structures"
+        },
 
-        # ─── Human Remains (인골) ───
-        "Human Remains (인골)": {
+        # Remains
+        "Human Remains": {
             "file": "skull.svg",
             "default_color": "#DEB887",
             "category": "remains"
         },
-        "Burial (매장)": {
+        "Burial": {
             "file": "burial.svg",
             "default_color": "#8B8378",
             "category": "remains"
         },
+        "Skeleton": {
+            "file": "skeleton.svg",
+            "default_color": "#C4A484",
+            "category": "remains"
+        },
+        "Cremation Burial": {
+            "file": "cremation_burial.svg",
+            "default_color": "#A89F91",
+            "category": "remains"
+        },
+        "Animal Remains": {
+            "file": "animal_remains.svg",
+            "default_color": "#BFA88D",
+            "category": "remains"
+        },
 
-        # ─── Features (현상) ───
-        "Hearth/Fire Pit (노지/화덕)": {
+        # Features
+        "Hearth / Fire Pit": {
             "file": "hearth.svg",
             "default_color": "#FF4500",
             "category": "features"
         },
-        "Midden/Shell Mound (패총)": {
+        "Midden / Shell Mound": {
             "file": "midden.svg",
             "default_color": "#BDB76B",
             "category": "features"
         },
-        "Ditch/Moat (환호/도랑)": {
+        "Ditch / Moat": {
             "file": "ditch.svg",
             "default_color": "#2E8B57",
             "category": "features"
         },
-        "Stone Alignment (열석/선돌)": {
+        "Stone Alignment": {
             "file": "stone_align.svg",
             "default_color": "#778899",
             "category": "features"
         },
-        "Dolmen (고인돌)": {
+        "Dolmen": {
             "file": "dolmen.svg",
             "default_color": "#A9A9A9",
             "category": "features"
         },
-        "Rock Art (암각화)": {
+        "Rock Art": {
             "file": "rock_art.svg",
             "default_color": "#CD853F",
             "category": "features"
         },
+        "Canal / Water Channel": {
+            "file": "canal_water_channel.svg",
+            "default_color": "#3B7EA1",
+            "category": "features"
+        },
+        "Terrace": {
+            "file": "terrace.svg",
+            "default_color": "#8A7760",
+            "category": "features"
+        },
+        "Ash Layer": {
+            "file": "ash_layer.svg",
+            "default_color": "#7D7D7D",
+            "category": "features"
+        },
+        "Burnt Area": {
+            "file": "burnt_area.svg",
+            "default_color": "#6A4E42",
+            "category": "features"
+        },
+        "Mound / Barrow": {
+            "file": "mound_barrow.svg",
+            "default_color": "#7A6A50",
+            "category": "features"
+        },
+        "Standing Stone": {
+            "file": "standing_stone.svg",
+            "default_color": "#8A9096",
+            "category": "features"
+        },
 
-        # ─── Survey / General (조사/일반) ───
-        "Excavation Area (발굴구역)": {
+        # Survey
+        "Excavation Area": {
             "file": "excavation.svg",
             "default_color": "#FF8C00",
             "category": "survey"
         },
-        "Survey Point (조사지점)": {
+        "Survey Point": {
             "file": "survey_point.svg",
             "default_color": "#4169E1",
             "category": "survey"
         },
-        "Find Spot (유물산포지)": {
+        "Find Spot": {
             "file": "find_spot.svg",
             "default_color": "#DC143C",
             "category": "survey"
         },
+        "Trench": {
+            "file": "trench.svg",
+            "default_color": "#D97706",
+            "category": "survey"
+        },
+        "Datum Point": {
+            "file": "datum_point.svg",
+            "default_color": "#1D4ED8",
+            "category": "survey"
+        },
+        "Sample Location": {
+            "file": "sample_location.svg",
+            "default_color": "#BE123C",
+            "category": "survey"
+        },
+        "Photo Point": {
+            "file": "photo_point.svg",
+            "default_color": "#7C3AED",
+            "category": "survey"
+        },
+        "Grid Corner": {
+            "file": "grid_corner.svg",
+            "default_color": "#0F766E",
+            "category": "survey"
+        },
+        "Test Pit": {
+            "file": "test_pit.svg",
+            "default_color": "#92400E",
+            "category": "survey"
+        },
+    }
+
+    # Backward compatibility for older naming variants
+    LEGACY_TEMPLATE_ALIASES = {
+        "Stone Tools": "Stone Tool",
+        "Bronze Artifacts": "Bronze Artifact",
+        "Iron Artifacts": "Iron Artifact",
+        "Ornaments": "Ornament",
+        "Coins": "Coin",
+        "Bone/Antler Tools": "Bone Tool",
+        "Weapons": "Weapon",
+        "Fortress/Castle": "Fortress / Castle",
+        "Dwelling/House": "Dwelling / House",
+        "Tomb/Burial": "Tomb",
+        "Temple/Shrine": "Temple / Shrine",
+        "Kiln/Furnace": "Kiln / Furnace",
+        "Wall/Rampart": "Wall / Rampart",
+        "Hearth/Fire Pit": "Hearth / Fire Pit",
+        "Midden/Shell Mound": "Midden / Shell Mound",
+        "Ditch/Moat": "Ditch / Moat",
     }
     
     def __init__(self, plugin_dir):
@@ -175,6 +350,7 @@ class TemplateGenerator:
         :param color: Optional hex color for the symbol
         :return: QImage of generated symbol or None on failure
         """
+        template_type = self._normalize_template_type(template_type)
         template_info = self.TEMPLATE_INFO.get(template_type)
         if not template_info:
             return None
@@ -192,6 +368,15 @@ class TemplateGenerator:
             return self._svg_to_image(svg_data)
             
         return None
+
+    def _normalize_template_type(self, template_type):
+        """Normalize template names for backward compatibility."""
+        key = str(template_type or "").strip()
+        if not key:
+            return ""
+        if key in self.TEMPLATE_INFO:
+            return key
+        return self.LEGACY_TEMPLATE_ALIASES.get(key, key)
         
     def _load_and_colorize_svg(self, svg_path, color):
         """Load SVG file and replace colors using XML parsing."""
@@ -281,30 +466,30 @@ class TemplateGenerator:
         m = 25  # margin
         cx, cy = size / 2, size / 2
 
-        # ── Dispatch drawing by keyword ──
-        key = template_type.split("(")[0].strip().lower()
+        # Dispatch drawing by keyword
+        key = str(template_type or "").strip().lower().replace("/", " ")
         
         if "pottery" in key:
             self._draw_pottery(painter, size, m)
-        elif "stone tool" in key:
+        elif "stone tool" in key or "arrowhead" in key or "scraper" in key:
             self._draw_stone_tool(painter, size, m)
         elif "bronze" in key:
             self._draw_bronze(painter, size, m)
-        elif "iron" in key:
+        elif "iron" in key or "chisel" in key:
             self._draw_iron(painter, size, m)
-        elif "ornament" in key:
+        elif "ornament" in key or "bead" in key or "bracelet" in key or "ring" in key:
             self._draw_ornament(painter, size, m)
-        elif "coin" in key:
+        elif "coin" in key or "seal" in key or "stamp" in key or "spindle" in key:
             self._draw_coin(painter, size, m, q_color)
-        elif "bone" in key:
+        elif "bone" in key or "needle" in key or "pin" in key or "animal remains" in key:
             self._draw_bone_tool(painter, size, m)
-        elif "weapon" in key:
+        elif "weapon" in key or "blade" in key or "arrow shaft" in key:
             self._draw_weapon(painter, size, m)
-        elif "fortress" in key or "castle" in key:
+        elif "fortress" in key or "castle" in key or "gate" in key or "tower" in key:
             self._draw_fortress(painter, size, m)
-        elif "dwelling" in key or "house" in key:
+        elif "dwelling" in key or "house" in key or "workshop" in key:
             self._draw_dwelling(painter, size, m)
-        elif "tomb" in key:
+        elif "tomb" in key or "mound" in key or "barrow" in key:
             self._draw_tomb(painter, size, m)
         elif "temple" in key or "shrine" in key:
             self._draw_temple(painter, size, m, q_color)
@@ -312,31 +497,31 @@ class TemplateGenerator:
             self._draw_kiln(painter, size, m)
         elif "well" in key:
             self._draw_well(painter, size, m, q_color)
-        elif "wall" in key or "rampart" in key:
+        elif "wall" in key or "rampart" in key or "road" in key or "pavement" in key or "bridge" in key or "terrace" in key:
             self._draw_wall(painter, size, m)
-        elif "pit" in key:
+        elif "pit" in key or "posthole" in key or "test pit" in key:
             self._draw_pit(painter, size, m, q_color)
-        elif "human" in key or "skull" in key:
+        elif "human" in key or "skull" in key or "skeleton" in key:
             self._draw_skull(painter, size, m, q_color)
-        elif "burial" in key:
+        elif "burial" in key or "cremation" in key:
             self._draw_burial(painter, size, m, q_color)
-        elif "hearth" in key or "fire" in key:
+        elif "hearth" in key or "fire" in key or "burnt" in key:
             self._draw_hearth(painter, size, m, q_color)
-        elif "midden" in key or "shell" in key:
+        elif "midden" in key or "shell" in key or "ash layer" in key:
             self._draw_midden(painter, size, m)
-        elif "ditch" in key or "moat" in key:
+        elif "ditch" in key or "moat" in key or "canal" in key or "water channel" in key:
             self._draw_ditch(painter, size, m, q_color)
-        elif "stone align" in key:
+        elif "stone align" in key or "standing stone" in key:
             self._draw_stone_alignment(painter, size, m)
         elif "dolmen" in key:
             self._draw_dolmen(painter, size, m)
         elif "rock art" in key:
             self._draw_rock_art(painter, size, m, q_color)
-        elif "excavation" in key:
+        elif "excavation" in key or "trench" in key or "grid corner" in key:
             self._draw_excavation(painter, size, m, q_color)
-        elif "survey" in key:
+        elif "survey" in key or "datum" in key or "photo point" in key:
             self._draw_survey_point(painter, size, m, q_color)
-        elif "find" in key:
+        elif "find" in key or "sample location" in key:
             self._draw_find_spot(painter, size, m, q_color)
         else:
             painter.drawEllipse(m, m, size - 2*m, size - 2*m)

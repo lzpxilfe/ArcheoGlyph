@@ -264,9 +264,9 @@ class ArcheoGlyphDialog(QDialog):
         mode_layout = QVBoxLayout(mode_group)
         
         self.mode_button_group = QButtonGroup(self)
-        self.autotrace_radio = QRadioButton("✂ Auto Trace (자동 추출)")
-        self.gemini_radio = QRadioButton("AI (Google Gemini) — slow")
-        self.hf_radio = QRadioButton("AI (Hugging Face) — Free")
+        self.autotrace_radio = QRadioButton("✂ Auto Trace")
+        self.gemini_radio = QRadioButton("AI (Google Gemini)")
+        self.hf_radio = QRadioButton("AI (Hugging Face)")
         self.local_radio = QRadioButton("AI (Local Stable Diffusion)")
         self.template_radio = QRadioButton("Use Template")
         
@@ -303,15 +303,15 @@ class ArcheoGlyphDialog(QDialog):
         
         self.style_combo = QComboBox()
         self.style_combo.addItems([
-            "🎯 Colored Silhouette (채색 실루엣)",
-            "📐 Line Drawing (선화)",
-            "🏛️ Publication (실측 도면)"
+            "🎨 Colored",
+            "📐 Line",
+            "🏛️ Measured"
         ])
         style_layout.addWidget(self.style_combo)
         
         # Symmetry checkbox
         self.symmetry_check = QCheckBox("Mirror symmetry")
-        self.symmetry_check.setChecked(True)
+        self.symmetry_check.setChecked(False)
         self.symmetry_check.setToolTip(
             "Produces a bilaterally symmetrical symbol by mirroring the contour."
         )
@@ -324,40 +324,21 @@ class ArcheoGlyphDialog(QDialog):
         template_layout = QVBoxLayout(self.template_group)
         
         self.template_combo = QComboBox()
-        self.template_combo.addItems([
-            # ─── Artifacts ───
-            "Pottery (토기류)",
-            "Stone Tools (석기류)",
-            "Bronze Artifacts (청동기류)",
-            "Iron Artifacts (철기류)",
-            "Ornaments (장신구류)",
-            "Coins (화폐/주화)",
-            "Bone/Antler Tools (골각기류)",
-            "Weapons (무기류)",
-            # ─── Structures ───
-            "Fortress/Castle (성곽)",
-            "Dwelling/House (주거지)",
-            "Tomb/Burial (고분/무덤)",
-            "Temple/Shrine (사찰/신전)",
-            "Kiln/Furnace (가마/요지)",
-            "Well (우물)",
-            "Wall/Rampart (담장/성벽)",
-            "Pit (수혈/구덩이)",
-            # ─── Human Remains ───
-            "Human Remains (인골)",
-            "Burial (매장)",
-            # ─── Features ───
-            "Hearth/Fire Pit (노지/화덕)",
-            "Midden/Shell Mound (패총)",
-            "Ditch/Moat (환호/도랑)",
-            "Stone Alignment (열석/선돌)",
-            "Dolmen (고인돌)",
-            "Rock Art (암각화)",
-            # ─── Survey / General ───
-            "Excavation Area (발굴구역)",
-            "Survey Point (조사지점)",
-            "Find Spot (유물산포지)",
-        ])
+        try:
+            from ..generators.template_generator import TemplateGenerator
+            template_generator = TemplateGenerator(self.plugin_dir)
+            self.template_combo.addItems(template_generator.get_available_templates())
+        except Exception:
+            self.template_combo.addItems([
+                "Pottery",
+                "Stone Tool",
+                "Bronze Artifact",
+                "Iron Artifact",
+                "Weapon",
+                "Excavation Area",
+                "Survey Point",
+                "Find Spot",
+            ])
         template_layout.addWidget(self.template_combo)
         self.template_group.setVisible(False)
         scroll_layout.addWidget(self.template_group)
@@ -367,7 +348,7 @@ class ArcheoGlyphDialog(QDialog):
         color_layout = QVBoxLayout(color_group) # Changed to QVBoxLayout for better density
         
         # Row 1: Checkbox
-        self.override_color_check = QCheckBox("Override Color (지정 색상 사용)")
+        self.override_color_check = QCheckBox("Override Color")
         self.override_color_check.setChecked(False) # Default: Use extracted/natural color
         self.override_color_check.setToolTip("If unchecked, the symbol will use the artifact's natural colors.")
         color_layout.addWidget(self.override_color_check)
@@ -393,10 +374,12 @@ class ArcheoGlyphDialog(QDialog):
         color_layout.addLayout(picker_layout)
         
         # Logic to enable/disable picker based on checkbox
+        self.override_color_check.toggled.connect(lambda checked: self.color_preview.setEnabled(checked))
         self.override_color_check.toggled.connect(lambda checked: self.color_btn.setEnabled(checked))
         self.override_color_check.toggled.connect(lambda checked: self.eyedrop_btn.setEnabled(checked))
         
         # Initialize state
+        self.color_preview.setEnabled(False)
         self.color_btn.setEnabled(False)
         self.eyedrop_btn.setEnabled(False)
         
@@ -510,8 +493,8 @@ class ArcheoGlyphDialog(QDialog):
         # Update mode description label
         descriptions = {
             self.autotrace_radio: "✂ Extracts contour + internal feature lines from photo (fast, offline)",
-            self.gemini_radio: "🤖 Google Gemini AI generates stylized symbols (API key required)",
-            self.hf_radio: "🤗 Hugging Face AI generates FREE flat icons (Token required)",
+            self.gemini_radio: "🤖 Google Gemini AI generates reference-constrained symbols (factual mode)",
+            self.hf_radio: "🤗 Hugging Face AI generates symbols from the reference image (token required)",
             self.local_radio: "💻 Local Stable Diffusion generates symbols (GPU required)",
             self.template_radio: "📋 Uses built-in SVG templates by category",
         }
@@ -526,9 +509,9 @@ class ArcheoGlyphDialog(QDialog):
         
         # Update placeholder based on mode
         if button == self.hf_radio:
-             self.prompt_input.setPlaceholderText("Enter icon description (e.g. 'broken clay pot')")
+             self.prompt_input.setPlaceholderText("Optional: artifact/material note (e.g. 'green celadon vase')")
         elif button == self.gemini_radio:
-             self.prompt_input.setPlaceholderText("Optional: Add extra instructions (e.g. 'emphasize cracks')")
+             self.prompt_input.setPlaceholderText("Optional: factual notes (e.g. 'preserve chips and wear')")
         elif button == self.local_radio:
              self.prompt_input.setPlaceholderText("Enter generation prompt")
 
@@ -585,6 +568,7 @@ class ArcheoGlyphDialog(QDialog):
         try:
             target_func = None
             kwargs = {}
+            selected_color = self.current_color.name() if self.override_color_check.isChecked() else None
             
             if self.autotrace_radio.isChecked():
                 from ..generators.contour_generator import ContourGenerator
@@ -593,7 +577,7 @@ class ArcheoGlyphDialog(QDialog):
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
-                    'color': self.current_color.name(),
+                    'color': selected_color,
                     'symmetry': self.symmetry_check.isChecked()
                 }
             elif self.gemini_radio.isChecked():
@@ -607,7 +591,7 @@ class ArcheoGlyphDialog(QDialog):
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
-                    'color': self.current_color.name(),
+                    'color': selected_color,
                     'symmetry': self.symmetry_check.isChecked()
                 }
                 # Pass extra prompt if Gemini generator supports it (it currently expects image + style)
@@ -627,17 +611,14 @@ class ArcheoGlyphDialog(QDialog):
                 
                 # Fallback if empty
                 if not prompt:
-                    if self.image_drop.image_path:
-                        prompt = os.path.splitext(os.path.basename(self.image_drop.image_path))[0]
-                    else:
-                        QMessageBox.warning(self, "Missing Prompt", "Please enter a text prompt for the icon.")
-                        self.on_generation_finished(None, "Cancelled: No prompt")
-                        return
+                    prompt = "archaeological artifact from reference photo"
 
                 kwargs = {
                     'prompt': prompt,
                     'style': self.style_combo.currentText(),
-                    'color': self.current_color.name()
+                    'color': selected_color,
+                    'image_path': self.image_drop.image_path,
+                    'symmetry': self.symmetry_check.isChecked()
                 }
 
             elif self.local_radio.isChecked():
@@ -647,7 +628,7 @@ class ArcheoGlyphDialog(QDialog):
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
-                    'color': self.current_color.name()
+                    'color': selected_color
                 }
             else:
                 from ..generators.template_generator import TemplateGenerator
@@ -655,7 +636,7 @@ class ArcheoGlyphDialog(QDialog):
                 target_func = self._current_generator.generate
                 kwargs = {
                     'template_type': self.template_combo.currentText(),
-                    'color': self.current_color.name()
+                    'color': selected_color
                 }
             
             if target_func:

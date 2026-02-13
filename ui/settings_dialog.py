@@ -5,15 +5,15 @@ Configure AI API keys and view setup instructions.
 """
 
 import os
-import subprocess
 import sys
+from urllib.parse import urlparse
 from qgis.PyQt.QtCore import Qt, QSettings, QUrl, QProcess, QThread, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QGroupBox, QTabWidget, QWidget, QTextBrowser,
     QMessageBox, QProgressDialog, QScrollArea, QFrame, QApplication,
-    QCheckBox, QComboBox
+    QCheckBox, QComboBox, QFileDialog
 )
 
 
@@ -152,8 +152,8 @@ class SettingsDialog(QDialog):
         # Introduction
         info_label = QLabel(
             "<h3>🤗 Hugging Face Inference API</h3>"
-            "<p>Use thousands of open-source AI models for free."
-            "Requires a free Hugging Face account and token.</p>"
+            "<p>Use open-source AI models through Hugging Face inference."
+            "Requires a Hugging Face account and token.</p>"
         )
         info_label.setTextFormat(Qt.RichText)
         info_label.setWordWrap(True)
@@ -189,19 +189,89 @@ class SettingsDialog(QDialog):
         model_layout = QVBoxLayout(model_group)
 
         model_help = QLabel(
-            "Specify the Model ID to use (e.g., 'runwayml/stable-diffusion-v1-5'). "
-            "If the default model returns error 410 or 503, try changing this."
+            "Specify the Model ID to use (e.g., 'Qwen/Qwen-Image-Edit-2509' or "
+            "'Qwen/Qwen-Image'). If a model returns 403/404/503, the plugin "
+            "automatically tries modern fallback models."
         )
         model_help.setWordWrap(True)
         model_help.setStyleSheet("color: #666; font-size: 11px;")
         model_layout.addWidget(model_help)
 
         self.hf_model_input = QLineEdit()
-        self.hf_model_input.setText("stabilityai/stable-diffusion-2-1") # Default reliable model
+        self.hf_model_input.setText("Qwen/Qwen-Image-Edit-2509")
         self.hf_model_input.setPlaceholderText("organization/model-name")
         model_layout.addWidget(self.hf_model_input)
         
         layout.addWidget(model_group)
+
+        # Optional advanced controls
+        advanced_group = QGroupBox("Advanced (Optional)")
+        advanced_layout = QVBoxLayout(advanced_group)
+
+        advanced_layout.addWidget(QLabel(
+            "SAM segmentation is optional and intended for advanced users who install "
+            "segment-anything and provide a checkpoint."
+        ))
+
+        backend_row = QHBoxLayout()
+        backend_row.addWidget(QLabel("Auto Trace Backend:"))
+        self.mask_backend_combo = QComboBox()
+        self.mask_backend_combo.addItem("OpenCV (Default)", "opencv")
+        self.mask_backend_combo.addItem("SAM (Optional)", "sam")
+        backend_row.addWidget(self.mask_backend_combo)
+        advanced_layout.addLayout(backend_row)
+
+        sam_type_row = QHBoxLayout()
+        sam_type_row.addWidget(QLabel("SAM Model Type:"))
+        self.sam_model_type_combo = QComboBox()
+        self.sam_model_type_combo.addItems(["vit_b", "vit_l", "vit_h"])
+        sam_type_row.addWidget(self.sam_model_type_combo)
+        advanced_layout.addLayout(sam_type_row)
+
+        checkpoint_row = QHBoxLayout()
+        checkpoint_row.addWidget(QLabel("SAM Checkpoint:"))
+        self.sam_checkpoint_input = QLineEdit()
+        self.sam_checkpoint_input.setPlaceholderText("Path to sam_vit_*.pth")
+        checkpoint_row.addWidget(self.sam_checkpoint_input)
+        sam_browse_btn = QPushButton("Browse...")
+        sam_browse_btn.clicked.connect(self._browse_sam_checkpoint)
+        checkpoint_row.addWidget(sam_browse_btn)
+        advanced_layout.addLayout(checkpoint_row)
+
+        advanced_layout.addWidget(QLabel("SAM Quick Setup (Recommended for first-time users):"))
+
+        sam_actions_row = QHBoxLayout()
+        self.sam_install_btn = QPushButton("Install SAM Package")
+        self.sam_install_btn.clicked.connect(self.install_sam_package)
+        sam_actions_row.addWidget(self.sam_install_btn)
+
+        sam_download_btn = QPushButton("Download ViT-B Checkpoint")
+        sam_download_btn.clicked.connect(self._open_sam_checkpoint_download)
+        sam_actions_row.addWidget(sam_download_btn)
+
+        sam_find_btn = QPushButton("Auto-Find Downloaded File")
+        sam_find_btn.clicked.connect(self._autofind_sam_checkpoint)
+        sam_actions_row.addWidget(sam_find_btn)
+        advanced_layout.addLayout(sam_actions_row)
+
+        sam_guide_btn = QPushButton("SAM Setup Guide")
+        sam_guide_btn.clicked.connect(self._show_sam_quick_guide)
+        advanced_layout.addWidget(sam_guide_btn)
+
+        self.sam_status_label = QLabel("")
+        self.sam_status_label.setWordWrap(True)
+        self.sam_status_label.setStyleSheet("color: #666; font-size: 11px;")
+        advanced_layout.addWidget(self.sam_status_label)
+        self.sam_checkpoint_input.textChanged.connect(lambda _text: self._refresh_sam_status())
+        self.mask_backend_combo.currentIndexChanged.connect(lambda _idx: self._refresh_sam_status())
+
+        self.hf_overlay_linework_check = QCheckBox(
+            "HF: Overlay factual linework (stricter, may look similar to Auto Trace)"
+        )
+        self.hf_overlay_linework_check.setChecked(False)
+        advanced_layout.addWidget(self.hf_overlay_linework_check)
+
+        layout.addWidget(advanced_group)
         
         # Connection Test
         test_btn = QPushButton("✅ Test Hugging Face Connection")
@@ -528,16 +598,16 @@ class SettingsDialog(QDialog):
         layout.addWidget(no_setup)
         
         # Hugging Face option
-        hf_opt = QGroupBox("Option 2: Use AI (Hugging Face - Free)")
+        hf_opt = QGroupBox("Option 2: Use AI (Hugging Face)")
         hf_layout = QVBoxLayout(hf_opt)
         hf_layout.addWidget(QLabel(
             "<ol>"
             "<li>Go to the <b>Hugging Face</b> tab</li>"
-            "<li>Click link to get <b>free Token</b></li>"
+            "<li>Click link to get a <b>token</b></li>"
             "<li>Paste key and click <b>Save Settings</b></li>"
             "<li>Restart QGIS</li>"
             "</ol>"
-            "<p>✨ <i>Generate unlimited free icons!</i></p>"
+            "<p>✨ <i>Generate icons with online inference models.</i></p>"
         ))
         layout.addWidget(hf_opt)
 
@@ -596,8 +666,8 @@ class SettingsDialog(QDialog):
             </tr>
             <tr>
                 <td><b>AI (Hugging Face)</b></td>
-                <td>Free Token</td>
-                <td>Icon generation (Free)</td>
+                <td>HF Token</td>
+                <td>Icon generation</td>
             </tr>
             <tr>
                 <td><b>AI (Gemini)</b></td>
@@ -618,9 +688,9 @@ class SettingsDialog(QDialog):
         
         <h3>🎯 Symbol Styles</h3>
         <ul>
-            <li><b>Colored Silhouette (채색 실루엣)</b> - Flat-colored accurate artifact shape (best for presentations)</li>
-            <li><b>Line Drawing (선화)</b> - Precise outline only, monochrome (best for academic papers)</li>
-            <li><b>Publication (실측 도면)</b> - Stippling + cross-hatching, B&W (publication quality)</li>
+            <li><b>Colored</b> - fact-based color symbol with clear readability</li>
+            <li><b>Line</b> - contour and major internal lines, monochrome</li>
+            <li><b>Measured</b> - monochrome measured drawing style for reports</li>
         </ul>
         
         <h3>📊 Size Scaling Options</h3>
@@ -645,7 +715,7 @@ class SettingsDialog(QDialog):
         </ul>
         
         <h3>👤 Author</h3>
-        <p>Created by <b>Jinseo Hwang (황진서)</b></p>
+        <p>Created by <b>Jinseo Hwang</b></p>
         """)
         layout.addWidget(help_text)
         
@@ -665,22 +735,264 @@ class SettingsDialog(QDialog):
         else:
             self.hf_key_input.setEchoMode(QLineEdit.Password)
 
+    def _normalize_hf_model_id(self, model_id):
+        """Normalize model ID into 'organization/model-name' format."""
+        default = "Qwen/Qwen-Image-Edit-2509"
+        value = (model_id or "").strip().replace("\\", "/")
+        if not value:
+            return default
+
+        parsed = urlparse(value)
+        if parsed.scheme and parsed.netloc and "huggingface.co" in parsed.netloc:
+            value = parsed.path.strip("/")
+
+        for prefix in ("hf-inference/models/", "models/"):
+            if value.startswith(prefix):
+                value = value[len(prefix):]
+
+        value = "/".join([part.strip() for part in value.strip("/").split("/") if part.strip()])
+
+        aliases = {
+            "stabilityai/stable-diffusion-2-1": default,
+            "runwayml/stable-diffusion-v1-5": default,
+            "stable-diffusion-v1-5/stable-diffusion-v1-5": default,
+            "stabilityai/stable-diffusion-xl-base-1.0": default,
+        }
+        value = aliases.get(value, value)
+
+        if "/" not in value:
+            return default
+        return value
+
     def _open_sd_guide(self):
         """Open local SD setup guide."""
         QDesktopServices.openUrl(
             QUrl("https://github.com/lzpxilfe/ArcheoGlyph/blob/main/docs/ai_setup_guide.md")
         )
+
+    def _get_python_executable(self):
+        """Return Python interpreter path compatible with QGIS environment."""
+        if sys.platform == 'win32':
+            python_path = os.path.join(sys.exec_prefix, 'python.exe')
+            if os.path.exists(python_path):
+                return python_path
+        return sys.executable
+
+    def install_sam_package(self):
+        """Install segment-anything package for SAM backend."""
+        reply = QMessageBox.question(
+            self,
+            "Install SAM Package",
+            "Install 'segment-anything' now?\n\n"
+            "Note: SAM also needs 'torch'. If torch is missing, install it first "
+            "(CPU build is okay for basic use).",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.No:
+            return
+
+        python_path = self._get_python_executable()
+        self.sam_install_btn.setEnabled(False)
+        self.sam_install_btn.setText("Installing...")
+        self.sam_status_label.setText("Installing segment-anything...")
+        self.sam_status_label.setStyleSheet("color: orange; font-size: 11px;")
+
+        self.sam_process = QProcess(self)
+        self.sam_process.readyReadStandardOutput.connect(self._handle_sam_install_output)
+        self.sam_process.readyReadStandardError.connect(self._handle_sam_install_output)
+        self.sam_process.finished.connect(self._handle_sam_install_finished)
+        self.sam_process.errorOccurred.connect(self._handle_sam_install_error)
+        self.sam_process.start(python_path, ["-m", "pip", "install", "--user", "segment-anything"])
+
+    def _handle_sam_install_output(self):
+        """Handle SAM installer output."""
+        if not hasattr(self, "sam_process") or self.sam_process is None:
+            return
+        out = bytes(self.sam_process.readAllStandardOutput()).decode('utf-8', errors='replace').strip()
+        err = bytes(self.sam_process.readAllStandardError()).decode('utf-8', errors='replace').strip()
+        msg = out or err
+        if msg:
+            last_line = msg.splitlines()[-1][:120]
+            self.sam_status_label.setText(f"Installing SAM: {last_line}")
+            self.sam_status_label.setStyleSheet("color: orange; font-size: 11px;")
+
+    def _handle_sam_install_finished(self, exit_code, exit_status):
+        """Handle SAM installer completion."""
+        self.sam_install_btn.setEnabled(True)
+        self.sam_install_btn.setText("Install SAM Package")
+        if exit_code == 0 and exit_status == QProcess.NormalExit:
+            QMessageBox.information(
+                self,
+                "Installed",
+                "segment-anything installed successfully.\n"
+                "If this is first-time setup, restart QGIS."
+            )
+        else:
+            python_path = self._get_python_executable()
+            QMessageBox.warning(
+                self,
+                "Install Failed",
+                "Could not install segment-anything automatically.\n\n"
+                "Manual command:\n"
+                f"{python_path} -m pip install --user segment-anything"
+            )
+        self._refresh_sam_status()
+
+    def _handle_sam_install_error(self, error):
+        """Handle SAM installer process errors."""
+        self.sam_install_btn.setEnabled(True)
+        self.sam_install_btn.setText("Install SAM Package")
+        self.sam_status_label.setText(f"SAM install process error: {error}")
+        self.sam_status_label.setStyleSheet("color: red; font-size: 11px;")
+        self._refresh_sam_status()
+
+    def _open_sam_checkpoint_download(self):
+        """Open official SAM ViT-B checkpoint download URL."""
+        QDesktopServices.openUrl(
+            QUrl("https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth")
+        )
+        QMessageBox.information(
+            self,
+            "Download Started",
+            "Browser download opened for sam_vit_b_01ec64.pth.\n"
+            "After download, click 'Auto-Find Downloaded File'."
+        )
+
+    def _get_candidate_sam_paths(self):
+        """Return common paths where SAM checkpoints are likely located."""
+        candidates = []
+        home = os.path.expanduser("~")
+        downloads = os.path.join(home, "Downloads")
+        desktop = os.path.join(home, "Desktop")
+
+        names = [
+            "sam_vit_b_01ec64.pth",
+            "sam_vit_l_0b3195.pth",
+            "sam_vit_h_4b8939.pth",
+        ]
+
+        for folder in [downloads, desktop, home]:
+            for name in names:
+                candidates.append(os.path.join(folder, name))
+
+        plugin_root = os.path.dirname(os.path.dirname(__file__))
+        for name in names:
+            candidates.append(os.path.join(plugin_root, "models", "sam", name))
+
+        return candidates
+
+    def _autofind_sam_checkpoint(self):
+        """Find SAM checkpoint automatically in common folders."""
+        for path in self._get_candidate_sam_paths():
+            if os.path.exists(path):
+                self.sam_checkpoint_input.setText(path)
+                if "vit_l" in os.path.basename(path):
+                    self.sam_model_type_combo.setCurrentText("vit_l")
+                elif "vit_h" in os.path.basename(path):
+                    self.sam_model_type_combo.setCurrentText("vit_h")
+                else:
+                    self.sam_model_type_combo.setCurrentText("vit_b")
+                QMessageBox.information(
+                    self,
+                    "Checkpoint Found",
+                    f"SAM checkpoint found and selected:\n{path}"
+                )
+                self._refresh_sam_status()
+                return
+
+        QMessageBox.information(
+            self,
+            "Not Found",
+            "No SAM checkpoint was found in common folders.\n"
+            "Click 'Download ViT-B Checkpoint' first."
+        )
+        self._refresh_sam_status()
+
+    def _show_sam_quick_guide(self):
+        """Show beginner-friendly SAM setup instructions."""
+        QMessageBox.information(
+            self,
+            "SAM Quick Guide",
+            "SAM setup (beginner):\n\n"
+            "1. Keep 'Auto Trace Backend' = SAM (Optional)\n"
+            "2. Click 'Install SAM Package'\n"
+            "3. Click 'Download ViT-B Checkpoint'\n"
+            "4. Click 'Auto-Find Downloaded File'\n"
+            "5. Save Settings and restart QGIS\n\n"
+            "If SAM is not ready, ArcheoGlyph automatically falls back to OpenCV."
+        )
+
+    def _refresh_sam_status(self):
+        """Update SAM readiness status text."""
+        checkpoint = self.sam_checkpoint_input.text().strip()
+        checkpoint_ok = bool(checkpoint and os.path.exists(checkpoint))
+
+        dep_missing = []
+        try:
+            import torch  # noqa: F401
+        except Exception:
+            dep_missing.append("torch")
+        try:
+            import segment_anything  # noqa: F401
+        except Exception:
+            dep_missing.append("segment-anything")
+
+        if checkpoint_ok and not dep_missing:
+            self.sam_status_label.setText("SAM ready: dependencies and checkpoint detected.")
+            self.sam_status_label.setStyleSheet("color: green; font-size: 11px;")
+            return
+
+        issues = []
+        if not checkpoint_ok:
+            issues.append("checkpoint missing")
+        if dep_missing:
+            issues.append("missing package(s): " + ", ".join(dep_missing))
+
+        self.sam_status_label.setText(
+            "SAM not ready (" + "; ".join(issues) + "). "
+            "OpenCV backend will be used until SAM setup is complete."
+        )
+        self.sam_status_label.setStyleSheet("color: #9a6700; font-size: 11px;")
+
+    def _browse_sam_checkpoint(self):
+        """Browse SAM checkpoint file."""
+        start_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        if not os.path.exists(start_dir):
+            start_dir = os.path.expanduser("~")
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select SAM Checkpoint",
+            start_dir,
+            "SAM Checkpoint (sam_vit_*.pth *.pth *.pt);;PyTorch Checkpoint (*.pth *.pt);;All Files (*)"
+        )
+        if file_path:
+            self.sam_checkpoint_input.setText(file_path)
+            if "vit_l" in os.path.basename(file_path):
+                self.sam_model_type_combo.setCurrentText("vit_l")
+            elif "vit_h" in os.path.basename(file_path):
+                self.sam_model_type_combo.setCurrentText("vit_h")
+            else:
+                self.sam_model_type_combo.setCurrentText("vit_b")
+        self._refresh_sam_status()
             
     def load_settings(self):
         """Load saved settings."""
         gemini_key = self.settings.value('ArcheoGlyph/gemini_api_key', '')
         hf_key = self.settings.value('ArcheoGlyph/huggingface_api_key', '')
-        hf_model = self.settings.value('ArcheoGlyph/hf_model_id', 'stabilityai/stable-diffusion-2-1')
-        
-        # MIGRATION: Force update if old default is still saved
-        if hf_model == 'runwayml/stable-diffusion-v1-5':
-            hf_model = 'stabilityai/stable-diffusion-2-1'
-            self.settings.setValue('ArcheoGlyph/hf_model_id', hf_model)
+        hf_model = self.settings.value(
+            'ArcheoGlyph/hf_model_id',
+            'Qwen/Qwen-Image-Edit-2509'
+        )
+        hf_model = self._normalize_hf_model_id(hf_model)
+        self.settings.setValue('ArcheoGlyph/hf_model_id', hf_model)
+
+        mask_backend = self.settings.value('ArcheoGlyph/mask_backend', 'opencv')
+        sam_checkpoint = self.settings.value('ArcheoGlyph/sam_checkpoint_path', '')
+        sam_model_type = self.settings.value('ArcheoGlyph/sam_model_type', 'vit_b')
+        hf_overlay_linework = str(
+            self.settings.value('ArcheoGlyph/hf_overlay_linework', 'false')
+        ).strip().lower() in ("1", "true", "yes", "on")
             
         sd_url = self.settings.value('ArcheoGlyph/sd_server', 'http://127.0.0.1:7860')
         
@@ -688,6 +1000,21 @@ class SettingsDialog(QDialog):
         self.hf_key_input.setText(hf_key)
         self.hf_model_input.setText(hf_model)
         self.sd_url_input.setText(sd_url)
+
+        idx = self.mask_backend_combo.findData(str(mask_backend).strip().lower())
+        if idx >= 0:
+            self.mask_backend_combo.setCurrentIndex(idx)
+        self.sam_checkpoint_input.setText(str(sam_checkpoint))
+        if not str(sam_checkpoint).strip():
+            for path in self._get_candidate_sam_paths():
+                if os.path.exists(path):
+                    self.sam_checkpoint_input.setText(path)
+                    break
+        type_idx = self.sam_model_type_combo.findText(str(sam_model_type))
+        if type_idx >= 0:
+            self.sam_model_type_combo.setCurrentIndex(type_idx)
+        self.hf_overlay_linework_check.setChecked(hf_overlay_linework)
+        self._refresh_sam_status()
         
         # Check if package is installed
         try:
@@ -702,8 +1029,49 @@ class SettingsDialog(QDialog):
         """Save settings."""
         self.settings.setValue('ArcheoGlyph/gemini_api_key', self.gemini_key_input.text())
         self.settings.setValue('ArcheoGlyph/huggingface_api_key', self.hf_key_input.text())
-        self.settings.setValue('ArcheoGlyph/hf_model_id', self.hf_model_input.text())
+        self.settings.setValue('ArcheoGlyph/hf_model_id', self._normalize_hf_model_id(self.hf_model_input.text()))
+        mask_backend = self.mask_backend_combo.currentData()
+        sam_checkpoint = self.sam_checkpoint_input.text().strip()
+
+        # Safety: prevent broken SAM config for first-time users.
+        if mask_backend == "sam":
+            if not sam_checkpoint or not os.path.exists(sam_checkpoint):
+                QMessageBox.warning(
+                    self,
+                    "SAM Not Ready",
+                    "SAM backend was selected, but checkpoint file is missing.\n"
+                    "Switching backend to OpenCV for now."
+                )
+                mask_backend = "opencv"
+                idx = self.mask_backend_combo.findData("opencv")
+                if idx >= 0:
+                    self.mask_backend_combo.setCurrentIndex(idx)
+            else:
+                try:
+                    import torch  # noqa: F401
+                    import segment_anything  # noqa: F401
+                except Exception:
+                    QMessageBox.warning(
+                        self,
+                        "SAM Package Missing",
+                        "SAM checkpoint exists, but required packages are missing.\n"
+                        "Switching backend to OpenCV for now.\n\n"
+                        "Use 'Install SAM Package' first."
+                    )
+                    mask_backend = "opencv"
+                    idx = self.mask_backend_combo.findData("opencv")
+                    if idx >= 0:
+                        self.mask_backend_combo.setCurrentIndex(idx)
+
+        self.settings.setValue('ArcheoGlyph/mask_backend', mask_backend)
+        self.settings.setValue('ArcheoGlyph/sam_checkpoint_path', sam_checkpoint)
+        self.settings.setValue('ArcheoGlyph/sam_model_type', self.sam_model_type_combo.currentText())
+        self.settings.setValue(
+            'ArcheoGlyph/hf_overlay_linework',
+            'true' if self.hf_overlay_linework_check.isChecked() else 'false'
+        )
         self.settings.setValue('ArcheoGlyph/sd_server', self.sd_url_input.text())
+        self._refresh_sam_status()
         
         QMessageBox.information(
             self, 
@@ -716,56 +1084,119 @@ class SettingsDialog(QDialog):
         """Test Hugging Face connection."""
         import requests
         api_key = self.hf_key_input.text().strip()
-        
+
         if not api_key:
             QMessageBox.warning(self, "No Token", "Please enter Hugging Face token.")
             return
 
-        self.hf_test_result.setText("⏳ Testing...")
+        self.hf_test_result.setText("Testing...")
         QApplication.processEvents()
-        
-        # Simple test query
-        # Simple test query
-        headers = {"Authorization": f"Bearer {api_key}"}
-        
-        # Use user-defined model ID
-        model_id = self.hf_model_input.text().strip()
-        if not model_id:
-            model_id = "stabilityai/stable-diffusion-2-1"
-            
-        API_URL = f"https://api-inference.huggingface.co/models/{model_id}"
-        
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "image/png",
+        }
+
+        model_id = self._normalize_hf_model_id(self.hf_model_input.text().strip())
+        self.hf_model_input.setText(model_id)
+
+        payload = {
+            "inputs": "simple icon of an ancient pottery shard on white background",
+            "parameters": {"num_inference_steps": 1},
+        }
+
+        candidate_models = []
+        for mid in [
+            model_id,
+            "Qwen/Qwen-Image-Edit-2509",
+            "Qwen/Qwen-Image-Edit",
+            "Qwen/Qwen-Image",
+            "black-forest-labs/FLUX.2-dev",
+            "black-forest-labs/FLUX.1-Kontext-dev",
+            "black-forest-labs/FLUX.1-dev",
+            "black-forest-labs/FLUX.1-schnell",
+            "black-forest-labs/FLUX.1-Krea-dev",
+            "stabilityai/stable-diffusion-3.5-large",
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            "CompVis/stable-diffusion-v1-4",
+            "prompthero/openjourney",
+        ]:
+            normalized = self._normalize_hf_model_id(mid)
+            if normalized not in candidate_models:
+                candidate_models.append(normalized)
+
+        last_status = None
+        saw_403 = False
+        saw_404 = False
+
         try:
-            # Check model availability only (head request or minimal payload)
-            # Actually making a real request is safer
-            response = requests.get(API_URL, headers=headers)
-            
-            # 200 OK means connected (even if model is loading, etc.)
-            # Wait, GET on inference API usually gives model info or 405.
-            # Let's try a very dummy POST
-            response = requests.post(
-                API_URL, 
-                headers=headers, 
-                json={"inputs": "test", "parameters": {"num_inference_steps": 1}}
-            )
-            
-            if response.status_code == 200:
-                self.hf_test_result.setText("✅ Connected!")
-                self.hf_test_result.setStyleSheet("color: green; font-weight: bold;")
-                QMessageBox.information(self, "Success", "Connected to Hugging Face successfully!")
-            elif response.status_code == 401:
-                self.hf_test_result.setText("❌ Invalid Token")
+            for candidate in candidate_models:
+                api_url = f"https://router.huggingface.co/hf-inference/models/{candidate}"
+                response = requests.post(api_url, headers=headers, json=payload, timeout=30)
+                response_text = (response.text or "").lower()
+                last_status = response.status_code
+
+                if response.status_code == 200:
+                    if candidate != model_id:
+                        self.hf_model_input.setText(candidate)
+                        self.settings.setValue('ArcheoGlyph/hf_model_id', candidate)
+                    self.hf_test_result.setText("Connected")
+                    self.hf_test_result.setStyleSheet("color: green; font-weight: bold;")
+                    QMessageBox.information(self, "Success", f"Connected with model: {candidate}")
+                    return
+
+                if response.status_code == 503 or "loading" in response_text:
+                    if candidate != model_id:
+                        self.hf_model_input.setText(candidate)
+                        self.settings.setValue('ArcheoGlyph/hf_model_id', candidate)
+                    self.hf_test_result.setText("Loading model...")
+                    self.hf_test_result.setStyleSheet("color: orange;")
+                    QMessageBox.information(
+                        self,
+                        "Loading",
+                        f"Connected, but model is initializing: {candidate}"
+                    )
+                    return
+
+                if response.status_code == 401:
+                    self.hf_test_result.setText("Invalid token")
+                    self.hf_test_result.setStyleSheet("color: red;")
+                    return
+
+                if response.status_code == 403:
+                    saw_403 = True
+                    continue
+
+                if response.status_code == 404:
+                    saw_404 = True
+                    continue
+
+            if saw_403:
+                self.hf_test_result.setText("Model access denied (403)")
                 self.hf_test_result.setStyleSheet("color: red;")
-            elif "loading" in response.text.lower():
-                self.hf_test_result.setText("⚠️ Loading...")
-                self.hf_test_result.setStyleSheet("color: orange;")
-                QMessageBox.information(self, "Loading", "Connected, but model is initializing.")
+                QMessageBox.warning(
+                    self,
+                    "Model Access Denied",
+                    "Model terms may need acceptance on Hugging Face, or the model is restricted."
+                )
+            elif saw_404:
+                self.hf_test_result.setText("Model not found (404)")
+                self.hf_test_result.setStyleSheet("color: red;")
+                QMessageBox.warning(
+                    self,
+                    "Model Not Found",
+                    "No candidate model was found.\n"
+                    "Try 'Qwen/Qwen-Image-Edit-2509' or 'Qwen/Qwen-Image'."
+                )
             else:
-                self.hf_test_result.setText(f"❌ Error {response.status_code}")
+                status_text = str(last_status) if last_status is not None else "unknown"
+                self.hf_test_result.setText(f"Error {status_text}")
                 self.hf_test_result.setStyleSheet("color: red;")
-                
+
         except Exception as e:
-            self.hf_test_result.setText("❌ Failed")
+            self.hf_test_result.setText("Failed")
             self.hf_test_result.setStyleSheet("color: red;")
             QMessageBox.warning(self, "Error", str(e))
         

@@ -9,6 +9,10 @@ from qgis.PyQt.QtCore import QSettings
 
 
 
+
+# Import ContourGenerator for hybrid workflow
+from .contour_generator import ContourGenerator
+
 class GeminiGenerator:
     """Generator using Google Gemini API for symbol creation."""
     
@@ -34,23 +38,23 @@ class GeminiGenerator:
 
     # Style prompts — only control RENDERING style, never the shape.
     STYLE_PROMPTS = {
-        "🎯 Colored Silhouette (채색 실루엣)": (
+        "🎨 Colored": (
             "RENDERING STYLE: Premium Vector Game Asset / RPG Item Icon. "
-            "1. SHAPE RULES: STICTLY TRACE the original artifact. DO NOT exaggerate features. DO NOT make it thinner or thicker. "
-            "   Capture the EXACT silhouette constraints. "
-            "2. OUTLINE: Draw a bold, clean, consistent BLACK outline (2-3px) around the entire object. "
-            "3. SHADING: Use 'Cel Shading' or '2-Tone Shading' (Base Color + Shadow Color) to show volume. "
+            "1. SHAPE RULES: STICTLY TRACE the provided SILHOUETTE MASK (Image 2). The mask defines the EXACT geometry. "
+            "   Do not deviate from the mask's outline. "
+            "2. OUTLINE: Draw a bold, clean, consistent BLACK outline (2-3px) around the entire object defined by the mask. "
+            "3. SHADING: Use 'Cel Shading' or '2-Tone Shading' (Base Color + Shadow Color) based on the REFERENCE PHOTO (Image 1). "
             "4. AESTHETIC: Flat Design but with depth. Like a high-quality strategy game unit or resource icon. "
             "NO gradient meshes. NO realistic texture noise. Clean vector shapes."
         ),
-        "📐 Line Drawing (선화)": (
+        "📐 Line": (
             "RENDERING STYLE: Archaeological Line Drawing. "
             "Draw ONLY the precise outline of the artifact and major internal lines. "
             "Use clean, consistent black strokes (1-2px). "
             "NO shading, NO stippling, NO hatching, NO fill. "
             "Pure abstraction of the form. Transparent background."
         ),
-        "🏛️ Publication (실측 도면)": (
+        "🏛️ Measured": (
             "RENDERING STYLE: Traditional Archaeological Ink Illustration (Pen & Ink). "
             "Strictly MONOCHROME. "
             "1. OUTLINE: Precise fine line. "
@@ -69,11 +73,32 @@ class GeminiGenerator:
         "Use ABSOLUTE coordinates. "
         "Ensure the path is closed (ends with Z)."
     )
+
+    _NO_EXAGGERATION_RULES = (
+        "\n\nREALISM RULES:\n"
+        "- Do NOT exaggerate proportions, edges, thickness, or decorative details.\n"
+        "- Do NOT cartoonize, beautify, or idealize the artifact.\n"
+        "- Keep the rendering neutral and documentary.\n"
+        "- Preserve observed damage, asymmetry, and surface wear from the reference image.\n"
+        "- Output exactly one isolated artifact object.\n"
+        "- Do not add any scene/background elements (ground, sky, plants, architecture, people).\n"
+    )
+
+    _DISALLOWED_SVG_TOKENS = (
+        "<image",
+        "<foreignobject",
+        "<filter",
+        "<lineargradient",
+        "<radialgradient",
+        "<pattern",
+        "<mask",
+    )
     
     def __init__(self):
         """Initialize the Gemini generator."""
         self.settings = QSettings()
         self.api_key = self.settings.value('ArcheoGlyph/gemini_api_key', '')
+        self.contour_gen = ContourGenerator()
         
     def set_api_key(self, api_key):
         """Save API key to settings."""
@@ -84,7 +109,17 @@ class GeminiGenerator:
         """Get API key from settings."""
         return self.api_key
         
-    def generate(self, image_path, style="🎯 Colored Silhouette (채색 실루엣)", color="#000000", symmetry=False):
+    def _normalize_style(self, style):
+        """Map various style labels to canonical styles."""
+        text = str(style or "").strip()
+        low = text.lower()
+        if ("measured" in low) or ("publication" in low):
+            return "🏛️ Measured"
+        if ("line" in low):
+            return "📐 Line"
+        return "🎨 Colored"
+
+    def generate(self, image_path, style="🎨 Colored", color="#000000", symmetry=False):
         """
         Generate a symbol from the input image using Gemini.
         Returns the SVG code as a string.
@@ -110,26 +145,62 @@ class GeminiGenerator:
             image_data = f.read()
             
         # Build the full prompt
-        style_prompt = self.STYLE_PROMPTS.get(style, self.STYLE_PROMPTS["🎯 Colored Silhouette (채색 실루엣)"])
+        # Build the full prompt
+        style_key = self._normalize_style(style)
+        style_prompt = self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS["🎨 Colored"])
+        # Keep colored output non-exaggerated and documentary.
+        if style_key == "🎨 Colored":
+            style_prompt = (
+                "RENDERING STYLE: Neutral archaeological plate symbol (NOT painting). "
+                "1. SHAPE RULES: Strictly trace the provided silhouette constraints. "
+                "2. OUTLINE: Use a clean black outline (about 1-2px equivalent). "
+                "3. SHADING: Optional 1-2 flat tone regions only. No painterly texture. "
+                "4. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background. "
+                "5. SVG PURITY: Use simple vector paths only; do not use gradients, filters, images, or masks."
+            )
+
         prompt = self._SHAPE_PREAMBLE + style_prompt
+        prompt += self._NO_EXAGGERATION_RULES
         
+        # Hybrid Workflow: Get Silhouette
+        silhouette_bytes = None
+        try:
+             silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
+        except Exception as e:
+             print(f"Silhouette extraction failed: {e}")
+             
         if symmetry:
-            prompt += "\n\nCRITICAL: The object must be PERFECTLY SYMMETRICAL (bilateral symmetry). Mirror the left side to the right if needed to create a perfect canonical view."
+            prompt += (
+                "\n\nSYMMETRY RULE: Apply bilateral symmetry only when the artifact appears "
+                "naturally symmetrical in the photo. Do not force perfect symmetry for damaged "
+                "or asymmetrical objects."
+            )
         
-        if color and "Colored Silhouette" in style:
+        if color and style_key == "🎨 Colored":
              prompt += (
                  f"\n\nCOLOR INSTRUCTIONS:"
-                 f"\n1. PRIMARY FILL COLOR: ANALYZE the input image and DETECT the dominant color of the artifact. Use that detected color."
-                 f"\n   (NOTE: The user suggested {color}, but you should ignore it if it doesn't match the image's actual material color)."
-                 f"\n2. HARMONY: You MAY mix in subtle variations, analogous colors, or gradients to make it look natural and artistic."
-                 f"\n3. OUTLINE: Keep the outline BLACK."
-                 f"\n4. AVOID flat, cartoonish single-color fills. Make it look like a high-quality hand-painted archaeological illustration."
+                 f"\n1. Detect and use the artifact's observed material color from the photo."
+                 f"\n2. If user color {color} conflicts with the photo, prioritize the photo."
+                 f"\n3. Keep color variations subtle and realistic; avoid saturated fantasy tones."
+                 f"\n4. Keep the outline black and clean."
              )
         elif color:
              # For Line Drawing / Publication, color serves as a hint/tint but dominant style rules apply
              pass
-            
+             
+        # Add Hybrid Logic Instructions to Prompt if applicable
+        if silhouette_bytes and style_key == "🎨 Colored":
+             prompt += "\n\nCRITICAL INSTRUCTION: I have provided TWO images. \nImage 1: Original Photo (Textural/Color Reference). \nImage 2: Black & White Silhouette (SHAPE CONSTRAINT). \n\nYOU MUST DRAW THE SYMBOL TO MATCH THE EXACT SHAPE OF IMAGE 2 (THE SILHOUETTE). IGNORE THE SHAPE OF IMAGE 1 IF IT DIFFERS. APPLY THE COLORS/TEXTURES OF IMAGE 1 ONTO THE SHAPE OF IMAGE 2."
+
         prompt += self._SVG_FORMAT
+        
+        # Construct content parts
+        parts = []
+        parts.append(prompt)
+        parts.append({"mime_type": self._get_mime_type(image_path), "data": image_data}) # Image 1: Reference
+        
+        if silhouette_bytes and style_key == "🎨 Colored":
+             parts.append({"mime_type": "image/png", "data": silhouette_bytes}) # Image 2: Mask
         
         # Priorities: Pro models (better vision) > Flash models (faster)
         # We want QUALITY for this task as requested by user.
@@ -189,6 +260,7 @@ class GeminiGenerator:
             models_to_try = ['models/gemini-1.5-pro', 'models/gemini-1.5-flash']
         
         last_error = None
+        last_svg_issue = None
         for model_name in models_to_try:
             # Retry logic with exponential backoff
             max_retries = 3
@@ -198,24 +270,21 @@ class GeminiGenerator:
                 try:
                     model = genai.GenerativeModel(model_name)
                     
-                    image_part = {
-                        'mime_type': self._get_mime_type(image_path),
-                        'data': image_data
-                    }
-                    
                     # Generate text (SVG code)
-                    response = model.generate_content(
-                        [prompt, image_part]
-                    )
+                    response = model.generate_content(parts)
                     
                     # If successful, extract SVG code and return as string
                     if response.text:
                         svg_code = self._extract_svg(response.text)
                         if svg_code:
-                            return svg_code
+                            is_safe, issue = self._is_svg_documentary_safe(svg_code)
+                            if is_safe:
+                                return svg_code
+                            last_svg_issue = issue
                         
                     # If we got a response but no SVG, maybe try next model
                     break 
+ 
                          
                 except Exception as e:
                     error_str = str(e)
@@ -236,7 +305,26 @@ class GeminiGenerator:
         
         if last_error:
             raise last_error
-            
+
+        # Final factual fallback: deterministic contour extraction.
+        try:
+            fallback_svg = self.contour_gen.generate(
+                image_path=image_path,
+                style=style,
+                color=color,
+                symmetry=symmetry
+            )
+            if fallback_svg:
+                return fallback_svg
+        except Exception as e:
+            if not last_error:
+                last_error = e
+
+        if last_error:
+            raise last_error
+        if last_svg_issue:
+            raise Exception(f"Gemini output rejected as non-documentary: {last_svg_issue}")
+
         raise Exception("Failed to generate symbol: No suitable AI model found.")
         
     def _get_mime_type(self, file_path):
@@ -260,3 +348,20 @@ class GeminiGenerator:
         if start != -1 and end != -1:
             return text[start:end+6]
         return None
+
+    def _is_svg_documentary_safe(self, svg_code):
+        """Reject SVG outputs that look painterly or non-symbolic."""
+        if not svg_code:
+            return False, "empty SVG"
+
+        lower = svg_code.lower()
+        if "<svg" not in lower or "</svg>" not in lower:
+            return False, "invalid SVG envelope"
+        if "<path" not in lower:
+            return False, "no path geometry found"
+
+        for token in self._DISALLOWED_SVG_TOKENS:
+            if token in lower:
+                return False, f"contains disallowed element: {token}"
+
+        return True, ""

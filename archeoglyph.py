@@ -11,6 +11,9 @@ from qgis.core import QgsProject
 
 from .ui.main_dialog import ArcheoGlyphDialog
 
+PLUGIN_VERSION = "0.1.0"
+HF_DEFAULT_MODEL = "Qwen/Qwen-Image-Edit-2509"
+
 
 class ArcheoGlyph:
     """QGIS Plugin Implementation."""
@@ -43,6 +46,38 @@ class ArcheoGlyph:
         self.toolbar.setObjectName('ArcheoGlyph')
         
         self.dialog = None
+        self._migrate_settings()
+
+    def _migrate_settings(self):
+        """
+        One-time settings migration for this plugin code version.
+        Prevents stale old-model settings from lingering across updates.
+        """
+        settings = QSettings()
+        saved_version = str(settings.value('ArcheoGlyph/code_version', '')).strip()
+        if saved_version == PLUGIN_VERSION:
+            return
+
+        legacy_hf_models = {
+            "stabilityai/stable-diffusion-2-1",
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            "runwayml/stable-diffusion-v1-5",
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            "CompVis/stable-diffusion-v1-4",
+            "prompthero/openjourney",
+        }
+        hf_model = str(settings.value('ArcheoGlyph/hf_model_id', '')).strip()
+        if not hf_model or hf_model in legacy_hf_models:
+            settings.setValue('ArcheoGlyph/hf_model_id', HF_DEFAULT_MODEL)
+
+        # Safety migration: invalid SAM setup should not block Auto Trace.
+        mask_backend = str(settings.value('ArcheoGlyph/mask_backend', 'opencv')).strip().lower()
+        sam_checkpoint = str(settings.value('ArcheoGlyph/sam_checkpoint_path', '')).strip()
+        if mask_backend == "sam" and (not sam_checkpoint or not os.path.exists(sam_checkpoint)):
+            settings.setValue('ArcheoGlyph/mask_backend', 'opencv')
+
+        # Persist plugin code version marker.
+        settings.setValue('ArcheoGlyph/code_version', PLUGIN_VERSION)
 
     def tr(self, message):
         """Get the translation for a string using Qt translation API."""

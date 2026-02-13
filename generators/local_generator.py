@@ -32,19 +32,19 @@ class LocalGenerator:
     
     # Style prompts for different archaeological symbol styles
     STYLE_PROMPTS = {
-        "🎯 Colored Silhouette (채색 실루엣)": (
+        "🎨 Colored": (
             "accurate archaeological artifact silhouette, flat color fill, "
             "clean shape, precise outline, map symbol, "
             "transparent background, centered, high contrast, "
             "digital art, vector style"
         ),
-        "📐 Line Drawing (선화)": (
+        "📐 Line": (
             "minimalist line art icon, archaeological artifact, "
             "simple geometric shapes, clean lines, monochrome, "
             "technical drawing style, transparent background, centered, "
             "vector illustration, blueprint style"
         ),
-        "🏛️ Publication (실측 도면)": (
+        "🏛️ Measured": (
             "classic archaeological illustration, artifact drawing, "
             "stippling cross-hatching, academic professional, publication quality, "
             "transparent background, centered, scientific illustration, "
@@ -98,7 +98,7 @@ class LocalGenerator:
                 "Please ensure the server is running."
             )
             
-        prompt = self.STYLE_PROMPTS.get(style, self.STYLE_PROMPTS["🎯 Colored Silhouette (채색 실루엣)"])
+        prompt = self.STYLE_PROMPTS.get(self._normalize_style(style), self.STYLE_PROMPTS["🎨 Colored"])
         
         if color:
             prompt += f", {color} color scheme"
@@ -141,6 +141,16 @@ class LocalGenerator:
                 return self._bytes_to_image(image_bytes)
                 
         return None
+
+    def _normalize_style(self, style):
+        """Map style labels to canonical keys."""
+        text = str(style or "").strip()
+        low = text.lower()
+        if ("measured" in low) or ("publication" in low):
+            return "🏛️ Measured"
+        if ("line" in low):
+            return "📐 Line"
+        return "🎨 Colored"
         
     def _generate_comfyui(self, image_path, prompt):
         """Generate using ComfyUI API."""
@@ -195,15 +205,15 @@ Coming soon...
 
 ## Recommended Models for Icon Generation
 
-1. **For Colored Silhouette style:**
+1. **For Colored style:**
    - Anything V5
    - Counterfeit V3
 
-2. **For Line Drawing style:**
+2. **For Line style:**
    - Deliberate V2
    - SD 1.5 with LoRA
 
-3. **For Publication style:**
+3. **For Measured style:**
    - Realistic Vision V5
    - SDXL Base
 
