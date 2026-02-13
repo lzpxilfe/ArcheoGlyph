@@ -222,13 +222,31 @@ class ContourGenerator:
             else:
                 internal_lines = profile_lines[:profile_count] + spine_lines[:1] + terminal_lines[:terminal_count]
         elif is_publication:
-            # Publication mode keeps factual texture hints plus structural cues.
-            publication_profile = max(0, min(2, profile_count))
-            internal_lines = texture_lines[:texture_count] + profile_lines[:publication_profile] + spine_lines[:1]
+            if is_roundish:
+                # For round artifacts, prefer motif lines over forced center spine.
+                internal_lines = []
+                if round_motif_lines:
+                    internal_lines += round_motif_lines[:max(2, min(texture_count, round_motif_limit))]
+                if round_lines:
+                    internal_lines += round_lines[:1]
+            else:
+                # Publication mode keeps factual texture hints plus structural cues.
+                publication_profile = max(0, min(2, profile_count))
+                internal_lines = texture_lines[:texture_count] + profile_lines[:publication_profile] + spine_lines[:1]
         elif is_line_drawing:
-            # Line mode removes horizontal bars and keeps only vertical/diagonal factual cues.
-            line_lines = self._remove_near_horizontal_lines(texture_lines[:max(6, line_detail_count)] + spine_lines[:1])
-            internal_lines = line_lines[:max(1, line_detail_count)] if line_detail_count > 0 else []
+            if is_roundish:
+                # Round line-drawing should not inject a vertical center seam.
+                if round_motif_lines:
+                    internal_lines = round_motif_lines[:max(2, line_detail_count + 1)]
+                else:
+                    line_lines = self._remove_near_horizontal_lines(texture_lines[:max(10, line_detail_count * 2)])
+                    internal_lines = line_lines[:max(1, line_detail_count)] if line_detail_count > 0 else []
+                if not internal_lines and round_lines:
+                    internal_lines = round_lines[:1]
+            else:
+                # Line mode removes horizontal bars and keeps only vertical/diagonal factual cues.
+                line_lines = self._remove_near_horizontal_lines(texture_lines[:max(6, line_detail_count)] + spine_lines[:1])
+                internal_lines = line_lines[:max(1, line_detail_count)] if line_detail_count > 0 else []
         else:
             # Colored mode: symbolic structural lines only (avoid painterly/noisy interiors).
             if is_roundish:
