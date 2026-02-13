@@ -141,6 +141,35 @@ class HuggingFaceGenerator:
         """Map style labels to canonical style keys."""
         return normalize_style(style)
 
+    def _prompt_influence_score(self, prompt):
+        """
+        Estimate how strongly user text prompt should influence stylization.
+        Returns a score in [0.0, 1.0].
+        """
+        text = str(prompt or "").strip().lower()
+        if not text:
+            return 0.0
+
+        if text == "archaeological artifact from reference photo":
+            return 0.0
+
+        score = 0.35
+        if len(text) >= 18:
+            score += 0.15
+
+        style_terms = (
+            "game", "icon", "stylized", "symbol", "emblem", "catalog",
+            "flat", "vector", "clean", "minimal", "badge", "ui"
+        )
+        if any(term in text for term in style_terms):
+            score += 0.30
+
+        strong_terms = ("fantasy", "rpg", "cel", "toon", "illustration")
+        if any(term in text for term in strong_terms):
+            score += 0.20
+
+        return max(0.0, min(1.0, score))
+
     def _parse_hex_rgb(self, hex_color):
         """Parse #RRGGBB to (r,g,b), return None if invalid."""
         value = str(hex_color or "").strip().lstrip("#")
@@ -489,7 +518,15 @@ class HuggingFaceGenerator:
         except Exception:
             return None
 
-    def _apply_reference_mask(self, generated_image, image_path, symmetry=False, style=None, color=None):
+    def _apply_reference_mask(
+        self,
+        generated_image,
+        image_path,
+        symmetry=False,
+        style=None,
+        color=None,
+        prompt_influence=0.0,
+    ):
         """
         Force generated result to follow reference silhouette and linework.
         """
@@ -528,8 +565,10 @@ class HuggingFaceGenerator:
             texture_noise = self._estimate_texture_noise(generated, mask_img)
 
             if style_key == STYLE_COLORED:
-                flatten = texture_noise >= 24.0
-                preserve_ratio = 0.16 if flatten else 0.30
+                flatten_threshold = 24.0 + (8.0 * float(prompt_influence))
+                flatten = texture_noise >= flatten_threshold
+                base_ratio = 0.30 + (0.22 * float(prompt_influence))
+                preserve_ratio = max(0.16, min(0.56, base_ratio - (0.08 if flatten else 0.0)))
                 out = self._harmonize_colored_output(
                     out,
                     self._estimate_reference_rgb(image_path, mask_img, forced_hex=color),
@@ -542,8 +581,10 @@ class HuggingFaceGenerator:
             # If colored output is too flat, inject measured tone structure from reference image.
             if style_key == STYLE_COLORED:
                 luma_var = self._estimate_luma_variance(out, mask_img)
-                if luma_var < 110.0:
-                    out = self._apply_reference_tone_map(out, image_path, mask_img, strength=0.52)
+                luma_threshold = 110.0 - (32.0 * float(prompt_influence))
+                if luma_var < luma_threshold:
+                    tone_strength = max(0.24, 0.52 - (0.24 * float(prompt_influence)))
+                    out = self._apply_reference_tone_map(out, image_path, mask_img, strength=tone_strength)
 
             overlay_linework = str(
                 self.settings.value('ArcheoGlyph/hf_overlay_linework', 'false')
@@ -552,10 +593,16 @@ class HuggingFaceGenerator:
             if style_key in (STYLE_LINE, STYLE_MEASURED):
                 overlay_linework = True
             if style_key == STYLE_COLORED:
-                overlay_linework = True
-                overlay_opacity = 0.52
-            if style_key == STYLE_COLORED and texture_noise >= 28.0:
-                overlay_opacity = 0.68
+                if overlay_linework:
+                    overlay_opacity = max(0.22, 0.58 - (0.28 * float(prompt_influence)))
+                elif float(prompt_influence) < 0.35:
+                    overlay_linework = True
+                    overlay_opacity = 0.52
+                elif texture_noise >= (30.0 + (6.0 * float(prompt_influence))):
+                    overlay_linework = True
+                    overlay_opacity = 0.38
+            if style_key == STYLE_COLORED and overlay_linework and texture_noise >= 28.0:
+                overlay_opacity = min(0.72, overlay_opacity + 0.14)
 
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
@@ -579,7 +626,8 @@ class HuggingFaceGenerator:
             # If output remains highly noisy, fall back to deterministic factual contour.
             if style_key == STYLE_COLORED:
                 final_noise = self._estimate_texture_noise(out, mask_img)
-                if final_noise >= 34.0:
+                fallback_noise_threshold = 34.0 + (14.0 * float(prompt_influence))
+                if final_noise >= fallback_noise_threshold:
                     fallback = self._generate_evidence_fallback(
                         image_path=image_path,
                         style=style,
@@ -604,6 +652,7 @@ class HuggingFaceGenerator:
         symmetry=False,
         style=None,
         color=None,
+        prompt_influence=0.0,
     ):
         """Try a payload across model list and return first valid QImage."""
         for model in models_to_try:
@@ -628,6 +677,7 @@ class HuggingFaceGenerator:
                             symmetry=symmetry,
                             style=style,
                             color=color,
+                            prompt_influence=prompt_influence,
                         )
                     return image
 
@@ -698,6 +748,7 @@ class HuggingFaceGenerator:
         }
 
         error_logs = []
+        prompt_influence = self._prompt_influence_score(prompt)
         base_prompt = self._build_prompt(
             prompt=prompt,
             style=style,
@@ -738,12 +789,15 @@ class HuggingFaceGenerator:
                     )
                     if reference_hex:
                         img2img_prompt += f", keep material hue near {reference_hex}"
-                    img_strength = 0.18
+                    img_strength = 0.18 + (0.14 * float(prompt_influence))
                 else:
                     with open(image_path, 'rb') as f:
                         image_b64 = base64.b64encode(f.read()).decode('utf-8')
                     img2img_prompt = base_prompt
-                    img_strength = 0.22
+                    img_strength = 0.22 + (0.12 * float(prompt_influence))
+
+                img_steps = int(24 + (4 * float(prompt_influence)))
+                img_guidance = 4.0 + (1.2 * float(prompt_influence))
 
                 img2img_models = []
                 for mid in [
@@ -761,8 +815,8 @@ class HuggingFaceGenerator:
                     "parameters": {
                         "prompt": img2img_prompt,
                         "negative_prompt": self._negative_prompt(),
-                        "num_inference_steps": 24,
-                        "guidance_scale": 4.0,
+                        "num_inference_steps": img_steps,
+                        "guidance_scale": img_guidance,
                         "strength": img_strength,
                     }
                 }
@@ -777,6 +831,7 @@ class HuggingFaceGenerator:
                     symmetry=symmetry,
                     style=style,
                     color=color,
+                    prompt_influence=prompt_influence,
                 )
                 if result:
                     return result
@@ -805,6 +860,7 @@ class HuggingFaceGenerator:
                 symmetry=symmetry,
                 style=style,
                 color=color,
+                prompt_influence=prompt_influence,
             )
             if result:
                 return result
