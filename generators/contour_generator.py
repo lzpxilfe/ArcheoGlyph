@@ -116,10 +116,21 @@ class ContourGenerator:
         line_detail_count = int(round(self._clamp((1.0 + (9.0 * factuality_v) - (6.0 * symbolic_v) - (4.0 * exaggeration_v)), 0.0, 12.0)))
 
         main_contour = max(contours, key=cv2.contourArea)
+        contour_area = float(cv2.contourArea(main_contour))
+        contour_perimeter = float(cv2.arcLength(main_contour, True))
+        contour_circularity = 0.0
+        if contour_perimeter > 1e-6:
+            contour_circularity = (4.0 * np.pi * contour_area) / (contour_perimeter * contour_perimeter)
+        _, _, w_box, h_box = cv2.boundingRect(main_contour)
+        aspect_balance = min(w_box, h_box) / max(1.0, float(max(w_box, h_box)))
+        is_roundish = contour_circularity >= 0.70 and aspect_balance >= 0.78
+
         if is_typology:
             base_epsilon = 0.0026
         else:
             base_epsilon = 0.0014
+        if is_roundish:
+            base_epsilon *= 0.72
         epsilon_factor = base_epsilon + (0.0018 * symbolic_v) + (0.0012 * exaggeration_v) - (0.0009 * factuality_v)
         epsilon_factor = self._clamp(epsilon_factor, 0.0008, 0.0052)
         epsilon = epsilon_factor * cv2.arcLength(main_contour, True)
@@ -166,7 +177,12 @@ class ContourGenerator:
         texture_lines = self._extract_internal_lines(processing_bgr, target_mask, main_contour)
 
         if is_typology:
-            internal_lines = profile_lines[:profile_count] + spine_lines[:1] + terminal_lines[:terminal_count]
+            if is_roundish:
+                internal_lines = profile_lines[:profile_count]
+                if terminal_count > 0:
+                    internal_lines += terminal_lines[:1]
+            else:
+                internal_lines = profile_lines[:profile_count] + spine_lines[:1] + terminal_lines[:terminal_count]
         elif is_publication:
             # Publication mode keeps factual texture hints plus structural cues.
             publication_profile = max(0, min(2, profile_count))
@@ -177,9 +193,15 @@ class ContourGenerator:
             internal_lines = line_lines[:max(1, line_detail_count)] if line_detail_count > 0 else []
         else:
             # Colored mode: symbolic structural lines only (avoid painterly/noisy interiors).
-            internal_lines = profile_lines[:max(1, profile_count)] + spine_lines[:1]
-            if factuality_v >= 0.7 and symbolic_v <= 0.4 and texture_count > 0:
-                internal_lines += self._remove_near_horizontal_lines(texture_lines)[:2]
+            if is_roundish:
+                # Circular artifacts (e.g. coins) should avoid forced vertical spine lines.
+                internal_lines = profile_lines[:max(1, min(3, profile_count))]
+                if factuality_v >= 0.72 and texture_count > 0:
+                    internal_lines += self._remove_near_horizontal_lines(texture_lines)[:1]
+            else:
+                internal_lines = profile_lines[:max(1, profile_count)] + spine_lines[:1]
+                if factuality_v >= 0.7 and symbolic_v <= 0.4 and texture_count > 0:
+                    internal_lines += self._remove_near_horizontal_lines(texture_lines)[:2]
 
         if is_typology:
             base_color = self._muted_hex(final_color, keep=0.66)
@@ -707,11 +729,18 @@ class ContourGenerator:
             target_mask = refined
 
         target_mask = self._select_primary_component(target_mask)
+        # If selected mask still looks like a border-attached background chunk,
+        # retry with a center-rectangle GrabCut pass.
+        fg_ratio = float(np.count_nonzero(target_mask)) / float(max(1, h * w))
+        if self._mask_touches_border(target_mask) and fg_ratio > 0.45:
+            center_fallback = self._get_mask_center_grabcut(blurred)
+            if center_fallback is not None:
+                target_mask = center_fallback
         target_mask = self._smooth_mask_edges(target_mask)
         return target_mask
 
     def _select_primary_component(self, mask):
-        """Keep the best foreground component by size + center + tallness score."""
+        """Keep the best foreground component by size + center + compactness score."""
         h, w = mask.shape[:2]
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         if not contours:
@@ -719,32 +748,108 @@ class ContourGenerator:
 
         cx_ref = w * 0.5
         cy_ref = h * 0.5
-        best = None
-        best_score = -1.0
+        candidate_items = []
 
         min_area = max(120.0, (h * w) * 0.002)
         for c in contours:
             area = float(cv2.contourArea(c))
             if area < min_area:
                 continue
+
             x, y, cw, ch = cv2.boundingRect(c)
             cx = x + (cw * 0.5)
             cy = y + (ch * 0.5)
             d = ((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5
             d_norm = d / max(1.0, (w * w + h * h) ** 0.5)
-            tall = ch / max(1.0, float(cw))
-            tall_norm = min(1.0, tall / 2.2)
-            score = area * (1.0 - min(0.95, d_norm)) * (0.6 + 0.4 * tall_norm)
-            if score > best_score:
-                best_score = score
-                best = c
 
-        if best is None:
+            perim = float(cv2.arcLength(c, True))
+            circularity = 0.0
+            if perim > 1e-6:
+                circularity = (4.0 * np.pi * area) / (perim * perim)
+            circularity = max(0.0, min(1.0, circularity))
+
+            fill_ratio = area / max(1.0, float(cw * ch))
+            fill_ratio = max(0.0, min(1.0, fill_ratio))
+
+            tall = ch / max(1.0, float(cw))
+            tall_norm = min(1.0, tall / 2.4)
+
+            touches_border = (
+                x <= 1 or y <= 1 or (x + cw) >= (w - 1) or (y + ch) >= (h - 1)
+            )
+
+            score = area * (1.0 - min(0.95, d_norm))
+            score *= (0.56 + (0.22 * fill_ratio) + (0.12 * circularity) + (0.10 * tall_norm))
+            candidate_items.append((score, touches_border, c))
+
+        if not candidate_items:
             best = max(contours, key=cv2.contourArea)
+        else:
+            non_border = [item for item in candidate_items if not item[1]]
+            pool = non_border if non_border else candidate_items
+            best = max(pool, key=lambda item: item[0])[2]
 
         out = np.zeros((h, w), dtype=np.uint8)
         cv2.drawContours(out, [best], -1, 255, thickness=cv2.FILLED)
         return out
+
+    def _mask_touches_border(self, mask, border=2):
+        """Return True when foreground pixels touch any image border band."""
+        if mask is None or mask.size == 0:
+            return False
+        b = int(max(1, border))
+        if np.any(mask[:b, :] > 0):
+            return True
+        if np.any(mask[-b:, :] > 0):
+            return True
+        if np.any(mask[:, :b] > 0):
+            return True
+        if np.any(mask[:, -b:] > 0):
+            return True
+        return False
+
+    def _get_mask_center_grabcut(self, bgr_img):
+        """
+        Fallback mask extraction seeded by a central rectangle.
+        Helps when border/background chunks dominate the initial mask.
+        """
+        try:
+            h, w = bgr_img.shape[:2]
+            if h < 8 or w < 8:
+                return None
+
+            x = int(max(1, w * 0.08))
+            y = int(max(1, h * 0.06))
+            rw = int(max(4, w * 0.84))
+            rh = int(max(4, h * 0.88))
+
+            gc_mask = np.zeros((h, w), dtype=np.uint8)
+            bgd_model = np.zeros((1, 65), np.float64)
+            fgd_model = np.zeros((1, 65), np.float64)
+            cv2.grabCut(
+                bgr_img,
+                gc_mask,
+                (x, y, rw, rh),
+                bgd_model,
+                fgd_model,
+                4,
+                cv2.GC_INIT_WITH_RECT,
+            )
+
+            fg = np.where(
+                (gc_mask == cv2.GC_FGD) | (gc_mask == cv2.GC_PR_FGD),
+                255,
+                0,
+            ).astype(np.uint8)
+            if np.count_nonzero(fg) < 120:
+                return None
+
+            fg = self._select_primary_component(fg)
+            if np.count_nonzero(fg) < 120:
+                return None
+            return self._smooth_mask_edges(fg)
+        except Exception:
+            return None
 
     def _refine_with_grabcut(self, bgr_img, init_mask):
         """Refine foreground/background split with GrabCut when available."""
