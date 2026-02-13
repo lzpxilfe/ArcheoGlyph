@@ -14,7 +14,7 @@ except ImportError:
     np = None
 from qgis.PyQt.QtCore import QSettings
 
-from .style_utils import STYLE_LINE, STYLE_MEASURED, normalize_style
+from .style_utils import STYLE_LINE, STYLE_MEASURED, STYLE_TYPOLOGY, normalize_style
 
 
 class ContourGenerator:
@@ -78,14 +78,16 @@ class ContourGenerator:
 
         final_color = color if color else self._extract_dominant_color(processing_bgr, target_mask)
 
-        main_contour = max(contours, key=cv2.contourArea)
-        epsilon = 0.0016 * cv2.arcLength(main_contour, True)
-        approx = cv2.approxPolyDP(main_contour, epsilon, True)
-
         style_key = normalize_style(style)
+        is_typology = style_key == STYLE_TYPOLOGY
         is_publication = style_key == STYLE_MEASURED
         is_line_drawing = style_key == STYLE_LINE
         is_mono = is_line_drawing or is_publication
+
+        main_contour = max(contours, key=cv2.contourArea)
+        epsilon_factor = 0.0032 if is_typology else 0.0016
+        epsilon = epsilon_factor * cv2.arcLength(main_contour, True)
+        approx = cv2.approxPolyDP(main_contour, epsilon, True)
 
         svg_w = processing_bgr.shape[1]
         svg_h = processing_bgr.shape[0]
@@ -120,9 +122,12 @@ class ContourGenerator:
 
         profile_lines = self._estimate_profile_bands(target_mask, max_lines=3)
         spine_lines = self._estimate_spine_line(target_mask)
+        terminal_lines = self._estimate_terminal_bars(target_mask, max_lines=2)
         texture_lines = self._extract_internal_lines(processing_bgr, target_mask, main_contour)
 
-        if is_publication:
+        if is_typology:
+            internal_lines = profile_lines[:3] + spine_lines[:1] + terminal_lines[:2]
+        elif is_publication:
             # Publication mode keeps factual texture hints plus structural cues.
             internal_lines = texture_lines[:14] + profile_lines[:2] + spine_lines[:1]
         elif is_line_drawing:
@@ -132,7 +137,53 @@ class ContourGenerator:
             # Colored mode: symbolic structural lines only (avoid painterly/noisy interiors).
             internal_lines = profile_lines + spine_lines[:1]
 
-        if is_mono:
+        if is_typology:
+            base_color = self._muted_hex(final_color, keep=0.66)
+            outline_color = self._darken_hex(base_color, 0.50)
+            structure_color = self._darken_hex(base_color, 0.64)
+            shade_color = self._darken_hex(base_color, 0.78)
+            highlight_color = self._lighten_hex(base_color, 0.18)
+
+            svg_output.append(
+                f'<path d="{path_data}" fill="{base_color}" fill-opacity="1.0" stroke="{outline_color}" '
+                'stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+
+            for line in profile_lines[:3]:
+                line_path = self._polyline_to_path(line)
+                if not line_path:
+                    continue
+                svg_output.append(
+                    f'<path d="{line_path}" fill="none" stroke="{shade_color}" stroke-opacity="0.44" '
+                    'stroke-width="3.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+                svg_output.append(
+                    f'<path d="{line_path}" fill="none" stroke="{structure_color}" stroke-opacity="0.88" '
+                    'stroke-width="1.10" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+
+            for line in spine_lines[:1]:
+                line_path = self._polyline_to_path(line)
+                if not line_path:
+                    continue
+                svg_output.append(
+                    f'<path d="{line_path}" fill="none" stroke="{highlight_color}" stroke-opacity="0.42" '
+                    'stroke-width="1.80" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+                svg_output.append(
+                    f'<path d="{line_path}" fill="none" stroke="{structure_color}" stroke-opacity="0.85" '
+                    'stroke-width="1.00" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+
+            for line in terminal_lines[:2]:
+                line_path = self._polyline_to_path(line)
+                if not line_path:
+                    continue
+                svg_output.append(
+                    f'<path d="{line_path}" fill="none" stroke="{structure_color}" stroke-opacity="0.90" '
+                    'stroke-width="1.20" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+        elif is_mono:
             if is_publication:
                 outline_width = "1.6"
                 detail_width = "1.0"
@@ -375,6 +426,42 @@ class ContourGenerator:
 
         return lines
 
+    def _estimate_terminal_bars(self, mask, max_lines=2):
+        """
+        Estimate short terminal bars near top/bottom extremes.
+        These emulate typological marker conventions seen in catalog symbols.
+        """
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 80:
+            return []
+
+        top_y = int(np.min(ys))
+        bot_y = int(np.max(ys))
+        h = max(1, bot_y - top_y + 1)
+        if h < 20:
+            return []
+
+        rows = []
+        for y in (top_y + int(h * 0.06), bot_y - int(h * 0.08)):
+            if y < 0 or y >= mask.shape[0]:
+                continue
+            row = np.where(mask[y] > 0)[0]
+            if len(row) < 6:
+                continue
+            x0 = int(row[0])
+            x1 = int(row[-1])
+            width = x1 - x0
+            if width < 10:
+                continue
+            margin = int(max(2, width * 0.30))
+            x0 += margin
+            x1 -= margin
+            if x1 - x0 < 6:
+                continue
+            rows.append([[x0, y], [x1, y]])
+
+        return rows[:max(1, int(max_lines))]
+
     def _darken_hex(self, hex_color, factor):
         """Darken a hex color by multiplying channels by factor [0..1]."""
         value = (hex_color or "#8B4513").strip().lstrip("#")
@@ -390,6 +477,41 @@ class ContourGenerator:
             return f"#{r:02x}{g:02x}{b:02x}"
         except Exception:
             return "#333333"
+
+    def _lighten_hex(self, hex_color, amount):
+        """Lighten a hex color by blending toward white by amount [0..1]."""
+        value = (hex_color or "#8B4513").strip().lstrip("#")
+        if len(value) != 6:
+            return "#d0d0d0"
+        try:
+            r = int(value[0:2], 16)
+            g = int(value[2:4], 16)
+            b = int(value[4:6], 16)
+            a = max(0.0, min(1.0, float(amount)))
+            r = int(r + ((255 - r) * a))
+            g = int(g + ((255 - g) * a))
+            b = int(b + ((255 - b) * a))
+            return f"#{r:02x}{g:02x}{b:02x}"
+        except Exception:
+            return "#d0d0d0"
+
+    def _muted_hex(self, hex_color, keep=0.70):
+        """Mute saturation by blending channels toward luminance."""
+        value = (hex_color or "#8B4513").strip().lstrip("#")
+        if len(value) != 6:
+            return "#6f7c70"
+        try:
+            r = int(value[0:2], 16)
+            g = int(value[2:4], 16)
+            b = int(value[4:6], 16)
+            lum = int((0.299 * r) + (0.587 * g) + (0.114 * b))
+            k = max(0.0, min(1.0, float(keep)))
+            r = int((r * k) + (lum * (1.0 - k)))
+            g = int((g * k) + (lum * (1.0 - k)))
+            b = int((b * k) + (lum * (1.0 - k)))
+            return f"#{r:02x}{g:02x}{b:02x}"
+        except Exception:
+            return "#6f7c70"
 
     def get_silhouette_bytes(self, image_path):
         """

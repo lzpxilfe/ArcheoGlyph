@@ -16,6 +16,7 @@ from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
     STYLE_MEASURED,
+    STYLE_TYPOLOGY,
     normalize_style,
 )
 
@@ -44,6 +45,11 @@ class LocalGenerator:
             "clean shape, precise outline, map symbol, "
             "transparent background, centered, high contrast, "
             "digital art, vector style"
+        ),
+        STYLE_TYPOLOGY: (
+            "archaeological typology symbol, standardized silhouette, "
+            "bold contour, central axis cue, 1-3 structural bands, "
+            "muted flat palette, no texture, transparent background, centered"
         ),
         STYLE_LINE: (
             "minimalist line art icon, archaeological artifact, "

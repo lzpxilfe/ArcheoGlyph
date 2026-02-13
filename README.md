@@ -12,7 +12,7 @@ It supports deterministic tracing and AI-assisted generation, then applies outpu
 
 ## Key Features
 - English-first UI for international use
-- Styles: `Colored`, `Line`, `Measured`
+- Styles: `Colored`, `Typology`, `Line`, `Measured`
 - Auto Trace with contour + internal feature-line extraction
 - Optional SAM backend for segmentation (`OpenCV` fallback included)
 - Hugging Face reference-first image generation with modern model fallback
@@ -41,7 +41,7 @@ Current plugin code version: `0.1.0`
 ## Quick Start
 1. Open ArcheoGlyph from the toolbar.
 2. Drop an input image (artifact/feature) or select `Use Template`.
-3. Choose generation mode and style (`Colored`, `Line`, `Measured`).
+3. Choose generation mode and style (`Colored`, `Typology`, `Line`, `Measured`).
 4. Click `Generate`.
 5. Click `Save to Library` or `Apply to Layer`.
 
@@ -83,4 +83,3 @@ Issues and pull requests are welcome:
 - Issues: https://github.com/lzpxilfe/ArcheoGlyph/issues
 
 If ArcheoGlyph helps your work, please star the repository.
-

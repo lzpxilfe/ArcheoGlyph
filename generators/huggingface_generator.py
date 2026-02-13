@@ -18,6 +18,7 @@ from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
     STYLE_MEASURED,
+    STYLE_TYPOLOGY,
     normalize_style,
 )
 
@@ -118,6 +119,11 @@ class HuggingFaceGenerator:
             parts.append("style hint: monochrome line drawing, clean contour and key internal lines")
         elif style_key == STYLE_MEASURED:
             parts.append("style hint: black and white measured drawing, technical publication style")
+        elif style_key == STYLE_TYPOLOGY:
+            parts.append(
+                "style hint: archaeological typology icon, standardized silhouette, "
+                "bold outline, central axis cue, 1-3 structural bands, flat muted palette"
+            )
         else:
             parts.append(
                 "style hint: archaeological catalog icon, bold contour, "
@@ -159,7 +165,8 @@ class HuggingFaceGenerator:
 
         style_terms = (
             "game", "icon", "stylized", "symbol", "emblem", "catalog",
-            "flat", "vector", "clean", "minimal", "badge", "ui"
+            "flat", "vector", "clean", "minimal", "badge", "ui",
+            "typology", "typological", "dagger", "artifact class", "classification"
         )
         if any(term in text for term in style_terms):
             score += 0.30
@@ -565,7 +572,15 @@ class HuggingFaceGenerator:
 
             texture_noise = self._estimate_texture_noise(generated, mask_img)
 
-            if style_key == STYLE_COLORED:
+            if style_key == STYLE_TYPOLOGY:
+                out = self._harmonize_colored_output(
+                    out,
+                    self._estimate_reference_rgb(image_path, mask_img, forced_hex=color),
+                    flatten=True,
+                    preserve_ratio=0.42,
+                )
+                out = self._apply_reference_tone_map(out, image_path, mask_img, strength=0.34)
+            elif style_key == STYLE_COLORED:
                 flatten_threshold = 24.0 + (8.0 * float(prompt_influence))
                 flatten = texture_noise >= flatten_threshold
                 base_ratio = 0.30 + (0.22 * float(prompt_influence))
@@ -593,6 +608,9 @@ class HuggingFaceGenerator:
             overlay_opacity = 1.0
             if style_key in (STYLE_LINE, STYLE_MEASURED):
                 overlay_linework = True
+            if style_key == STYLE_TYPOLOGY:
+                overlay_linework = True
+                overlay_opacity = max(0.55, 0.72 - (0.15 * float(prompt_influence)))
             if style_key == STYLE_COLORED:
                 # Keep strong structural overlay only in low-prompt or contour-seed cases.
                 if overlay_linework:
@@ -611,9 +629,10 @@ class HuggingFaceGenerator:
 
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
+                overlay_style = STYLE_TYPOLOGY if style_key == STYLE_TYPOLOGY else STYLE_LINE
                 line_svg = self.contour_gen.generate(
                     image_path=image_path,
-                    style=STYLE_LINE,
+                    style=overlay_style,
                     color=None,
                     symmetry=symmetry
                 )
@@ -629,9 +648,10 @@ class HuggingFaceGenerator:
                     painter.end()
 
             # If output remains highly noisy, fall back to deterministic factual contour.
-            if style_key == STYLE_COLORED:
+            if style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
                 final_noise = self._estimate_texture_noise(out, mask_img)
-                fallback_noise_threshold = 34.0 + (14.0 * float(prompt_influence))
+                base_noise_threshold = 34.0 if style_key == STYLE_COLORED else 40.0
+                fallback_noise_threshold = base_noise_threshold + (14.0 * float(prompt_influence))
                 # With strong prompt input, avoid collapsing back to contour too early.
                 if final_noise >= fallback_noise_threshold and float(prompt_influence) < 0.78:
                     fallback = self._generate_evidence_fallback(

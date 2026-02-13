@@ -19,6 +19,7 @@ from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
     STYLE_MEASURED,
+    STYLE_TYPOLOGY,
     normalize_style,
 )
 
@@ -52,6 +53,14 @@ class GeminiGenerator:
             "3. SHADING: Use 'Cel Shading' or '2-Tone Shading' (Base Color + Shadow Color) based on the REFERENCE PHOTO (Image 1). "
             "4. AESTHETIC: Flat Design but with depth. Like a high-quality strategy game unit or resource icon. "
             "NO gradient meshes. NO realistic texture noise. Clean vector shapes."
+        ),
+        STYLE_TYPOLOGY: (
+            "RENDERING STYLE: Archaeological typology catalog icon. "
+            "1. SHAPE RULES: Preserve measured proportions and diagnostic silhouette. "
+            "2. OUTLINE: Bold and clean outer contour. "
+            "3. INTERNAL STRUCTURE: Add 1-3 structural lines (e.g., rim/shoulder/base or blade midline). "
+            "4. SHADING: Use flat muted tones only (2-3 tone blocks), never painterly texture. "
+            "5. FORBIDDEN: no scenery, no decorative motifs, no invented ornaments."
         ),
         STYLE_LINE: (
             "RENDERING STYLE: Archaeological Line Drawing. "
@@ -161,6 +170,15 @@ class GeminiGenerator:
                 "4. SHADING: Optional 2-3 flat tone regions only. No painterly texture. "
                 "5. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background. "
                 "6. SVG PURITY: Use simple vector paths only; do not use gradients, filters, images, or masks."
+            )
+        elif style_key == STYLE_TYPOLOGY:
+            style_prompt = (
+                "RENDERING STYLE: Typological archaeological symbol icon. "
+                "1. Preserve the measured silhouette and diagnostic form transitions. "
+                "2. Use a bold outer contour and clean axis-centered composition. "
+                "3. Add 1-3 structural lines only (e.g., shoulder/band/midline). "
+                "4. Use muted flat color blocks (2-3 tones), no texture noise. "
+                "5. Avoid decorative elements and avoid scenic context."
             )
 
         prompt = self._SHAPE_PREAMBLE + style_prompt
@@ -403,6 +421,8 @@ class GeminiGenerator:
             return False, "no path elements found"
         if style_key == STYLE_COLORED and path_count > 18:
             return False, f"too many path elements for factual colored style ({path_count})"
+        if style_key == STYLE_TYPOLOGY and path_count > 26:
+            return False, f"too many path elements for typology style ({path_count})"
         if style_key in (STYLE_LINE, STYLE_MEASURED) and path_count > 42:
             return False, f"too many path elements for line/measured style ({path_count})"
 
@@ -418,6 +438,8 @@ class GeminiGenerator:
 
         if style_key == STYLE_COLORED and len(colors) > 6:
             return False, f"too many distinct colors ({len(colors)})"
+        if style_key == STYLE_TYPOLOGY and len(colors) > 5:
+            return False, f"too many distinct colors for typology style ({len(colors)})"
         if style_key in (STYLE_LINE, STYLE_MEASURED):
             for c in colors:
                 if c in ("#000", "#000000", "black", "#111", "#111111", "#222", "#222222"):
@@ -517,6 +539,8 @@ class GeminiGenerator:
 
         if style_key == STYLE_COLORED:
             ok = (iou >= 0.72 and recall >= 0.84 and precision >= 0.72)
+        elif style_key == STYLE_TYPOLOGY:
+            ok = (iou >= 0.66 and recall >= 0.80 and precision >= 0.66)
         elif style_key == STYLE_LINE:
             ok = (iou >= 0.42 and recall >= 0.66)
         else:
