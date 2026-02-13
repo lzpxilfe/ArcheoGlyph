@@ -9,7 +9,7 @@ import os
 from urllib.parse import urlparse
 
 import requests
-from qgis.PyQt.QtCore import QByteArray, QSettings, Qt
+from qgis.PyQt.QtCore import QByteArray, QBuffer, QIODevice, QSettings, Qt
 from qgis.PyQt.QtGui import QImage, QPainter
 from qgis.PyQt.QtSvg import QSvgRenderer
 
@@ -209,6 +209,30 @@ class HuggingFaceGenerator:
         if count < 5:
             return (88, 112, 92)
         return (int(sum_r / count), int(sum_g / count), int(sum_b / count))
+
+    def _rgb_to_hex(self, rgb):
+        """Convert (r,g,b) tuple to #rrggbb."""
+        if not rgb or len(rgb) != 3:
+            return "#58705c"
+        r = max(0, min(255, int(rgb[0])))
+        g = max(0, min(255, int(rgb[1])))
+        b = max(0, min(255, int(rgb[2])))
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+    def _qimage_to_base64_png(self, image):
+        """Encode QImage to base64 PNG string."""
+        if image is None or image.isNull():
+            return None
+
+        ba = QByteArray()
+        buffer = QBuffer(ba)
+        if not buffer.open(QIODevice.WriteOnly):
+            return None
+        ok = image.save(buffer, "PNG")
+        buffer.close()
+        if not ok:
+            return None
+        return base64.b64encode(bytes(ba)).decode("utf-8")
 
     def _estimate_texture_noise(self, image, mask_img):
         """Estimate high-frequency texture noise inside masked artifact area."""
@@ -675,10 +699,43 @@ class HuggingFaceGenerator:
 
         # 1) If reference image exists, try img2img/edit path first.
         has_reference = bool(image_path and os.path.exists(image_path))
+        contour_seed = None
+        contour_seed_b64 = None
+        reference_hex = color
+        if has_reference:
+            # Build deterministic Auto Trace seed first, then let HF refine tones on top of it.
+            contour_seed = self._generate_evidence_fallback(
+                image_path=image_path,
+                style=style,
+                color=color,
+                symmetry=symmetry,
+            )
+            if contour_seed is not None:
+                contour_seed_b64 = self._qimage_to_base64_png(contour_seed)
+                if not reference_hex:
+                    silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
+                    if silhouette_bytes:
+                        mask_img = QImage()
+                        if mask_img.loadFromData(silhouette_bytes):
+                            reference_hex = self._rgb_to_hex(self._estimate_reference_rgb(image_path, mask_img))
+
         if has_reference:
             try:
-                with open(image_path, 'rb') as f:
-                    image_b64 = base64.b64encode(f.read()).decode('utf-8')
+                if contour_seed_b64:
+                    image_b64 = contour_seed_b64
+                    img2img_prompt = (
+                        f"{base_prompt}, "
+                        "input image is an archaeological contour seed, preserve its exact silhouette and proportions, "
+                        "only refine internal tone transitions, keep flat vector-like shading, no new ornaments"
+                    )
+                    if reference_hex:
+                        img2img_prompt += f", keep material hue near {reference_hex}"
+                    img_strength = 0.18
+                else:
+                    with open(image_path, 'rb') as f:
+                        image_b64 = base64.b64encode(f.read()).decode('utf-8')
+                    img2img_prompt = base_prompt
+                    img_strength = 0.22
 
                 img2img_models = []
                 for mid in [
@@ -694,11 +751,11 @@ class HuggingFaceGenerator:
                 img2img_payload = {
                     "inputs": image_b64,
                     "parameters": {
-                        "prompt": base_prompt,
+                        "prompt": img2img_prompt,
                         "negative_prompt": self._negative_prompt(),
                         "num_inference_steps": 24,
                         "guidance_scale": 4.0,
-                        "strength": 0.22,
+                        "strength": img_strength,
                     }
                 }
 
@@ -746,12 +803,14 @@ class HuggingFaceGenerator:
 
         # 3) Final deterministic evidence fallback if all remote calls fail.
         if has_reference:
-            contour_result = self._generate_evidence_fallback(
-                image_path=image_path,
-                style=style,
-                color=color,
-                symmetry=symmetry
-            )
+            contour_result = contour_seed
+            if contour_result is None:
+                contour_result = self._generate_evidence_fallback(
+                    image_path=image_path,
+                    style=style,
+                    color=color,
+                    symmetry=symmetry
+                )
             if contour_result:
                 return contour_result
 

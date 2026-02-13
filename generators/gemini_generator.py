@@ -266,6 +266,7 @@ class GeminiGenerator:
         
         last_error = None
         last_svg_issue = None
+        quota_blocked = False
         for model_name in models_to_try:
             # Retry logic with exponential backoff
             max_retries = 3
@@ -304,8 +305,19 @@ class GeminiGenerator:
                          
                 except Exception as e:
                     error_str = str(e)
+                    lowered = error_str.lower()
+                    is_quota_exhausted = (
+                        "quota exceeded" in lowered or
+                        "limit: 0" in lowered or
+                        "generate_content_free_tier" in lowered
+                    )
                     is_rate_limit = "429" in error_str or "Quota" in error_str or "ResourceExhausted" in error_str
-                    
+
+                    if is_quota_exhausted:
+                        last_error = e
+                        quota_blocked = True
+                        break
+
                     if is_rate_limit and attempt < max_retries:
                         import time
                         import random
@@ -318,9 +330,8 @@ class GeminiGenerator:
                         last_error = e
                         # If it's not a rate limit, or we ran out of retries, try the next model
                         break
-        
-        if last_error:
-            raise last_error
+            if quota_blocked:
+                break
 
         # Final factual fallback: deterministic contour extraction.
         try:
@@ -335,6 +346,14 @@ class GeminiGenerator:
         except Exception as e:
             if not last_error:
                 last_error = e
+
+        # If quota is exhausted and fallback failed, raise a concise actionable error.
+        if quota_blocked and last_error:
+            raise Exception(
+                "Gemini quota exhausted (HTTP 429). "
+                "Auto Trace fallback also failed. "
+                f"Original error: {last_error}"
+            )
 
         if last_error:
             raise last_error
