@@ -2,7 +2,7 @@
 """
 ArcheoGlyph - Local Stable Diffusion Generator
 Generates stylized archaeological symbols using local Stable Diffusion.
-Supports both ComfyUI and Automatic1111 WebUI backends.
+Uses Automatic1111 WebUI API backend.
 """
 
 import base64
@@ -22,17 +22,11 @@ from .style_utils import (
 class LocalGenerator:
     """Generator using local Stable Diffusion for symbol creation."""
     
-    # Default endpoints for different backends
     BACKENDS = {
         'automatic1111': {
             'txt2img': '/sdapi/v1/txt2img',
             'img2img': '/sdapi/v1/img2img',
             'default_port': 7860
-        },
-        'comfyui': {
-            'prompt': '/prompt',
-            'history': '/history',
-            'default_port': 8188
         }
     }
     
@@ -72,7 +66,8 @@ class LocalGenerator:
     def __init__(self):
         """Initialize the local generator."""
         self.settings = QSettings()
-        self.backend = self.settings.value('ArcheoGlyph/sd_backend', 'automatic1111')
+        self.backend = "automatic1111"
+        self.settings.setValue('ArcheoGlyph/sd_backend', self.backend)
         self.server_url = self.settings.value('ArcheoGlyph/sd_server', 'http://127.0.0.1:7860')
         
     def set_server(self, url, backend='automatic1111'):
@@ -86,10 +81,7 @@ class LocalGenerator:
         """Test connection to the local SD server."""
         try:
             import requests
-            if self.backend == 'automatic1111':
-                response = requests.get(f"{self.server_url}/sdapi/v1/sd-models", timeout=5)
-            else:
-                response = requests.get(f"{self.server_url}/system_stats", timeout=5)
+            response = requests.get(f"{self.server_url}/sdapi/v1/sd-models", timeout=5)
             return response.status_code == 200
         except Exception:
             return False
@@ -98,6 +90,7 @@ class LocalGenerator:
         self,
         image_path,
         style,
+        prompt="",
         color=None,
         factuality=None,
         symbolic_looseness=None,
@@ -117,20 +110,26 @@ class LocalGenerator:
                 "Please ensure the server is running."
             )
             
-        prompt = self.STYLE_PROMPTS.get(self._normalize_style(style), self.STYLE_PROMPTS[STYLE_COLORED])
-        prompt += ", " + self._style_control_hint(
+        base_prompt = self.STYLE_PROMPTS.get(self._normalize_style(style), self.STYLE_PROMPTS[STYLE_COLORED])
+        base_prompt += ", " + self._style_control_hint(
             factuality=factuality,
             symbolic_looseness=symbolic_looseness,
             exaggeration=exaggeration,
         )
         
         if color:
-            prompt += f", {color} color scheme"
-            
-        if self.backend == 'automatic1111':
-            return self._generate_a1111(image_path, prompt)
-        else:
-            return self._generate_comfyui(image_path, prompt)
+            base_prompt += f", {color} color scheme"
+
+        text_hint = str(prompt or "").strip()
+        if text_hint:
+            base_prompt += f", user note: {text_hint}"
+
+        if self.backend != 'automatic1111':
+            raise NotImplementedError(
+                "Only Automatic1111 backend is currently supported. "
+                "Please use an Automatic1111 server URL in settings."
+            )
+        return self._generate_a1111(image_path, base_prompt)
             
     def _generate_a1111(self, image_path, prompt):
         """Generate using Automatic1111 WebUI API."""

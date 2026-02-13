@@ -126,8 +126,16 @@ class SymbolManager:
             print(f"Error saving symbol: {e}")
             return False
             
-    def apply_to_layer(self, layer, symbol_image, size_mode=0, 
-                       min_size=DEFAULT_MIN_SYMBOL_SIZE_MM, max_size=DEFAULT_MAX_SYMBOL_SIZE_MM, size_field=None):
+    def apply_to_layer(
+        self,
+        layer,
+        symbol_image,
+        size_mode=0,
+        min_size=DEFAULT_MIN_SYMBOL_SIZE_MM,
+        max_size=DEFAULT_MAX_SYMBOL_SIZE_MM,
+        size_field=None,
+        num_classes=DEFAULT_GRADUATED_CLASSES,
+    ):
         """
         Apply a symbol to a vector layer.
         
@@ -137,6 +145,7 @@ class SymbolManager:
         :param min_size: Minimum symbol size
         :param max_size: Maximum symbol size
         :param size_field: Field name for graduated sizing (optional)
+        :param num_classes: Number of graduated classes (2..9 recommended)
         :return: True if successful
         """
         try:
@@ -151,7 +160,7 @@ class SymbolManager:
             else:
                 # Graduated size
                 return self._apply_graduated_symbol(
-                    layer, temp_path, size_mode, min_size, max_size, size_field
+                    layer, temp_path, size_mode, min_size, max_size, size_field, num_classes
                 )
                 
         except Exception as e:
@@ -173,8 +182,16 @@ class SymbolManager:
         
         return True
         
-    def _apply_graduated_symbol(self, layer, image_path, size_mode, 
-                                min_size, max_size, size_field=None):
+    def _apply_graduated_symbol(
+        self,
+        layer,
+        image_path,
+        size_mode,
+        min_size,
+        max_size,
+        size_field=None,
+        num_classes=DEFAULT_GRADUATED_CLASSES,
+    ):
         """Apply a graduated symbol renderer based on data count."""
         # If no field specified, try to use feature count or first numeric field
         if not size_field:
@@ -209,20 +226,21 @@ class SymbolManager:
             return self._apply_single_symbol(layer, image_path, (min_size + max_size) / 2)
 
         # Create ranges based on selected size mode.
-        num_classes = max(2, min(DEFAULT_GRADUATED_CLASSES, len(values)))
-        breaks = self._compute_breaks(values, num_classes, size_mode)
+        class_count = int(num_classes) if num_classes is not None else DEFAULT_GRADUATED_CLASSES
+        class_count = max(2, min(class_count, len(values)))
+        breaks = self._compute_breaks(values, class_count, size_mode)
         if len(breaks) < 2:
             return self._apply_single_symbol(layer, image_path, (min_size + max_size) / 2)
 
         ranges = []
-        class_count = len(breaks) - 1
-        for i in range(class_count):
+        break_count = len(breaks) - 1
+        for i in range(break_count):
             lower = float(breaks[i])
             upper = float(breaks[i + 1])
             if upper <= lower:
                 continue
 
-            size = min_size + (max_size - min_size) * ((i + 0.5) / max(1.0, float(class_count)))
+            size = min_size + (max_size - min_size) * ((i + 0.5) / max(1.0, float(break_count)))
 
             range_symbol = base_symbol.clone()
             range_layer = range_symbol.symbolLayer(0)

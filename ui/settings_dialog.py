@@ -22,7 +22,7 @@ from ..defaults import HF_DEFAULT_MODEL_ID, HF_FALLBACK_MODEL_IDS, HF_LEGACY_MOD
 class InfoLabel(QLabel):
     """A styled info label with icon."""
     
-    def __init__(self, text, icon="?뱄툘", parent=None):
+    def __init__(self, text, icon="Info", parent=None):
         super().__init__(parent)
         self.setText(f"{icon} {text}")
         self.setWordWrap(True)
@@ -42,7 +42,7 @@ class WarningLabel(QLabel):
     
     def __init__(self, text, parent=None):
         super().__init__(parent)
-        self.setText(f"?좑툘 {text}")
+        self.setText(f"Warning: {text}")
         self.setWordWrap(True)
         self.setStyleSheet("""
             QLabel {
@@ -73,7 +73,7 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Header
-        header = QLabel("<h2>?숋툘 ArcheoGlyph Settings</h2>")
+        header = QLabel("<h2>ArcheoGlyph Settings</h2>")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
         
@@ -97,23 +97,23 @@ class SettingsDialog(QDialog):
         
         # Tab 1: Google Gemini
         gemini_tab = self._create_gemini_tab()
-        tabs.addTab(gemini_tab, "?뙋 Google Gemini")
+        tabs.addTab(gemini_tab, "Google Gemini")
         
         # Tab 2: Hugging Face (New)
         hf_tab = self._create_huggingface_tab()
-        tabs.addTab(hf_tab, "?쨽 Hugging Face")
+        tabs.addTab(hf_tab, "Hugging Face")
         
         # Tab 3: Local Stable Diffusion
         local_tab = self._create_local_sd_tab()
-        tabs.addTab(local_tab, "?뮲 Local SD")
+        tabs.addTab(local_tab, "Local SD")
         
         # Tab 4: Quick Start
         quickstart_tab = self._create_quickstart_tab()
-        tabs.addTab(quickstart_tab, "?? Quick Start")
+        tabs.addTab(quickstart_tab, "Quick Start")
         
         # Tab 5: Help
         help_tab = self._create_help_tab()
-        tabs.addTab(help_tab, "??Help")
+        tabs.addTab(help_tab, "Help")
         
         layout.addWidget(tabs)
         
@@ -121,7 +121,7 @@ class SettingsDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
-        save_btn = QPushButton("?뮶 Save Settings")
+        save_btn = QPushButton("Save Settings")
         save_btn.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -153,7 +153,7 @@ class SettingsDialog(QDialog):
         
         # Introduction
         info_label = QLabel(
-            "<h3>?쨽 Hugging Face Inference API</h3>"
+            "<h3>Hugging Face Inference API</h3>"
             "<p>Use open-source AI models through Hugging Face inference."
             "Requires a Hugging Face account and token.</p>"
         )
@@ -276,7 +276,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(advanced_group)
         
         # Connection Test
-        test_btn = QPushButton("??Test Hugging Face Connection")
+        test_btn = QPushButton("Test Hugging Face Connection")
         test_btn.clicked.connect(self.test_huggingface_connection)
         layout.addWidget(test_btn)
         
@@ -299,9 +299,9 @@ class SettingsDialog(QDialog):
         
         # Introduction
         intro = InfoLabel(
-            "Google Gemini is a powerful AI that can generate custom archaeological symbols. "
-            "It's FREE to use (up to 60 requests/minute) and requires only an API key.",
-            "?쨼"
+            "Google Gemini can generate archaeological symbols from reference images. "
+            "API availability depends on your project quota and billing state.",
+            "Info"
         )
         layout.addWidget(intro)
         
@@ -322,7 +322,7 @@ class SettingsDialog(QDialog):
         install_layout.addWidget(install_desc)
         
         btn_layout = QHBoxLayout()
-        self.install_btn = QPushButton("?벀 Install google-generativeai")
+        self.install_btn = QPushButton("Install google-generativeai")
         self.install_btn.setMinimumHeight(40)
         self.install_btn.setStyleSheet("""
             QPushButton {
@@ -367,7 +367,7 @@ class SettingsDialog(QDialog):
         apikey_desc.setTextFormat(Qt.RichText)
         apikey_layout.addWidget(apikey_desc)
         
-        link_btn = QPushButton("?뵎 Open Google AI Studio (Get Free API Key)")
+        link_btn = QPushButton("Open Google AI Studio")
         link_btn.setMinimumHeight(40)
         link_btn.setStyleSheet("""
             QPushButton {
@@ -410,7 +410,7 @@ class SettingsDialog(QDialog):
         self.gemini_key_input.setToolTip("Your Google Gemini API key - kept secure and private")
         key_input_layout.addWidget(self.gemini_key_input)
         
-        show_key_btn = QPushButton("?몓")
+        show_key_btn = QPushButton("Show")
         show_key_btn.setFixedWidth(40)
         show_key_btn.setToolTip("Show/Hide API key")
         show_key_btn.clicked.connect(self._toggle_key_visibility)
@@ -432,7 +432,7 @@ class SettingsDialog(QDialog):
         test_layout.addWidget(test_desc)
         
         test_btn_layout = QHBoxLayout()
-        test_btn = QPushButton("??Test Gemini Connection")
+        test_btn = QPushButton("Test Gemini Connection")
         test_btn.setMinimumHeight(40)
         test_btn.setStyleSheet("""
             QPushButton {
@@ -458,9 +458,8 @@ class SettingsDialog(QDialog):
         
         # Usage info
         usage_info = InfoLabel(
-            "Free tier limits: 60 requests/minute, 1500 requests/day. "
-            "This is more than enough for typical archaeological work!",
-            "?뱤"
+            "If you encounter HTTP 429, check Gemini quota limits and retry after cooldown.",
+            "Tip"
         )
         layout.addWidget(usage_info)
         
@@ -482,7 +481,7 @@ class SettingsDialog(QDialog):
         intro = InfoLabel(
             "Local Stable Diffusion runs AI on YOUR computer - no internet required! "
             "Great for offline field work or sensitive data. Requires a GPU with 6GB+ VRAM.",
-            "?뮲"
+            "Info"
         )
         layout.addWidget(intro)
         
@@ -517,7 +516,7 @@ class SettingsDialog(QDialog):
         server_layout.addLayout(url_layout)
         
         test_layout = QHBoxLayout()
-        test_btn = QPushButton("?뵆 Test Connection")
+        test_btn = QPushButton("Test Connection")
         test_btn.setMinimumHeight(35)
         test_btn.clicked.connect(self.test_sd_connection)
         test_layout.addWidget(test_btn)
@@ -559,7 +558,7 @@ class SettingsDialog(QDialog):
         """)
         setup_layout.addWidget(setup_text)
         
-        guide_btn = QPushButton("?뱰 Open Full Setup Guide (GitHub)")
+        guide_btn = QPushButton("Open Full Setup Guide (GitHub)")
         guide_btn.clicked.connect(self._open_sd_guide)
         setup_layout.addWidget(guide_btn)
         
@@ -580,7 +579,7 @@ class SettingsDialog(QDialog):
         layout.setSpacing(15)
         
         # Header
-        header = QLabel("<h3>?? Get Started in 30 Seconds!</h3>")
+        header = QLabel("<h3>Get Started in 30 Seconds</h3>")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
         
@@ -595,7 +594,7 @@ class SettingsDialog(QDialog):
             "<li>Pick your color</li>"
             "<li>Click <b>Generate</b>!</li>"
             "</ol>"
-            "<p>??<i>That's it! No API key or installation needed.</i></p>"
+            "<p><i>That's it. No API key or installation needed.</i></p>"
         ))
         layout.addWidget(no_setup)
         
@@ -609,7 +608,7 @@ class SettingsDialog(QDialog):
             "<li>Paste key and click <b>Save Settings</b></li>"
             "<li>Restart QGIS</li>"
             "</ol>"
-            "<p>??<i>Generate icons with online inference models.</i></p>"
+            "<p><i>Generate symbols with online inference models.</i></p>"
         ))
         layout.addWidget(hf_opt)
 
@@ -624,14 +623,14 @@ class SettingsDialog(QDialog):
             "<li>Paste key and click <b>Save Settings</b></li>"
             "<li>Restart QGIS</li>"
             "</ol>"
-            "<p>??<i>Now you can upload any image and generate custom symbols!</i></p>"
+            "<p><i>Now you can upload any image and generate custom symbols.</i></p>"
         ))
         layout.addWidget(gemini_opt)
         
         # Tips
         tips = InfoLabel(
             "Tip: Start with Templates to try the plugin, then add AI features later!",
-            "?뮕"
+            "Tip"
         )
         layout.addWidget(tips)
         
@@ -647,14 +646,14 @@ class SettingsDialog(QDialog):
         help_text = QTextBrowser()
         help_text.setOpenExternalLinks(True)
         help_text.setHtml("""
-        <h2>?뱴 ArcheoGlyph Help</h2>
-        
-        <h3>?렓 What is ArcheoGlyph?</h3>
+        <h2>ArcheoGlyph Help</h2>
+
+        <h3>What is ArcheoGlyph?</h3>
         <p>ArcheoGlyph helps archaeologists create accurate, standardized symbols for GIS maps. 
         Upload an artifact photo or select a template, and the plugin generates a precise, 
         recognizable symbol perfect for archaeological documentation.</p>
-        
-        <h3>?뵩 Generation Modes</h3>
+
+        <h3>Generation Modes</h3>
         <table border="1" cellpadding="8" style="border-collapse: collapse;">
             <tr style="background: #f0f0f0;">
                 <th>Mode</th>
@@ -662,7 +661,7 @@ class SettingsDialog(QDialog):
                 <th>Best For</th>
             </tr>
             <tr>
-                <td><b>Auto Trace ??/b></td>
+                <td><b>Auto Trace</b></td>
                 <td>Nothing!</td>
                 <td>Fast & accurate silhouette from photo</td>
             </tr>
@@ -688,7 +687,7 @@ class SettingsDialog(QDialog):
             </tr>
         </table>
         
-        <h3>?렞 Symbol Styles</h3>
+        <h3>Symbol Styles</h3>
         <ul>
             <li><b>Colored</b> - fact-based color symbol with clear readability</li>
             <li><b>Typology</b> - catalog-like icon with bold contour and 1-3 structural lines</li>
@@ -696,7 +695,7 @@ class SettingsDialog(QDialog):
             <li><b>Measured</b> - monochrome measured drawing style for reports</li>
         </ul>
         
-        <h3>?뱤 Size Scaling Options</h3>
+        <h3>Size Scaling Options</h3>
         <ul>
             <li><b>Fixed Size</b> - All symbols same size</li>
             <li><b>Natural Breaks</b> - Sizes based on data clustering</li>
@@ -704,20 +703,20 @@ class SettingsDialog(QDialog):
             <li><b>Quantile</b> - Equal number of features per size class</li>
         </ul>
         
-        <h3>?뮶 Saving Symbols</h3>
+        <h3>Saving Symbols</h3>
         <ul>
             <li><b>Save to Library</b> - Stores in QGIS symbol library for reuse</li>
             <li><b>Apply to Layer</b> - Immediately applies to selected vector layer</li>
         </ul>
         
-        <h3>?뵕 Links</h3>
+        <h3>Links</h3>
         <ul>
             <li><a href="https://github.com/lzpxilfe/ArcheoGlyph">GitHub Repository</a></li>
             <li><a href="https://github.com/lzpxilfe/ArcheoGlyph/issues">Report Issues / Request Features</a></li>
             <li><a href="https://github.com/lzpxilfe/ArcheoGlyph/blob/main/docs/ai_setup_guide.md">Full AI Setup Guide</a></li>
         </ul>
         
-        <h3>?뫀 Author</h3>
+        <h3>Author</h3>
         <p>Created by <b>Jinseo Hwang</b></p>
         """)
         layout.addWidget(help_text)
@@ -1017,13 +1016,13 @@ class SettingsDialog(QDialog):
         try:
             package_found = importlib.util.find_spec("google.generativeai") is not None
             if package_found:
-                self.install_status.setText("✅ Installed")
+                self.install_status.setText("Installed")
                 self.install_status.setStyleSheet("color: green; font-weight: bold;")
             else:
-                self.install_status.setText("❌ Not installed")
+                self.install_status.setText("Not installed")
                 self.install_status.setStyleSheet("color: red;")
         except Exception:
-            self.install_status.setText("❌ Not installed")
+            self.install_status.setText("Not installed")
             self.install_status.setStyleSheet("color: red;")
     def save_settings(self):
         """Save settings."""
@@ -1198,7 +1197,7 @@ class SettingsDialog(QDialog):
             return
             
         self.install_btn.setEnabled(False)
-        self.install_btn.setText("??Installing...")
+        self.install_btn.setText("Installing...")
         self.install_status.setText("Starting...")
         self.install_status.setStyleSheet("color: orange;")
         
@@ -1242,23 +1241,23 @@ class SettingsDialog(QDialog):
     def _handle_process_finished(self, exit_code, exit_status):
         """Handle install completion."""
         self.install_btn.setEnabled(True)
-        self.install_btn.setText("?벀 Install google-generativeai")
+        self.install_btn.setText("Install google-generativeai")
         
         from qgis.core import QgsMessageLog, Qgis
         
         if exit_code == 0 and exit_status == QProcess.NormalExit:
-            self.install_status.setText("??Installed!")
+            self.install_status.setText("Installed")
             self.install_status.setStyleSheet("color: green; font-weight: bold;")
             QgsMessageLog.logMessage("ArcheoGlyph: Package installed successfully.", "ArcheoGlyph", Qgis.Success)
             
             QMessageBox.information(
                 self, 
-                "Success! ?럦", 
+                "Success", 
                 "Package installed successfully!\n\n"
                 "Please RESTART QGIS to apply changes."
             )
         else:
-            self.install_status.setText("??Failed")
+            self.install_status.setText("Failed")
             self.install_status.setStyleSheet("color: red;")
             
             # Read all output for debugging
@@ -1289,8 +1288,8 @@ class SettingsDialog(QDialog):
     def _handle_process_error(self, error):
         """Handle process start error."""
         self.install_btn.setEnabled(True)
-        self.install_btn.setText("?벀 Install google-generativeai")
-        self.install_status.setText("??Error")
+        self.install_btn.setText("Install google-generativeai")
+        self.install_status.setText("Error")
         self.install_status.setStyleSheet("color: red;")
         
         QMessageBox.warning(
@@ -1315,7 +1314,7 @@ class SettingsDialog(QDialog):
             )
             return
             
-        self.gemini_test_result.setText("??Testing...")
+        self.gemini_test_result.setText("Testing...")
         self.gemini_test_result.setStyleSheet("color: orange;")
         
         # Disable button during test
@@ -1333,18 +1332,18 @@ class SettingsDialog(QDialog):
             button.setEnabled(True)
             
         if success:
-            self.gemini_test_result.setText("??Connected!")
+            self.gemini_test_result.setText("Connected")
             self.gemini_test_result.setStyleSheet("color: green; font-weight: bold;")
             QMessageBox.information(
                 self,
-                "Success! ?럦",
+                "Success",
                 f"Connection successful!\n\n"
                 f"AI Response: {message[:100]}\n\n"
                 f"You're all set! Click 'Save Settings' and start generating symbols!"
             )
         else:
             if "Package" in message:
-                self.gemini_test_result.setText("??Package missing")
+                self.gemini_test_result.setText("Package missing")
                 self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(
                     self,
@@ -1356,7 +1355,7 @@ class SettingsDialog(QDialog):
                     "3. Try again"
                 )
             elif "API_KEY_INVALID" in message or "invalid" in message.lower():
-                self.gemini_test_result.setText("??Invalid Key")
+                self.gemini_test_result.setText("Invalid key")
                 self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(
                     self, 
@@ -1368,7 +1367,7 @@ class SettingsDialog(QDialog):
                     "3. Copy and paste it here"
                 )
             else:
-                self.gemini_test_result.setText("??Failed")
+                self.gemini_test_result.setText("Failed")
                 self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(self, "Connection Failed", f"Error: {message}")
 
@@ -1380,7 +1379,7 @@ class SettingsDialog(QDialog):
             url = "http://127.0.0.1:7860"
             self.sd_url_input.setText(url)
             
-        self.sd_test_result.setText("??Testing...")
+        self.sd_test_result.setText("Testing...")
         self.sd_test_result.setStyleSheet("color: orange;")
         QApplication.processEvents()
         
@@ -1394,18 +1393,18 @@ class SettingsDialog(QDialog):
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode())
-                    self.sd_test_result.setText(f"??Connected! ({len(data)} models)")
+                    self.sd_test_result.setText(f"Connected ({len(data)} models)")
                     self.sd_test_result.setStyleSheet("color: green; font-weight: bold;")
                     QMessageBox.information(
                         self,
-                        "Success! ?럦",
+                        "Success",
                         f"Connected to Stable Diffusion!\n\n"
                         f"Found {len(data)} model(s).\n\n"
                         f"Don't forget to click 'Save Settings'!"
                     )
                     
         except Exception as e:
-            self.sd_test_result.setText("??Not connected")
+            self.sd_test_result.setText("Not connected")
             self.sd_test_result.setStyleSheet("color: red;")
             QMessageBox.warning(
                 self,

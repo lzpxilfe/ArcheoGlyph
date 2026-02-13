@@ -37,10 +37,10 @@ class GeminiGenerator:
     _SHAPE_PREAMBLE = (
         "You are an expert archaeological illustrator. "
         "STEP 1 - SHAPE ANALYSIS: Analyze this artifact image carefully. "
-        "Identify the measured outline, asymmetry, and diagnostic form transitions. "
-        "Keep the silhouette factual, but suppress tiny visual noise that hurts symbol legibility. "
-        "STEP 2 - SCALE ANALISYS: Determine the exact aspect ratio of the object. "
-        "STEP 3 - SVG GENERATION: Create a factual typological symbol SVG. "
+        "Identify measured outline, asymmetry, and diagnostic form transitions. "
+        "Keep silhouette factual, suppressing only tiny visual noise that hurts legibility. "
+        "STEP 2 - SCALE ANALYSIS: Determine the exact aspect ratio of the object. "
+        "STEP 3 - SVG GENERATION: Create a factual archaeological symbol SVG. "
         "\n\n"
         "ABSOLUTE RULES:\n"
         "- Preserve measured proportions and major shape cues from the reference.\n"
@@ -52,13 +52,12 @@ class GeminiGenerator:
     # Style prompts: only control rendering style, never the shape.
     STYLE_PROMPTS = {
         STYLE_COLORED: (
-            "RENDERING STYLE: Premium Vector Game Asset / RPG Item Icon. "
-            "1. SHAPE RULES: STICTLY TRACE the provided SILHOUETTE MASK (Image 2). The mask defines the EXACT geometry. "
-            "   Do not deviate from the mask's outline. "
-            "2. OUTLINE: Draw a bold, clean, consistent BLACK outline (2-3px) around the entire object defined by the mask. "
-            "3. SHADING: Use 'Cel Shading' or '2-Tone Shading' (Base Color + Shadow Color) based on the REFERENCE PHOTO (Image 1). "
-            "4. AESTHETIC: Flat Design but with depth. Like a high-quality strategy game unit or resource icon. "
-            "NO gradient meshes. NO realistic texture noise. Clean vector shapes."
+            "RENDERING STYLE: Archaeological catalog symbol icon. "
+            "1. SHAPE RULES: Strictly trace provided silhouette constraints. "
+            "2. OUTLINE: Clean black outline (about 1-2px equivalent). "
+            "3. INTERNAL STRUCTURE: Add 1-3 factual feature lines only (rim/shoulder/base or blade midline). "
+            "4. SHADING: Optional 2-3 flat tone regions only, no painterly texture. "
+            "5. FORBIDDEN: no scenery, no architecture, no decorative motifs."
         ),
         STYLE_TYPOLOGY: (
             "RENDERING STYLE: Archaeological typology catalog icon. "
@@ -153,6 +152,7 @@ class GeminiGenerator:
     def generate(
         self,
         image_path,
+        prompt="",
         style=STYLE_COLORED,
         color="#000000",
         symmetry=False,
@@ -184,7 +184,8 @@ class GeminiGenerator:
         with open(image_path, 'rb') as f:
             image_data = f.read()
             
-        # Build the full prompt
+        user_prompt_text = str(prompt or "").strip()
+
         # Build the full prompt
         style_key = self._normalize_style(style)
         style_prompt = self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_COLORED])
@@ -210,13 +211,18 @@ class GeminiGenerator:
                 "5. Avoid decorative elements and avoid scenic context."
             )
 
-        prompt = self._SHAPE_PREAMBLE + style_prompt
-        prompt += self._NO_EXAGGERATION_RULES
-        prompt += self._style_control_hint(
+        full_prompt = self._SHAPE_PREAMBLE + style_prompt
+        full_prompt += self._NO_EXAGGERATION_RULES
+        full_prompt += self._style_control_hint(
             factuality=factuality,
             symbolic_looseness=symbolic_looseness,
             exaggeration=exaggeration,
         )
+        if user_prompt_text:
+            full_prompt += (
+                "\nUSER NOTE (respect if consistent with factual evidence): "
+                + user_prompt_text
+            )
         
         # Hybrid Workflow: Get Silhouette
         silhouette_bytes = None
@@ -226,14 +232,14 @@ class GeminiGenerator:
              print(f"Silhouette extraction failed: {e}")
              
         if symmetry:
-            prompt += (
+            full_prompt += (
                 "\n\nSYMMETRY RULE: Apply bilateral symmetry only when the artifact appears "
                 "naturally symmetrical in the photo. Do not force perfect symmetry for damaged "
                 "or asymmetrical objects."
             )
         
         if color and style_key == STYLE_COLORED:
-             prompt += (
+             full_prompt += (
                  f"\n\nCOLOR INSTRUCTIONS:"
                  f"\n1. Detect and use the artifact's observed material color from the photo."
                  f"\n2. If user color {color} conflicts with the photo, prioritize the photo."
@@ -246,13 +252,19 @@ class GeminiGenerator:
              
         # Add Hybrid Logic Instructions to Prompt if applicable
         if silhouette_bytes and style_key == STYLE_COLORED:
-             prompt += "\n\nCRITICAL INSTRUCTION: I have provided TWO images. \nImage 1: Original Photo (Textural/Color Reference). \nImage 2: Black & White Silhouette (SHAPE CONSTRAINT). \n\nYOU MUST DRAW THE SYMBOL TO MATCH THE EXACT SHAPE OF IMAGE 2 (THE SILHOUETTE). IGNORE THE SHAPE OF IMAGE 1 IF IT DIFFERS. APPLY THE COLORS/TEXTURES OF IMAGE 1 ONTO THE SHAPE OF IMAGE 2."
+             full_prompt += (
+                 "\n\nCRITICAL INSTRUCTION: Two images are provided.\n"
+                 "Image 1: Original photo (material/color reference).\n"
+                 "Image 2: Black-and-white silhouette (shape constraint).\n"
+                 "Draw to match the exact shape of Image 2. "
+                 "Do not invent decorative textures."
+             )
 
-        prompt += self._SVG_FORMAT
+        full_prompt += self._SVG_FORMAT
         
         # Construct content parts
         parts = []
-        parts.append(prompt)
+        parts.append(full_prompt)
         parts.append({"mime_type": self._get_mime_type(image_path), "data": image_data}) # Image 1: Reference
         
         if silhouette_bytes and style_key == STYLE_COLORED:
@@ -262,7 +274,7 @@ class GeminiGenerator:
         # We want QUALITY for this task as requested by user.
         # Priorities: v3.0 (Latest Preview) > v2.0 (Stable until Mar 2026) > v1.5 (Legacy)
         # We want STABILITY and SPEED. 'gemini-2.0' is ending soon, v3 is next.
-        start_models = ['gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash', 'gemini-1.5-flash']
+        start_models = ['gemini-3-flash-preview', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-3-pro-preview']
         
         # Explicitly exclude models known to be unstable or quota-restricted for general use
         # "deep-research" caused 429 errors.
@@ -381,8 +393,6 @@ class GeminiGenerator:
                         last_error = e
                         # If it's not a rate limit, or we ran out of retries, try the next model
                         break
-            if quota_blocked:
-                break
 
         # Final factual fallback: deterministic contour extraction.
         try:

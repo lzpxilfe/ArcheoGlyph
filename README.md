@@ -17,21 +17,24 @@ It supports deterministic tracing and AI-assisted generation, then applies outpu
 - Optional SAM backend for segmentation (`OpenCV` fallback included)
 - Hugging Face reference-first image generation with modern model fallback
 - Google Gemini factual-mode generation with safety checks and deterministic fallback
-- Expanded template catalog: 58 built-in archaeological templates
+- Expanded template catalog: 79 built-in archaeological templates
 - Save to QGIS symbol library or apply directly to a selected point layer
 - Style parameter tab with expression sliders (Factuality, Symbol Looseness, Exaggeration)
 - Centralized style-control settings (shared across Auto Trace, HF, Gemini, and Local SD)
 - Default fixed symbol size tuned to `10 mm` for better map readability
+- Template browser with category filter + search
+- Graduated sizing controls with explicit numeric field + class count
 
 ## Version
 Current plugin code version: `0.1.0`
 
 ### 0.1.0 includes
 - Migration guard for old settings (legacy HF model IDs are auto-upgraded)
-- Stable default HF model: `Qwen/Qwen-Image-Edit-2509`
+- Stable default HF model: `Qwen/Qwen-Image-Edit-2511`
 - English style/template naming
 - SAM beginner quick setup controls in settings
 - Improved template coverage across artifacts, structures, remains, features, and survey symbols
+- Research-inspired typology templates (bronze dagger classes, projectile-point classes, keyhole-tomb variants)
 
 ## Installation
 1. Copy `ArcheoGlyph` folder to the QGIS plugins directory:
@@ -55,6 +58,7 @@ Current plugin code version: `0.1.0`
 1. Create a token at: https://huggingface.co/settings/tokens
 2. Add the token in plugin settings.
 3. Recommended models:
+   - `Qwen/Qwen-Image-Edit-2511`
    - `Qwen/Qwen-Image-Edit-2509`
    - `black-forest-labs/FLUX.2-dev`
    - `black-forest-labs/FLUX.1-Kontext-dev`
@@ -77,6 +81,17 @@ Use `Settings > Hugging Face > Advanced`:
 ## Documentation
 - `docs/ai_setup_guide.md`
 - `docs/local_model_setup.md`
+
+## Template References
+Template families in `Use Template` mode are shaped by typology/documentation conventions from:
+- National Museum of Korea, *The Korean-type Bronze Daggers and Swords*  
+  https://www.nmk.kr/english/research/research_jka_view.do?ar_idx=6
+- Utah BLM report archive, *Projectile Point typology examples*  
+  https://www.blm.gov/sites/default/files/documents/files/Context_Cultural-Resource-Series_Point-Typologies_Updated-Combined.pdf
+- Mozu-Furuichi Kofun Group (UNESCO context), keyhole-tomb morphology references  
+  https://www.mozu-furuichi.com/en/about/
+- Historic England, archaeological illustration guidance  
+  https://historicengland.org.uk/images-books/publications/drawing-archaeological-artefacts/heag044-understanding-archaeological-illustration/
 
 ## License
 MIT License. See `LICENSE`.

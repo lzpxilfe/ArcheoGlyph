@@ -10,9 +10,10 @@ DEFAULT_MIN_SYMBOL_SIZE_MM = 10.0
 DEFAULT_MAX_SYMBOL_SIZE_MM = 24.0
 DEFAULT_GRADUATED_CLASSES = 5
 
-HF_DEFAULT_MODEL_ID = "Qwen/Qwen-Image-Edit-2509"
+HF_DEFAULT_MODEL_ID = "Qwen/Qwen-Image-Edit-2511"
 HF_FALLBACK_MODEL_IDS = (
     HF_DEFAULT_MODEL_ID,
+    "Qwen/Qwen-Image-Edit-2509",
     "Qwen/Qwen-Image-Edit",
     "Qwen/Qwen-Image",
     "black-forest-labs/FLUX.2-dev",
@@ -29,6 +30,7 @@ HF_LEGACY_MODEL_ALIASES = {
     "runwayml/stable-diffusion-v1-5": HF_DEFAULT_MODEL_ID,
     "stable-diffusion-v1-5/stable-diffusion-v1-5": HF_DEFAULT_MODEL_ID,
     "stabilityai/stable-diffusion-xl-base-1.0": HF_DEFAULT_MODEL_ID,
+    "Qwen/Qwen-Image-Edit-2509": HF_DEFAULT_MODEL_ID,
     "CompVis/stable-diffusion-v1-4": HF_DEFAULT_MODEL_ID,
     "prompthero/openjourney": HF_DEFAULT_MODEL_ID,
 }

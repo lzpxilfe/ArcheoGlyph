@@ -102,6 +102,81 @@ class TemplateGenerator:
             "default_color": "#5B6168",
             "category": "artifacts"
         },
+        "Bronze Dagger (Liaoning-style)": {
+            "file": "bronze_dagger_liaoning.svg",
+            "default_color": "#B66A62",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Ordos-style)": {
+            "file": "bronze_dagger_ordos.svg",
+            "default_color": "#5E79B4",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Antenna-style)": {
+            "file": "bronze_dagger_antenna.svg",
+            "default_color": "#4EA7A6",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Slender)": {
+            "file": "bronze_dagger_slender.svg",
+            "default_color": "#B39A58",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Tao type)": {
+            "file": "bronze_dagger_tao.svg",
+            "default_color": "#58A05A",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Medium-fine)": {
+            "file": "bronze_dagger_medium_fine.svg",
+            "default_color": "#5E79B4",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Flat bladed)": {
+            "file": "bronze_dagger_flat_bladed.svg",
+            "default_color": "#A06AC2",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Type IA)": {
+            "file": "bronze_dagger_type_ia.svg",
+            "default_color": "#A3645C",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Type IB)": {
+            "file": "bronze_dagger_type_ib.svg",
+            "default_color": "#8F7E5B",
+            "category": "artifacts"
+        },
+        "Bronze Dagger (Other)": {
+            "file": "bronze_dagger_other.svg",
+            "default_color": "#8E8E8E",
+            "category": "artifacts"
+        },
+        "Projectile Point (Leaf-shaped)": {
+            "file": "projectile_point_leaf.svg",
+            "default_color": "#6E8FA3",
+            "category": "artifacts"
+        },
+        "Projectile Point (Side-notched)": {
+            "file": "projectile_point_side_notched.svg",
+            "default_color": "#5B7FA2",
+            "category": "artifacts"
+        },
+        "Projectile Point (Corner-notched)": {
+            "file": "projectile_point_corner_notched.svg",
+            "default_color": "#5B76A2",
+            "category": "artifacts"
+        },
+        "Projectile Point (Stemmed)": {
+            "file": "projectile_point_stemmed.svg",
+            "default_color": "#667F95",
+            "category": "artifacts"
+        },
+        "Projectile Point (Triangular)": {
+            "file": "projectile_point_triangular.svg",
+            "default_color": "#7F8FA1",
+            "category": "artifacts"
+        },
 
         # Structures
         "Fortress / Castle": {
@@ -117,6 +192,36 @@ class TemplateGenerator:
         "Tomb": {
             "file": "tomb.svg",
             "default_color": "#556B2F",
+            "category": "structures"
+        },
+        "Keyhole Tomb (Normal)": {
+            "file": "keyhole_tomb_normal.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Keyhole Tomb (With Moat)": {
+            "file": "keyhole_tomb_with_moat.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Keyhole Tomb (Stepped)": {
+            "file": "keyhole_tomb_stepped.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Keyhole Tomb (With Fukiishi)": {
+            "file": "keyhole_tomb_with_fukiishi.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Keyhole Tomb (Tsumishizuka)": {
+            "file": "keyhole_tomb_tsumishizuka.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Keyhole Tomb (Makinokuchi)": {
+            "file": "keyhole_tomb_makinokuchi.svg",
+            "default_color": "#A88A5F",
             "category": "structures"
         },
         "Temple / Shrine": {
@@ -335,6 +440,25 @@ class TemplateGenerator:
         "Hearth/Fire Pit": "Hearth / Fire Pit",
         "Midden/Shell Mound": "Midden / Shell Mound",
         "Ditch/Moat": "Ditch / Moat",
+        "Liaoning-style bronze dagger": "Bronze Dagger (Liaoning-style)",
+        "Ordos-style bronze dagger": "Bronze Dagger (Ordos-style)",
+        "Antenna-style bronze dagger": "Bronze Dagger (Antenna-style)",
+        "Slender bronze dagger": "Bronze Dagger (Slender)",
+        "Tao Shi Jian sword": "Bronze Dagger (Tao type)",
+        "Medium-fine bronze sword": "Bronze Dagger (Medium-fine)",
+        "Flat bladed bronze sword": "Bronze Dagger (Flat bladed)",
+        "Type IA bronze dagger": "Bronze Dagger (Type IA)",
+        "Type IB bronze dagger": "Bronze Dagger (Type IB)",
+        "Other bronze sword": "Bronze Dagger (Other)",
+        "Leppy Hills point": "Projectile Point (Leaf-shaped)",
+        "Pequop side-notched point": "Projectile Point (Side-notched)",
+        "Dead Cedar point": "Projectile Point (Corner-notched)",
+        "Elko-eared point": "Projectile Point (Stemmed)",
+        "with Shugo": "Keyhole Tomb (With Moat)",
+        "with moat": "Keyhole Tomb (With Moat)",
+        "with Fukiishi": "Keyhole Tomb (With Fukiishi)",
+        "Tsumishizuka": "Keyhole Tomb (Tsumishizuka)",
+        "Makinokuchi": "Keyhole Tomb (Makinokuchi)",
     }
     
     def __init__(self, plugin_dir):
@@ -468,7 +592,54 @@ class TemplateGenerator:
         # Dispatch drawing by keyword
         key = str(template_type or "").strip().lower().replace("/", " ")
         
-        if "pottery" in key:
+        if "keyhole tomb" in key or "shugo" in key or "fukiishi" in key or "tsumishizuka" in key:
+            if "moat" in key or "shugo" in key:
+                self._draw_keyhole_tomb(painter, size, m, "moat", q_color)
+            elif "fukiishi" in key:
+                self._draw_keyhole_tomb(painter, size, m, "fukiishi", q_color)
+            elif "tsumishizuka" in key:
+                self._draw_keyhole_tomb(painter, size, m, "tsumishizuka", q_color)
+            elif "makinokuchi" in key:
+                self._draw_keyhole_tomb(painter, size, m, "makinokuchi", q_color)
+            elif "stepped" in key:
+                self._draw_keyhole_tomb(painter, size, m, "stepped", q_color)
+            else:
+                self._draw_keyhole_tomb(painter, size, m, "normal", q_color)
+        elif "bronze dagger" in key or "bronze sword" in key:
+            if "liaoning" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "liaoning", q_color)
+            elif "ordos" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "ordos", q_color)
+            elif "antenna" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "antenna", q_color)
+            elif "slender" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "slender", q_color)
+            elif "tao" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "tao", q_color)
+            elif "type ia" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "type_ia", q_color)
+            elif "type ib" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "type_ib", q_color)
+            elif "medium" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "medium", q_color)
+            elif "flat" in key:
+                self._draw_bronze_dagger_typology(painter, size, m, "flat", q_color)
+            else:
+                self._draw_bronze_dagger_typology(painter, size, m, "other", q_color)
+        elif "projectile point" in key or "side-notched" in key or "corner-notched" in key:
+            if "leaf" in key:
+                self._draw_projectile_point_typology(painter, size, m, "leaf")
+            elif "side" in key:
+                self._draw_projectile_point_typology(painter, size, m, "side_notched")
+            elif "corner" in key or "dead cedar" in key:
+                self._draw_projectile_point_typology(painter, size, m, "corner_notched")
+            elif "stemmed" in key or "elko" in key:
+                self._draw_projectile_point_typology(painter, size, m, "stemmed")
+            elif "triangular" in key:
+                self._draw_projectile_point_typology(painter, size, m, "triangular")
+            else:
+                self._draw_projectile_point_typology(painter, size, m, "leaf")
+        elif "pottery" in key:
             self._draw_pottery(painter, size, m)
         elif "stone tool" in key or "arrowhead" in key or "scraper" in key:
             self._draw_stone_tool(painter, size, m)
@@ -556,18 +727,9 @@ class TemplateGenerator:
         painter.drawPolygon(QPolygonF(pts))
         
     def _draw_bronze(self, painter, s, m):
-        """Bronze dagger shape."""
-        p = QPainterPath()
-        cx = s / 2
-        p.moveTo(cx, m)
-        p.lineTo(cx + 25, s/2 - 30)
-        p.lineTo(cx + 15, s/2)
-        p.lineTo(cx + 10, s - m)
-        p.lineTo(cx - 10, s - m)
-        p.lineTo(cx - 15, s/2)
-        p.lineTo(cx - 25, s/2 - 30)
-        p.closeSubpath()
-        painter.drawPath(p)
+        """Default bronze icon: medium typological dagger silhouette."""
+        color = painter.brush().color() if painter.brush().style() != Qt.NoBrush else QColor("#8C8C8C")
+        self._draw_bronze_dagger_typology(painter, s, m, "medium", color)
         
     def _draw_iron(self, painter, s, m):
         """Axe head shape."""
@@ -629,6 +791,172 @@ class TemplateGenerator:
         p.quadTo(cx - 35, s * 0.35, cx, m)
         p.closeSubpath()
         painter.drawPath(p)
+        old_pen = painter.pen()
+        ridge_pen = QPen(old_pen.color().darker(130), 1.25)
+        painter.setPen(ridge_pen)
+        painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 8))
+        painter.setPen(old_pen)
+
+    def _draw_bronze_dagger_typology(self, painter, s, m, variant, color):
+        """Typological bronze dagger variants inspired by catalog symbol conventions."""
+        cx = s / 2.0
+        top = float(m + 8)
+        bottom = float(s - m - 10)
+        height = max(40.0, bottom - top)
+
+        profiles = {
+            "liaoning": [0, 10, 24, 17, 23, 11, 2],
+            "ordos": [0, 8, 18, 12, 16, 9, 2],
+            "antenna": [0, 8, 18, 11, 15, 9, 2],
+            "slender": [0, 6, 11, 9, 10, 6, 1],
+            "tao": [0, 7, 12, 10, 8, 5, 1],
+            "medium": [0, 8, 16, 10, 12, 7, 2],
+            "flat": [0, 12, 18, 18, 16, 8, 2],
+            "type_ia": [0, 9, 21, 16, 20, 9, 2],
+            "type_ib": [0, 8, 18, 14, 20, 11, 2],
+            "other": [0, 7, 14, 10, 11, 6, 1],
+        }
+        t_values = [0.00, 0.12, 0.30, 0.54, 0.74, 0.90, 1.00]
+        widths = profiles.get(variant, profiles["other"])
+
+        right = []
+        left = []
+        for t, w in zip(t_values, widths):
+            y = top + (height * float(t))
+            right.append(QPointF(cx + float(w), y))
+            left.append(QPointF(cx - float(w), y))
+
+        polygon_points = right + list(reversed(left))
+        painter.drawPolygon(QPolygonF(polygon_points))
+
+        old_pen = painter.pen()
+        ridge_pen = QPen(old_pen.color().darker(135), 1.20)
+        painter.setPen(ridge_pen)
+        painter.drawLine(int(cx), int(top + (height * 0.08)), int(cx), int(bottom + 8))
+
+        if variant == "flat":
+            shoulder_y = int(top + (height * 0.30))
+            painter.drawLine(int(cx - 18), shoulder_y, int(cx + 18), shoulder_y)
+        elif variant == "antenna":
+            antenna_y = int(top + (height * 0.78))
+            painter.drawLine(int(cx - 24), antenna_y, int(cx - 10), antenna_y)
+            painter.drawLine(int(cx + 10), antenna_y, int(cx + 24), antenna_y)
+            painter.setBrush(color)
+            painter.drawEllipse(int(cx - 27), antenna_y - 3, 6, 6)
+            painter.drawEllipse(int(cx + 21), antenna_y - 3, 6, 6)
+        elif variant == "liaoning":
+            ring_y = int(top + (height * 0.67))
+            painter.drawLine(int(cx - 14), ring_y, int(cx + 14), ring_y)
+        elif variant == "type_ia":
+            ring_y = int(top + (height * 0.62))
+            painter.drawLine(int(cx - 16), ring_y, int(cx + 16), ring_y)
+        elif variant == "type_ib":
+            band_y = int(top + (height * 0.58))
+            painter.drawLine(int(cx - 13), band_y, int(cx + 13), band_y)
+            painter.drawLine(int(cx - 15), band_y + 8, int(cx + 15), band_y + 8)
+
+        painter.setPen(old_pen)
+
+    def _draw_projectile_point_typology(self, painter, s, m, variant):
+        """Projectile point variants inspired by typology catalog symbols."""
+        cx = s / 2.0
+        top = float(m + 12)
+        bottom = float(s - m - 8)
+        mid = (top + bottom) / 2.0
+
+        shapes = {
+            "leaf": [(-2, top), (22, mid - 30), (28, mid), (14, bottom - 14), (4, bottom), (0, bottom + 2)],
+            "side_notched": [(-2, top), (20, mid - 34), (26, mid - 8), (17, mid + 6), (11, bottom - 18), (6, bottom - 6), (0, bottom + 2)],
+            "corner_notched": [(-2, top), (18, mid - 34), (24, mid - 10), (18, mid + 8), (8, bottom - 26), (8, bottom - 8), (0, bottom + 2)],
+            "stemmed": [(-2, top), (20, mid - 28), (22, mid + 6), (13, bottom - 24), (7, bottom - 18), (7, bottom - 6), (0, bottom + 2)],
+            "triangular": [(-2, top), (24, mid - 20), (20, bottom - 18), (10, bottom - 10), (6, bottom - 4), (0, bottom + 2)],
+        }
+        right = shapes.get(variant, shapes["leaf"])
+        points = []
+        for x_off, y in right:
+            points.append(QPointF(cx + float(x_off), float(y)))
+        for x_off, y in reversed(right):
+            points.append(QPointF(cx - float(x_off), float(y)))
+        painter.drawPolygon(QPolygonF(points))
+
+        # Midrib line for legibility in typology-like symbols.
+        old_pen = painter.pen()
+        painter.setPen(QPen(old_pen.color().darker(135), 1.1))
+        painter.drawLine(int(cx), int(top + 6), int(cx), int(bottom - 6))
+        painter.setPen(old_pen)
+
+    def _draw_keyhole_tomb(self, painter, s, m, variant, color):
+        """Keyhole-shaped tomb variants (normal / moat / stepped)."""
+        cx = s / 2.0
+        circle_y = float(m + 54)
+        circle_r = 34.0
+        join_y = circle_y + circle_r - 4.0
+        tail_bottom = float(s - m - 8)
+
+        tail_top_half = 20.0
+        tail_bottom_half = 38.0
+        if variant in ("stepped", "fukiishi", "tsumishizuka"):
+            tail_top_half = 18.0
+            tail_bottom_half = 32.0
+
+        mound_path = QPainterPath()
+        mound_path.addEllipse(QRectF(cx - circle_r, circle_y - circle_r, circle_r * 2.0, circle_r * 2.0))
+
+        tail_path = QPainterPath()
+        tail_path.moveTo(cx - tail_top_half, join_y)
+        tail_path.lineTo(cx - tail_bottom_half, tail_bottom)
+        tail_path.lineTo(cx + tail_bottom_half, tail_bottom)
+        tail_path.lineTo(cx + tail_top_half, join_y)
+        tail_path.closeSubpath()
+
+        composite = QPainterPath(mound_path)
+        composite.addPath(tail_path)
+
+        if variant in ("moat", "makinokuchi"):
+            old_brush = painter.brush()
+            old_pen = painter.pen()
+            moat_width = 8.0 if variant == "moat" else 5.0
+            moat_pen = QPen(QColor(106, 143, 168), moat_width)
+            painter.setPen(moat_pen)
+            painter.setBrush(Qt.NoBrush)
+
+            moat_path = QPainterPath()
+            moat_path.addEllipse(QRectF(cx - (circle_r + 11.0), circle_y - (circle_r + 11.0), (circle_r + 11.0) * 2.0, (circle_r + 11.0) * 2.0))
+            moat_tail = QPainterPath()
+            moat_tail.moveTo(cx - (tail_top_half + 9.0), join_y + 1.0)
+            moat_tail.lineTo(cx - (tail_bottom_half + 11.0), tail_bottom + 8.0)
+            moat_tail.lineTo(cx + (tail_bottom_half + 11.0), tail_bottom + 8.0)
+            moat_tail.lineTo(cx + (tail_top_half + 9.0), join_y + 1.0)
+            moat_tail.closeSubpath()
+            moat_path.addPath(moat_tail)
+            painter.drawPath(moat_path)
+
+            if variant == "makinokuchi":
+                painter.setPen(QPen(old_pen.color().darker(125), 1.0))
+                painter.drawLine(int(cx - 26), int(join_y + 12), int(cx + 26), int(join_y + 12))
+                painter.drawLine(int(cx - 30), int(join_y + 24), int(cx + 30), int(join_y + 24))
+
+            painter.setBrush(old_brush)
+            painter.setPen(old_pen)
+
+        painter.drawPath(composite)
+
+        if variant in ("stepped", "fukiishi", "tsumishizuka"):
+            old_pen = painter.pen()
+            step_pen = QPen(old_pen.color().darker(130), 1.1)
+            painter.setPen(step_pen)
+            for i in range(3):
+                y = int(join_y + 14 + (i * 16))
+                width = int((tail_top_half + 6) + (i * 7))
+                painter.drawLine(int(cx - width), y, int(cx + width), y)
+            if variant == "tsumishizuka":
+                for i in range(10):
+                    y = int(join_y + 18 + (i * 7))
+                    x1 = int(cx - 20 - (i % 3))
+                    x2 = int(cx + 20 + (i % 3))
+                    painter.drawLine(x1, y, x1 + 6, y + 3)
+                    painter.drawLine(x2, y, x2 - 6, y + 3)
+            painter.setPen(old_pen)
 
     # ═══════════════════════════════════════════════════════
     #  Drawing methods — Structures
@@ -959,7 +1287,16 @@ class TemplateGenerator:
 
     def get_available_templates(self):
         """Return list of available template types."""
-        return list(self.TEMPLATE_INFO.keys())
+        return sorted(list(self.TEMPLATE_INFO.keys()))
+
+    def get_templates_by_category(self, category):
+        """Return sorted template names for a given category key."""
+        cat = str(category or "").strip().lower()
+        if not cat or cat == "all":
+            return self.get_available_templates()
+        return sorted(
+            [name for name, info in self.TEMPLATE_INFO.items() if str(info.get("category", "")).lower() == cat]
+        )
     
     def get_categories(self):
         """Return templates grouped by category."""
@@ -969,4 +1306,6 @@ class TemplateGenerator:
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append(name)
+        for cat in categories:
+            categories[cat] = sorted(categories[cat])
         return categories

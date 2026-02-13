@@ -19,8 +19,11 @@ changelog=
         * Gemini factual-mode safeguards with deterministic fallback
         * Optional SAM backend with beginner quick setup controls
         * Expanded built-in template catalog
+        * Added typology-inspired template variants (bronze dagger classes, keyhole tomb variants)
+        * Added projectile-point typology templates and expanded template browser filters
         * Color adjustment and proportional sizing
         * Target layer selector for Apply to Layer
+        * Graduated sizing controls: explicit field picker + class count
         * Default symbol size tuned to 10 mm
         * Expression sliders: factuality, symbolic looseness, exaggeration
         * Shared style-control utilities to reduce hardcoded duplicates

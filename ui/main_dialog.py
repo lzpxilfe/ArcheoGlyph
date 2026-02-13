@@ -16,6 +16,7 @@ from qgis.PyQt.QtWidgets import (
 from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
 
 from ..defaults import (
+    DEFAULT_GRADUATED_CLASSES,
     DEFAULT_MAX_SYMBOL_SIZE_MM,
     DEFAULT_MIN_SYMBOL_SIZE_MM,
     PLUGIN_VERSION,
@@ -204,10 +205,19 @@ class ArcheoGlyphDialog(QDialog):
     MODE_DESCRIPTION = {
         "autotrace": "Extracts contour + internal feature lines from photo (fast, offline)",
         "gemini": "Google Gemini generates reference-constrained symbols (factual mode)",
-        "hf": "Hugging Face refines symbols from the reference image (token required, HF Prompt Adaptive v3)",
+        "hf": "Hugging Face generates factual symbols from the reference image (token required)",
         "local": "Local Stable Diffusion generates symbols (GPU required)",
         "template": "Uses built-in SVG templates by category",
     }
+
+    TEMPLATE_CATEGORY_LABELS = (
+        ("all", "All Categories"),
+        ("artifacts", "Artifacts"),
+        ("structures", "Structures"),
+        ("remains", "Remains"),
+        ("features", "Features"),
+        ("survey", "Survey"),
+    )
     
     def __init__(self, iface, parent=None):
         super().__init__(parent)
@@ -409,14 +419,33 @@ class ArcheoGlyphDialog(QDialog):
         # Template selection (initially hidden)
         self.template_group = QGroupBox("Template Type")
         template_layout = QVBoxLayout(self.template_group)
-        
+
+        category_row = QHBoxLayout()
+        category_row.addWidget(QLabel("Category:"))
+        self.template_category_combo = QComboBox()
+        for value, label in self.TEMPLATE_CATEGORY_LABELS:
+            self.template_category_combo.addItem(label, value)
+        self.template_category_combo.currentIndexChanged.connect(self._refresh_template_list)
+        category_row.addWidget(self.template_category_combo, 1)
+        template_layout.addLayout(category_row)
+
+        self.template_search_input = QLineEdit()
+        self.template_search_input.setPlaceholderText("Filter templates (e.g., dagger, tomb, survey)")
+        self.template_search_input.textChanged.connect(self._refresh_template_list)
+        template_layout.addWidget(self.template_search_input)
+
         self.template_combo = QComboBox()
         try:
             from ..generators.template_generator import TemplateGenerator
-            template_generator = TemplateGenerator(self.plugin_dir)
-            self.template_combo.addItems(template_generator.get_available_templates())
+            self._template_generator = TemplateGenerator(self.plugin_dir)
+            self._all_templates = sorted(self._template_generator.get_available_templates())
+            self._template_categories = {
+                key: sorted(values)
+                for key, values in self._template_generator.get_categories().items()
+            }
         except Exception:
-            self.template_combo.addItems([
+            self._template_generator = None
+            self._all_templates = [
                 "Pottery",
                 "Stone Tool",
                 "Bronze Artifact",
@@ -425,7 +454,9 @@ class ArcheoGlyphDialog(QDialog):
                 "Excavation Area",
                 "Survey Point",
                 "Find Spot",
-            ])
+            ]
+            self._template_categories = {}
+        self._refresh_template_list()
         template_layout.addWidget(self.template_combo)
         self.template_group.setVisible(False)
         scroll_layout.addWidget(self.template_group)
@@ -485,9 +516,10 @@ class ArcheoGlyphDialog(QDialog):
             "By Data Count (Equal Interval)",
             "By Data Count (Quantile)"
         ])
+        self.size_mode_combo.currentIndexChanged.connect(self._on_size_mode_changed)
         size_mode_layout.addWidget(self.size_mode_combo)
         size_layout.addLayout(size_mode_layout)
-        
+
         minmax_layout = QHBoxLayout()
         minmax_layout.addWidget(QLabel("Min:"))
         self.min_size_spin = QSpinBox()
@@ -501,6 +533,27 @@ class ArcheoGlyphDialog(QDialog):
         self.max_size_spin.setValue(int(DEFAULT_MAX_SYMBOL_SIZE_MM))
         minmax_layout.addWidget(self.max_size_spin)
         size_layout.addLayout(minmax_layout)
+
+        size_field_layout = QHBoxLayout()
+        size_field_layout.addWidget(QLabel("Size Field:"))
+        self.size_field_combo = QComboBox()
+        self.size_field_combo.setToolTip(
+            "Choose a numeric attribute for graduated size. "
+            "Use Auto to pick the first numeric field."
+        )
+        self.size_field_combo.addItem("Auto (first numeric field)", "")
+        size_field_layout.addWidget(self.size_field_combo, 1)
+        size_layout.addLayout(size_field_layout)
+
+        class_layout = QHBoxLayout()
+        class_layout.addWidget(QLabel("Classes:"))
+        self.class_count_spin = QSpinBox()
+        self.class_count_spin.setRange(2, 12)
+        self.class_count_spin.setValue(int(DEFAULT_GRADUATED_CLASSES))
+        self.class_count_spin.setToolTip("Number of size classes for graduated rendering.")
+        class_layout.addWidget(self.class_count_spin)
+        class_layout.addStretch()
+        size_layout.addLayout(class_layout)
         scroll_layout.addWidget(size_group)
 
         # Target layer selection
@@ -508,6 +561,7 @@ class ArcheoGlyphDialog(QDialog):
         layer_layout = QHBoxLayout(layer_group)
         self.layer_combo = QComboBox()
         self.layer_combo.setToolTip("Choose the point layer that will receive the generated symbol.")
+        self.layer_combo.currentIndexChanged.connect(self._refresh_size_field_list)
         layer_layout.addWidget(self.layer_combo, 1)
         refresh_layers_btn = QPushButton("Refresh")
         refresh_layers_btn.clicked.connect(self.refresh_layer_list)
@@ -575,6 +629,7 @@ class ArcheoGlyphDialog(QDialog):
         main_layout.addLayout(right_panel)
         self._set_mode_info_with_controls(show_controls=False)
         self.refresh_layer_list()
+        self._on_size_mode_changed(self.size_mode_combo.currentIndex())
 
     def showEvent(self, event):
         """Refresh layer choices whenever dialog is shown."""
@@ -605,11 +660,17 @@ class ArcheoGlyphDialog(QDialog):
         
         # Update placeholder based on mode
         if button == self.hf_radio:
-             self.prompt_input.setPlaceholderText("Optional: artifact/material note (e.g. 'green celadon vase')")
+             self.prompt_input.setPlaceholderText(
+                 "Optional: style note (e.g., 'typology plate icon with clear shoulder line')"
+             )
         elif button == self.gemini_radio:
-             self.prompt_input.setPlaceholderText("Optional: factual notes (e.g. 'preserve chips and wear')")
+             self.prompt_input.setPlaceholderText(
+                 "Optional: factual note (e.g., 'preserve chips and asymmetry, no decorative background')"
+             )
         elif button == self.local_radio:
-             self.prompt_input.setPlaceholderText("Enter generation prompt")
+             self.prompt_input.setPlaceholderText(
+                 "Optional: local SD prompt hint (e.g., 'flat archaeological icon, muted tones')"
+             )
 
     def update_color_preview(self):
         """Update the color preview label."""
@@ -666,6 +727,7 @@ class ArcheoGlyphDialog(QDialog):
         try:
             target_func = None
             kwargs = {}
+            prompt = self.prompt_input.text().strip()
             selected_color = self.current_color.name() if self.override_color_check.isChecked() else None
             controls = self._current_style_controls()
             
@@ -688,6 +750,7 @@ class ArcheoGlyphDialog(QDialog):
                 target_func = self._current_generator.generate
                 kwargs = {
                     'image_path': self.image_drop.image_path,
+                    'prompt': prompt,
                     'style': self.style_combo.currentText(),
                     'color': selected_color,
                     'symmetry': self.symmetry_check.isChecked(),
@@ -700,17 +763,14 @@ class ArcheoGlyphDialog(QDialog):
                 from ..generators.huggingface_generator import HuggingFaceGenerator
                 self._current_generator = HuggingFaceGenerator()
                 target_func = self._current_generator.generate
-                
-                # Use prompt input
-                prompt = self.prompt_input.text().strip()
 
                 if prompt:
                     self.mode_info_label.setText(
-                        "HF Prompt Adaptive v3 active: custom text prompt will influence stylization."
+                        "HF custom prompt active: text guidance will influence stylization."
                     )
                 else:
                     self.mode_info_label.setText(
-                        "HF Prompt Adaptive v3 active: no custom prompt detected; factual/default guidance is used."
+                        "HF default factual guidance active."
                     )
                     prompt = "archaeological artifact from reference photo"
 
@@ -731,6 +791,7 @@ class ArcheoGlyphDialog(QDialog):
                 target_func = self._current_generator.generate
                 kwargs = {
                     'image_path': self.image_drop.image_path,
+                    'prompt': prompt,
                     'style': self.style_combo.currentText(),
                     'color': selected_color,
                     STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
@@ -741,8 +802,15 @@ class ArcheoGlyphDialog(QDialog):
                 from ..generators.template_generator import TemplateGenerator
                 self._current_generator = TemplateGenerator(self.plugin_dir)
                 target_func = self._current_generator.generate
+                template_name = self.template_combo.currentText()
+                if not template_name or template_name == "No templates match current filter":
+                    QMessageBox.warning(self, "No Template", "Adjust template filters and select a valid template.")
+                    self.progress_bar.setVisible(False)
+                    self.progress_bar.setRange(0, 100)
+                    self.generate_btn.setEnabled(True)
+                    return
                 kwargs = {
-                    'template_type': self.template_combo.currentText(),
+                    'template_type': template_name,
                     'color': selected_color
                 }
             
@@ -763,7 +831,20 @@ class ArcheoGlyphDialog(QDialog):
         self._set_mode_info_with_controls(show_controls=True)
         
         if error_message:
-            QMessageBox.critical(self, "Error", f"Generation failed: {error_message}")
+            message = str(error_message or "")
+            lower = message.lower()
+            if "quota exceeded" in lower or "resourceexhausted" in lower:
+                QMessageBox.critical(
+                    self,
+                    "Quota Exceeded",
+                    "Google Gemini quota is currently exhausted for this API key/project.\n\n"
+                    "Actions:\n"
+                    "1. Wait for quota reset and retry.\n"
+                    "2. Use Auto Trace or Hugging Face in the meantime.\n"
+                    "3. Check quota/billing in Google AI Studio."
+                )
+                return
+            QMessageBox.critical(self, "Error", f"Generation failed: {message}")
             return
             
         if result:
@@ -865,13 +946,17 @@ class ArcheoGlyphDialog(QDialog):
         size_mode = self.size_mode_combo.currentIndex()
         min_size = self.min_size_spin.value()
         max_size = self.max_size_spin.value()
-        
+        size_field = self.size_field_combo.currentData() if hasattr(self, "size_field_combo") else ""
+        class_count = self.class_count_spin.value() if hasattr(self, "class_count_spin") else DEFAULT_GRADUATED_CLASSES
+
         success = manager.apply_to_layer(
             layer=layer,
             symbol_image=self.preview_label.generated_image,
             size_mode=size_mode,
             min_size=min_size,
-            max_size=max_size
+            max_size=max_size,
+            size_field=size_field or None,
+            num_classes=class_count,
         )
         
         if success:
@@ -954,6 +1039,7 @@ class ArcheoGlyphDialog(QDialog):
             self.layer_combo.addItem("No point layers available", "")
             self.layer_combo.setEnabled(False)
             self.layer_combo.blockSignals(False)
+            self._refresh_size_field_list()
             return
 
         self.layer_combo.setEnabled(True)
@@ -973,6 +1059,7 @@ class ArcheoGlyphDialog(QDialog):
                 break
         self.layer_combo.setCurrentIndex(selected_index)
         self.layer_combo.blockSignals(False)
+        self._refresh_size_field_list()
 
     def _get_selected_layer(self):
         """Return currently selected point layer."""
@@ -986,3 +1073,60 @@ class ArcheoGlyphDialog(QDialog):
         if layer.geometryType() != QgsWkbTypes.PointGeometry:
             return None
         return layer
+
+    def _refresh_template_list(self):
+        """Filter template list by category and search text."""
+        if not hasattr(self, "template_combo"):
+            return
+
+        selected_text = self.template_combo.currentText() if self.template_combo.count() else ""
+        category = self.template_category_combo.currentData() if hasattr(self, "template_category_combo") else "all"
+        query = self.template_search_input.text().strip().lower() if hasattr(self, "template_search_input") else ""
+
+        if category == "all":
+            filtered = list(self._all_templates or [])
+        else:
+            filtered = sorted(list((self._template_categories or {}).get(category, [])))
+
+        if query:
+            filtered = [name for name in filtered if query in name.lower()]
+
+        if not filtered:
+            filtered = ["No templates match current filter"]
+
+        self.template_combo.blockSignals(True)
+        self.template_combo.clear()
+        self.template_combo.addItems(filtered)
+        if selected_text and selected_text in filtered:
+            self.template_combo.setCurrentText(selected_text)
+        self.template_combo.blockSignals(False)
+
+    def _on_size_mode_changed(self, index):
+        """Toggle graduated-size options based on selected mode."""
+        graduated = int(index) != 0
+        self.max_size_spin.setEnabled(graduated)
+        self.size_field_combo.setEnabled(graduated)
+        self.class_count_spin.setEnabled(graduated)
+
+    def _refresh_size_field_list(self):
+        """Refresh numeric field choices for selected target layer."""
+        if not hasattr(self, "size_field_combo"):
+            return
+
+        previous = self.size_field_combo.currentData()
+        self.size_field_combo.blockSignals(True)
+        self.size_field_combo.clear()
+        self.size_field_combo.addItem("Auto (first numeric field)", "")
+
+        layer = self._get_selected_layer()
+        if layer:
+            for field in layer.fields():
+                if field.isNumeric():
+                    self.size_field_combo.addItem(field.name(), field.name())
+
+        for idx in range(self.size_field_combo.count()):
+            if self.size_field_combo.itemData(idx) == previous:
+                self.size_field_combo.setCurrentIndex(idx)
+                break
+
+        self.size_field_combo.blockSignals(False)

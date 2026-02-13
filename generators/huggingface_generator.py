@@ -634,20 +634,16 @@ class HuggingFaceGenerator:
                 overlay_linework = True
                 overlay_opacity = max(0.55, 0.72 - (0.15 * float(prompt_influence)))
             if style_key == STYLE_COLORED:
-                # Keep strong structural overlay only in low-prompt or contour-seed cases.
                 if overlay_linework:
                     overlay_opacity = max(0.18, 0.52 - (0.30 * float(prompt_influence)))
-                elif used_contour_seed and float(prompt_influence) < 0.72:
+                elif used_contour_seed and float(prompt_influence) < 0.42:
                     overlay_linework = True
-                    overlay_opacity = max(0.22, 0.46 - (0.20 * float(prompt_influence)))
-                elif float(prompt_influence) < 0.22:
+                    overlay_opacity = max(0.18, 0.34 - (0.16 * float(prompt_influence)))
+                elif texture_noise >= (46.0 + (8.0 * float(prompt_influence))):
                     overlay_linework = True
-                    overlay_opacity = 0.42
-                elif texture_noise >= (32.0 + (8.0 * float(prompt_influence))):
-                    overlay_linework = True
-                    overlay_opacity = 0.30
+                    overlay_opacity = 0.24
             if style_key == STYLE_COLORED and overlay_linework and texture_noise >= 28.0:
-                overlay_opacity = min(0.62, overlay_opacity + 0.10)
+                overlay_opacity = min(0.50, overlay_opacity + 0.08)
 
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
@@ -672,7 +668,7 @@ class HuggingFaceGenerator:
             # If output remains highly noisy, fall back to deterministic factual contour.
             if style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
                 final_noise = self._estimate_texture_noise(out, mask_img)
-                base_noise_threshold = 34.0 if style_key == STYLE_COLORED else 40.0
+                base_noise_threshold = 48.0 if style_key == STYLE_COLORED else 44.0
                 fallback_noise_threshold = base_noise_threshold + (14.0 * float(prompt_influence))
                 # With strong prompt input, avoid collapsing back to contour too early.
                 if final_noise >= fallback_noise_threshold and float(prompt_influence) < 0.78:
@@ -815,6 +811,16 @@ class HuggingFaceGenerator:
             symbolic_looseness=symbolic_looseness,
             exaggeration=exaggeration,
         )
+        style_key = self._normalize_style(style)
+        control_values = resolve_style_controls(
+            settings=self.settings,
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
+        )
+        factuality_v = int(control_values.get("factuality", 0))
+        symbolic_v = int(control_values.get("symbolic_looseness", 0))
+        exaggeration_v = int(control_values.get("exaggeration", 0))
 
         # 1) If reference image exists, try img2img/edit path first.
         has_reference = bool(image_path and os.path.exists(image_path))
@@ -823,8 +829,21 @@ class HuggingFaceGenerator:
         contour_seed_b64 = None
         reference_hex = color
         if has_reference:
-            # Prompt-heavy requests should keep more model freedom.
-            use_contour_seed = float(prompt_influence) < 0.60
+            if style_key in (STYLE_LINE, STYLE_MEASURED):
+                use_contour_seed = True
+            elif style_key == STYLE_TYPOLOGY:
+                use_contour_seed = (
+                    factuality_v >= 70 and
+                    symbolic_v <= 50 and
+                    float(prompt_influence) < 0.32
+                )
+            else:
+                use_contour_seed = (
+                    factuality_v >= 86 and
+                    symbolic_v <= 24 and
+                    exaggeration_v <= 20 and
+                    float(prompt_influence) < 0.12
+                )
 
             # Build deterministic Auto Trace seed only when requested by heuristic.
             if use_contour_seed:
