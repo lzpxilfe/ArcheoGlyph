@@ -123,7 +123,12 @@ class ContourGenerator:
             contour_circularity = (4.0 * np.pi * contour_area) / (contour_perimeter * contour_perimeter)
         _, _, w_box, h_box = cv2.boundingRect(main_contour)
         aspect_balance = min(w_box, h_box) / max(1.0, float(max(w_box, h_box)))
-        is_roundish = contour_circularity >= 0.70 and aspect_balance >= 0.78
+        bbox_fill_ratio = contour_area / max(1.0, float(w_box * h_box))
+        is_roundish = (
+            contour_circularity >= 0.70 and
+            aspect_balance >= 0.78 and
+            bbox_fill_ratio <= 0.90
+        )
         if is_roundish:
             hull = cv2.convexHull(main_contour)
             hull_area = float(cv2.contourArea(hull))
@@ -628,10 +633,10 @@ class ContourGenerator:
         cy = float(np.mean(ys))
         r_ref = max(12.0, 0.5 * float(max(bw, bh)))
 
-        margin_x = max(4, int(bw * 0.10))
-        margin_y = max(4, int(bh * 0.10))
-        min_len = max(12.0, float(min(bw, bh)) * 0.08)
-        max_len = float(max(bw, bh)) * 0.88
+        margin_x = max(3, int(bw * 0.04))
+        margin_y = max(3, int(bh * 0.04))
+        min_len = max(6.0, float(min(bw, bh)) * 0.03)
+        max_len = float(max(bw, bh)) * 1.20
 
         candidates = []
         for line in lines:
@@ -648,16 +653,37 @@ class ContourGenerator:
 
             d = ((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5
             d_norm = d / r_ref
-            if d_norm > 0.74:
+            if d_norm > 0.92:
                 continue
 
-            length_score = min(1.0, arc_len / max(1.0, 0.26 * float(max(bw, bh))))
+            length_score = min(1.0, arc_len / max(1.0, 0.18 * float(max(bw, bh))))
             center_score = max(0.0, 1.0 - d_norm)
-            score = (0.62 * center_score) + (0.38 * length_score)
+            score = (0.45 * center_score) + (0.55 * length_score)
             candidates.append((score, (lx, ly), line))
 
         if not candidates:
-            return []
+            backup = []
+            for line in lines:
+                center, arc_len = self._line_centroid_and_length(line)
+                if center is None or arc_len < 6.0:
+                    continue
+                lx, ly = center
+                if lx <= (x0 + 2) or lx >= (x1 - 2) or ly <= (y0 + 2) or ly >= (y1 - 2):
+                    continue
+                arr = np.asarray(line, dtype=np.int32)
+                arr[:, 0] = np.clip(arr[:, 0], 0, mask.shape[1] - 1)
+                arr[:, 1] = np.clip(arr[:, 1], 0, mask.shape[0] - 1)
+                inside = 0
+                for px, py in arr:
+                    if mask[int(py), int(px)] > 0:
+                        inside += 1
+                if inside / float(max(1, len(arr))) < 0.80:
+                    continue
+                backup.append((arc_len, (lx, ly), line))
+            if not backup:
+                return []
+            backup.sort(key=lambda item: item[0], reverse=True)
+            candidates = [(float(item[0]), item[1], item[2]) for item in backup]
 
         candidates.sort(key=lambda item: item[0], reverse=True)
         selected = []
@@ -889,6 +915,7 @@ class ContourGenerator:
             gray[:, :b].reshape(-1),
             gray[:, -b:].reshape(-1),
         ], axis=0)
+        circle_mask = self._detect_center_circle_mask(gray)
         if float(np.mean(border_gray)) >= 180.0 and float(np.std(border_gray)) <= 36.0:
             white_fg = cv2.threshold(gray, 242, 255, cv2.THRESH_BINARY_INV)[1]
             white_fg = cv2.morphologyEx(white_fg, cv2.MORPH_OPEN, kernel3, iterations=1)
@@ -897,6 +924,17 @@ class ContourGenerator:
             if np.count_nonzero(white_fg) >= int(h * w * 0.01):
                 combined = cv2.bitwise_or(target_mask, white_fg)
                 target_mask = self._select_primary_component(combined)
+
+        if circle_mask is not None and np.count_nonzero(circle_mask) >= int(h * w * 0.04):
+            metrics = self._mask_shape_metrics(target_mask)
+            overlap = float(np.count_nonzero(cv2.bitwise_and(target_mask, circle_mask))) / float(
+                max(1, np.count_nonzero(circle_mask))
+            )
+            if metrics["circularity"] < 0.58 or metrics["touches_border"] or overlap < 0.35:
+                clamped = cv2.bitwise_and(cv2.bitwise_or(target_mask, circle_mask), circle_mask)
+                if np.count_nonzero(clamped) < int(np.count_nonzero(circle_mask) * 0.40):
+                    clamped = circle_mask
+                target_mask = clamped
 
         refined = self._refine_with_grabcut(blurred, target_mask)
         if refined is not None:
@@ -961,11 +999,112 @@ class ContourGenerator:
         else:
             non_border = [item for item in candidate_items if not item[1]]
             pool = non_border if non_border else candidate_items
-            best = max(pool, key=lambda item: item[0])[2]
+
+            preferred_round = []
+            for score, touches_border, c in pool:
+                x, y, cw, ch = cv2.boundingRect(c)
+                area = float(cv2.contourArea(c))
+                perim = float(cv2.arcLength(c, True))
+                circularity = (4.0 * np.pi * area) / (perim * perim) if perim > 1e-6 else 0.0
+                fill_ratio = area / max(1.0, float(cw * ch))
+                cx = x + (cw * 0.5)
+                cy = y + (ch * 0.5)
+                d = ((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5
+                d_norm = d / max(1.0, (w * w + h * h) ** 0.5)
+                if circularity >= 0.56 and fill_ratio <= 0.93 and d_norm <= 0.38:
+                    round_score = area * (1.0 - min(0.95, d_norm)) * (0.64 + (0.36 * circularity))
+                    preferred_round.append((round_score, c))
+
+            if preferred_round:
+                best = max(preferred_round, key=lambda item: item[0])[1]
+            else:
+                best = max(pool, key=lambda item: item[0])[2]
 
         out = np.zeros((h, w), dtype=np.uint8)
         cv2.drawContours(out, [best], -1, 255, thickness=cv2.FILLED)
         return out
+
+    def _mask_shape_metrics(self, mask):
+        """Return simple shape metrics for the dominant foreground component."""
+        h, w = mask.shape[:2]
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return {"area": 0.0, "circularity": 0.0, "touches_border": False}
+        c = max(contours, key=cv2.contourArea)
+        area = float(cv2.contourArea(c))
+        perim = float(cv2.arcLength(c, True))
+        circularity = (4.0 * np.pi * area) / (perim * perim) if perim > 1e-6 else 0.0
+        x, y, cw, ch = cv2.boundingRect(c)
+        touches_border = (x <= 1 or y <= 1 or (x + cw) >= (w - 1) or (y + ch) >= (h - 1))
+        return {
+            "area": area,
+            "circularity": max(0.0, min(1.0, circularity)),
+            "touches_border": bool(touches_border),
+        }
+
+    def _detect_center_circle_mask(self, gray_img):
+        """Detect a dominant near-center circle and return it as a binary mask."""
+        try:
+            h, w = gray_img.shape[:2]
+            min_r = int(max(8, min(h, w) * 0.16))
+            max_r = int(max(min_r + 2, min(h, w) * 0.52))
+            if max_r <= min_r:
+                return None
+
+            eq = cv2.equalizeHist(gray_img)
+            blur = cv2.GaussianBlur(eq, (7, 7), 1.4)
+            circles = cv2.HoughCircles(
+                blur,
+                cv2.HOUGH_GRADIENT,
+                dp=1.2,
+                minDist=max(20, int(min(h, w) * 0.25)),
+                param1=110,
+                param2=30,
+                minRadius=min_r,
+                maxRadius=max_r,
+            )
+            if circles is None:
+                circles = cv2.HoughCircles(
+                    blur,
+                    cv2.HOUGH_GRADIENT,
+                    dp=1.2,
+                    minDist=max(20, int(min(h, w) * 0.25)),
+                    param1=100,
+                    param2=24,
+                    minRadius=min_r,
+                    maxRadius=max_r,
+                )
+            if circles is None:
+                return None
+
+            circles = np.round(circles[0, :]).astype(int)
+            cx_ref = w * 0.5
+            cy_ref = h * 0.5
+            max_d = max(1.0, (w * w + h * h) ** 0.5)
+
+            best = None
+            best_score = -1.0
+            for x, y, r in circles:
+                if r < min_r or r > max_r:
+                    continue
+                d = ((x - cx_ref) ** 2 + (y - cy_ref) ** 2) ** 0.5
+                center_score = 1.0 - min(1.0, d / max_d)
+                radius_score = float(r - min_r) / float(max(1, max_r - min_r))
+                score = (0.72 * center_score) + (0.28 * radius_score)
+                if score > best_score:
+                    best_score = score
+                    best = (x, y, r)
+
+            if best is None:
+                return None
+
+            out = np.zeros((h, w), dtype=np.uint8)
+            x, y, r = best
+            cv2.circle(out, (int(x), int(y)), int(r), 255, thickness=-1)
+            out = cv2.morphologyEx(out, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
+            return out
+        except Exception:
+            return None
 
     def _mask_touches_border(self, mask, border=2):
         """Return True when foreground pixels touch any image border band."""
