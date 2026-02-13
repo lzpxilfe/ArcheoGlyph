@@ -155,35 +155,39 @@ class ContourGenerator:
 
         path_data = ""
         if len(approx) > 2:
-            points = approx.reshape(-1, 2)
-            final_points = points.tolist()
+            if is_roundish and not symmetry:
+                (cx_round, cy_round), r_round = cv2.minEnclosingCircle(main_contour)
+                path_data = self._circle_path(cx_round, cy_round, r_round, steps=88)
+            else:
+                points = approx.reshape(-1, 2)
+                final_points = points.tolist()
 
-            if symmetry:
-                top_pt = min(points, key=lambda p: p[1])
-                bottom_pt = max(points, key=lambda p: p[1])
-                axis_x = (top_pt[0] + bottom_pt[0]) / 2
-                left_contour = [pt for pt in points if pt[0] < axis_x]
+                if symmetry:
+                    top_pt = min(points, key=lambda p: p[1])
+                    bottom_pt = max(points, key=lambda p: p[1])
+                    axis_x = (top_pt[0] + bottom_pt[0]) / 2
+                    left_contour = [pt for pt in points if pt[0] < axis_x]
 
-                if len(left_contour) >= 3:
-                    left_sorted = sorted(left_contour, key=lambda p: p[1])
-                    right_side = []
-                    for pt in reversed(left_sorted):
-                        reflected_x = int(axis_x + (axis_x - pt[0]))
-                        right_side.append([reflected_x, int(pt[1])])
-                    final_points = [[int(pt[0]), int(pt[1])] for pt in left_sorted] + right_side
-                    final_points.append(final_points[0])
+                    if len(left_contour) >= 3:
+                        left_sorted = sorted(left_contour, key=lambda p: p[1])
+                        right_side = []
+                        for pt in reversed(left_sorted):
+                            reflected_x = int(axis_x + (axis_x - pt[0]))
+                            right_side.append([reflected_x, int(pt[1])])
+                        final_points = [[int(pt[0]), int(pt[1])] for pt in left_sorted] + right_side
+                        final_points.append(final_points[0])
 
-            if len(final_points) > 2:
-                start = final_points[0]
-                path_data = f"M {start[0]},{start[1]} "
-                for pt in final_points[1:]:
-                    path_data += f"L {pt[0]},{pt[1]} "
-                path_data += "Z"
+                if len(final_points) > 2:
+                    start = final_points[0]
+                    path_data = f"M {start[0]},{start[1]} "
+                    for pt in final_points[1:]:
+                        path_data += f"L {pt[0]},{pt[1]} "
+                    path_data += "Z"
 
         profile_lines = self._estimate_profile_bands(target_mask, max_lines=max(1, profile_count))
         round_lines = self._estimate_round_bands(
             target_mask,
-            max_lines=max(0, min(3, profile_count + 1)),
+            max_lines=max(0, min(2, profile_count + 1)),
         ) if is_roundish else []
         spine_lines = self._estimate_spine_line(target_mask)
         terminal_target = terminal_count if is_typology else 2
@@ -198,16 +202,21 @@ class ContourGenerator:
             10.0,
         )))
         round_motif_lines = self._select_round_inner_motif_lines(
-            texture_lines,
+            texture_lines + self._extract_round_motif_lines(
+                processing_bgr,
+                target_mask,
+                main_contour,
+                max_lines=max(18, round_motif_limit * 3),
+            ),
             target_mask,
             max_lines=round_motif_limit,
         ) if is_roundish else []
 
         if is_typology:
             if is_roundish:
-                internal_lines = round_lines[:max(1, min(3, profile_count))]
+                internal_lines = round_lines[:1]
                 if round_motif_lines:
-                    internal_lines += round_motif_lines[:max(1, min(2, round_motif_limit))]
+                    internal_lines += round_motif_lines[:max(2, min(5, round_motif_limit))]
                 if terminal_count > 0:
                     internal_lines += terminal_lines[:1]
             else:
@@ -224,7 +233,7 @@ class ContourGenerator:
             # Colored mode: symbolic structural lines only (avoid painterly/noisy interiors).
             if is_roundish:
                 # Circular artifacts (e.g. coins) should avoid forced vertical spine lines.
-                internal_lines = round_lines[:max(1, min(3, profile_count + 1))]
+                internal_lines = round_lines[:1]
                 if round_motif_lines:
                     internal_lines += round_motif_lines[:round_motif_limit]
                 elif factuality_v >= 0.72 and texture_count > 0 and not internal_lines:
@@ -350,6 +359,24 @@ class ContourGenerator:
             path += f"L {int(pt[0])},{int(pt[1])} "
         return path.strip()
 
+    def _circle_path(self, cx, cy, radius, steps=72):
+        """Build SVG path for a smooth circle-like outline."""
+        r = max(2.0, float(radius))
+        n = int(max(24, min(160, int(steps))))
+        pts = []
+        for i in range(n):
+            t = (2.0 * np.pi * float(i)) / float(n)
+            x = float(cx) + (r * np.cos(t))
+            y = float(cy) + (r * np.sin(t))
+            pts.append([x, y])
+        if not pts:
+            return ""
+        path = f"M {pts[0][0]:.2f},{pts[0][1]:.2f} "
+        for x, y in pts[1:]:
+            path += f"L {x:.2f},{y:.2f} "
+        path += "Z"
+        return path
+
     def _extract_internal_lines(self, bgr_img, mask, main_contour):
         """
         Extract internal feature lines inside artifact silhouette.
@@ -395,7 +422,84 @@ class ContourGenerator:
             line_items.append((arc_len, pts.tolist()))
 
         line_items.sort(key=lambda item: item[0], reverse=True)
-        return [item[1] for item in line_items[:18]]
+        return [item[1] for item in line_items[:72]]
+
+    def _extract_round_motif_lines(self, bgr_img, mask, main_contour, max_lines=24):
+        """
+        Extract additional non-ring motif lines for circular artifacts.
+        """
+        limit = int(max(0, int(max_lines)))
+        if limit <= 0:
+            return []
+
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+
+        # Top-hat emphasizes local embossed details in coin-like surfaces.
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        tophat = cv2.morphologyEx(enhanced, cv2.MORPH_TOPHAT, kernel)
+        fused = cv2.addWeighted(enhanced, 0.70, tophat, 1.30, 0)
+
+        edges = cv2.Canny(fused, 24, 96)
+        interior_mask = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
+        edges = cv2.bitwise_and(edges, edges, mask=interior_mask)
+
+        boundary = np.zeros_like(mask)
+        cv2.drawContours(boundary, [main_contour], -1, 255, thickness=6)
+        edges[boundary > 0] = 0
+        edges = cv2.morphologyEx(edges, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8), iterations=1)
+
+        line_contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        if not line_contours:
+            return []
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 30:
+            return []
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        r_ref = max(8.0, 0.5 * float(max(np.max(xs) - np.min(xs), np.max(ys) - np.min(ys))))
+        min_dim = min(mask.shape[0], mask.shape[1])
+        min_len = max(6.0, float(min_dim) * 0.012)
+        max_len = float(max(mask.shape[0], mask.shape[1])) * 1.20
+
+        candidates = []
+        for contour in line_contours:
+            arc_len = float(cv2.arcLength(contour, False))
+            if arc_len < min_len or arc_len > max_len:
+                continue
+
+            epsilon = 0.0025 * arc_len
+            approx = cv2.approxPolyDP(contour, epsilon, False)
+            pts = approx.reshape(-1, 2)
+            if pts.shape[0] < 2:
+                continue
+
+            center = np.mean(pts, axis=0).astype(int)
+            if not (0 <= center[0] < mask.shape[1] and 0 <= center[1] < mask.shape[0]):
+                continue
+            if mask[center[1], center[0]] == 0:
+                continue
+
+            d = ((float(center[0]) - cx) ** 2 + (float(center[1]) - cy) ** 2) ** 0.5
+            d_norm = d / max(1e-6, r_ref)
+            if d_norm > 0.95:
+                continue
+
+            ring_like = self._line_ring_likeness(pts.tolist(), cx, cy)
+            if ring_like >= 0.90 and d_norm > 0.35:
+                continue
+
+            motif_weight = 1.0 - (0.86 * ring_like)
+            center_weight = max(0.20, 1.0 - (0.45 * d_norm))
+            score = arc_len * motif_weight * center_weight
+            candidates.append((score, pts.tolist()))
+
+        if not candidates:
+            return []
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return [item[1] for item in candidates[:limit]]
 
     def _estimate_spine_line(self, mask):
         """Estimate central spine line from mask when texture lines are weak."""
@@ -689,6 +793,8 @@ class ContourGenerator:
             center_score = max(0.0, 1.0 - d_norm)
             motif_weight = 1.0 - (0.72 * ring_like)
             score = ((0.45 * center_score) + (0.55 * length_score)) * motif_weight
+            if score < 0.08:
+                continue
             candidates.append((score, (lx, ly), line))
 
         if not candidates:
@@ -721,7 +827,7 @@ class ContourGenerator:
         candidates.sort(key=lambda item: item[0], reverse=True)
         selected = []
         selected_centers = []
-        min_sep = max(6.0, 0.10 * float(min(bw, bh)))
+        min_sep = max(5.0, 0.07 * float(min(bw, bh)))
 
         for _, center, line in candidates:
             if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in selected_centers):
