@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ArcheoGlyph - Settings Dialog
 Configure AI API keys and view setup instructions.
@@ -6,13 +6,14 @@ Configure AI API keys and view setup instructions.
 
 import os
 import sys
+import importlib.util
 from urllib.parse import urlparse
 from qgis.PyQt.QtCore import Qt, QSettings, QUrl, QProcess, QThread, pyqtSignal
-from qgis.PyQt.QtGui import QDesktopServices, QFont, QPixmap
+from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QGroupBox, QTabWidget, QWidget, QTextBrowser,
-    QMessageBox, QProgressDialog, QScrollArea, QFrame, QApplication,
+    QMessageBox, QScrollArea, QFrame, QApplication,
     QCheckBox, QComboBox, QFileDialog
 )
 from ..defaults import HF_DEFAULT_MODEL_ID, HF_FALLBACK_MODEL_IDS, HF_LEGACY_MODEL_ALIASES
@@ -21,7 +22,7 @@ from ..defaults import HF_DEFAULT_MODEL_ID, HF_FALLBACK_MODEL_IDS, HF_LEGACY_MOD
 class InfoLabel(QLabel):
     """A styled info label with icon."""
     
-    def __init__(self, text, icon="ℹ️", parent=None):
+    def __init__(self, text, icon="?뱄툘", parent=None):
         super().__init__(parent)
         self.setText(f"{icon} {text}")
         self.setWordWrap(True)
@@ -41,7 +42,7 @@ class WarningLabel(QLabel):
     
     def __init__(self, text, parent=None):
         super().__init__(parent)
-        self.setText(f"⚠️ {text}")
+        self.setText(f"?좑툘 {text}")
         self.setWordWrap(True)
         self.setStyleSheet("""
             QLabel {
@@ -72,7 +73,7 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Header
-        header = QLabel("<h2>⚙️ ArcheoGlyph Settings</h2>")
+        header = QLabel("<h2>?숋툘 ArcheoGlyph Settings</h2>")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
         
@@ -96,23 +97,23 @@ class SettingsDialog(QDialog):
         
         # Tab 1: Google Gemini
         gemini_tab = self._create_gemini_tab()
-        tabs.addTab(gemini_tab, "🌐 Google Gemini")
+        tabs.addTab(gemini_tab, "?뙋 Google Gemini")
         
         # Tab 2: Hugging Face (New)
         hf_tab = self._create_huggingface_tab()
-        tabs.addTab(hf_tab, "🤗 Hugging Face")
+        tabs.addTab(hf_tab, "?쨽 Hugging Face")
         
         # Tab 3: Local Stable Diffusion
         local_tab = self._create_local_sd_tab()
-        tabs.addTab(local_tab, "💻 Local SD")
+        tabs.addTab(local_tab, "?뮲 Local SD")
         
         # Tab 4: Quick Start
         quickstart_tab = self._create_quickstart_tab()
-        tabs.addTab(quickstart_tab, "🚀 Quick Start")
+        tabs.addTab(quickstart_tab, "?? Quick Start")
         
         # Tab 5: Help
         help_tab = self._create_help_tab()
-        tabs.addTab(help_tab, "❓ Help")
+        tabs.addTab(help_tab, "??Help")
         
         layout.addWidget(tabs)
         
@@ -120,7 +121,7 @@ class SettingsDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
-        save_btn = QPushButton("💾 Save Settings")
+        save_btn = QPushButton("?뮶 Save Settings")
         save_btn.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -152,7 +153,7 @@ class SettingsDialog(QDialog):
         
         # Introduction
         info_label = QLabel(
-            "<h3>🤗 Hugging Face Inference API</h3>"
+            "<h3>?쨽 Hugging Face Inference API</h3>"
             "<p>Use open-source AI models through Hugging Face inference."
             "Requires a Hugging Face account and token.</p>"
         )
@@ -275,7 +276,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(advanced_group)
         
         # Connection Test
-        test_btn = QPushButton("✅ Test Hugging Face Connection")
+        test_btn = QPushButton("??Test Hugging Face Connection")
         test_btn.clicked.connect(self.test_huggingface_connection)
         layout.addWidget(test_btn)
         
@@ -300,7 +301,7 @@ class SettingsDialog(QDialog):
         intro = InfoLabel(
             "Google Gemini is a powerful AI that can generate custom archaeological symbols. "
             "It's FREE to use (up to 60 requests/minute) and requires only an API key.",
-            "🤖"
+            "?쨼"
         )
         layout.addWidget(intro)
         
@@ -321,7 +322,7 @@ class SettingsDialog(QDialog):
         install_layout.addWidget(install_desc)
         
         btn_layout = QHBoxLayout()
-        self.install_btn = QPushButton("📦 Install google-generativeai")
+        self.install_btn = QPushButton("?벀 Install google-generativeai")
         self.install_btn.setMinimumHeight(40)
         self.install_btn.setStyleSheet("""
             QPushButton {
@@ -366,7 +367,7 @@ class SettingsDialog(QDialog):
         apikey_desc.setTextFormat(Qt.RichText)
         apikey_layout.addWidget(apikey_desc)
         
-        link_btn = QPushButton("🔑 Open Google AI Studio (Get Free API Key)")
+        link_btn = QPushButton("?뵎 Open Google AI Studio (Get Free API Key)")
         link_btn.setMinimumHeight(40)
         link_btn.setStyleSheet("""
             QPushButton {
@@ -409,7 +410,7 @@ class SettingsDialog(QDialog):
         self.gemini_key_input.setToolTip("Your Google Gemini API key - kept secure and private")
         key_input_layout.addWidget(self.gemini_key_input)
         
-        show_key_btn = QPushButton("👁")
+        show_key_btn = QPushButton("?몓")
         show_key_btn.setFixedWidth(40)
         show_key_btn.setToolTip("Show/Hide API key")
         show_key_btn.clicked.connect(self._toggle_key_visibility)
@@ -431,7 +432,7 @@ class SettingsDialog(QDialog):
         test_layout.addWidget(test_desc)
         
         test_btn_layout = QHBoxLayout()
-        test_btn = QPushButton("✅ Test Gemini Connection")
+        test_btn = QPushButton("??Test Gemini Connection")
         test_btn.setMinimumHeight(40)
         test_btn.setStyleSheet("""
             QPushButton {
@@ -459,7 +460,7 @@ class SettingsDialog(QDialog):
         usage_info = InfoLabel(
             "Free tier limits: 60 requests/minute, 1500 requests/day. "
             "This is more than enough for typical archaeological work!",
-            "📊"
+            "?뱤"
         )
         layout.addWidget(usage_info)
         
@@ -481,7 +482,7 @@ class SettingsDialog(QDialog):
         intro = InfoLabel(
             "Local Stable Diffusion runs AI on YOUR computer - no internet required! "
             "Great for offline field work or sensitive data. Requires a GPU with 6GB+ VRAM.",
-            "💻"
+            "?뮲"
         )
         layout.addWidget(intro)
         
@@ -516,7 +517,7 @@ class SettingsDialog(QDialog):
         server_layout.addLayout(url_layout)
         
         test_layout = QHBoxLayout()
-        test_btn = QPushButton("🔌 Test Connection")
+        test_btn = QPushButton("?뵆 Test Connection")
         test_btn.setMinimumHeight(35)
         test_btn.clicked.connect(self.test_sd_connection)
         test_layout.addWidget(test_btn)
@@ -558,7 +559,7 @@ class SettingsDialog(QDialog):
         """)
         setup_layout.addWidget(setup_text)
         
-        guide_btn = QPushButton("📖 Open Full Setup Guide (GitHub)")
+        guide_btn = QPushButton("?뱰 Open Full Setup Guide (GitHub)")
         guide_btn.clicked.connect(self._open_sd_guide)
         setup_layout.addWidget(guide_btn)
         
@@ -579,7 +580,7 @@ class SettingsDialog(QDialog):
         layout.setSpacing(15)
         
         # Header
-        header = QLabel("<h3>🚀 Get Started in 30 Seconds!</h3>")
+        header = QLabel("<h3>?? Get Started in 30 Seconds!</h3>")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
         
@@ -594,7 +595,7 @@ class SettingsDialog(QDialog):
             "<li>Pick your color</li>"
             "<li>Click <b>Generate</b>!</li>"
             "</ol>"
-            "<p>✨ <i>That's it! No API key or installation needed.</i></p>"
+            "<p>??<i>That's it! No API key or installation needed.</i></p>"
         ))
         layout.addWidget(no_setup)
         
@@ -608,7 +609,7 @@ class SettingsDialog(QDialog):
             "<li>Paste key and click <b>Save Settings</b></li>"
             "<li>Restart QGIS</li>"
             "</ol>"
-            "<p>✨ <i>Generate icons with online inference models.</i></p>"
+            "<p>??<i>Generate icons with online inference models.</i></p>"
         ))
         layout.addWidget(hf_opt)
 
@@ -623,14 +624,14 @@ class SettingsDialog(QDialog):
             "<li>Paste key and click <b>Save Settings</b></li>"
             "<li>Restart QGIS</li>"
             "</ol>"
-            "<p>✨ <i>Now you can upload any image and generate custom symbols!</i></p>"
+            "<p>??<i>Now you can upload any image and generate custom symbols!</i></p>"
         ))
         layout.addWidget(gemini_opt)
         
         # Tips
         tips = InfoLabel(
             "Tip: Start with Templates to try the plugin, then add AI features later!",
-            "💡"
+            "?뮕"
         )
         layout.addWidget(tips)
         
@@ -646,14 +647,14 @@ class SettingsDialog(QDialog):
         help_text = QTextBrowser()
         help_text.setOpenExternalLinks(True)
         help_text.setHtml("""
-        <h2>📚 ArcheoGlyph Help</h2>
+        <h2>?뱴 ArcheoGlyph Help</h2>
         
-        <h3>🎨 What is ArcheoGlyph?</h3>
+        <h3>?렓 What is ArcheoGlyph?</h3>
         <p>ArcheoGlyph helps archaeologists create accurate, standardized symbols for GIS maps. 
         Upload an artifact photo or select a template, and the plugin generates a precise, 
         recognizable symbol perfect for archaeological documentation.</p>
         
-        <h3>🔧 Generation Modes</h3>
+        <h3>?뵩 Generation Modes</h3>
         <table border="1" cellpadding="8" style="border-collapse: collapse;">
             <tr style="background: #f0f0f0;">
                 <th>Mode</th>
@@ -661,7 +662,7 @@ class SettingsDialog(QDialog):
                 <th>Best For</th>
             </tr>
             <tr>
-                <td><b>Auto Trace ✂</b></td>
+                <td><b>Auto Trace ??/b></td>
                 <td>Nothing!</td>
                 <td>Fast & accurate silhouette from photo</td>
             </tr>
@@ -687,7 +688,7 @@ class SettingsDialog(QDialog):
             </tr>
         </table>
         
-        <h3>🎯 Symbol Styles</h3>
+        <h3>?렞 Symbol Styles</h3>
         <ul>
             <li><b>Colored</b> - fact-based color symbol with clear readability</li>
             <li><b>Typology</b> - catalog-like icon with bold contour and 1-3 structural lines</li>
@@ -695,7 +696,7 @@ class SettingsDialog(QDialog):
             <li><b>Measured</b> - monochrome measured drawing style for reports</li>
         </ul>
         
-        <h3>📊 Size Scaling Options</h3>
+        <h3>?뱤 Size Scaling Options</h3>
         <ul>
             <li><b>Fixed Size</b> - All symbols same size</li>
             <li><b>Natural Breaks</b> - Sizes based on data clustering</li>
@@ -703,20 +704,20 @@ class SettingsDialog(QDialog):
             <li><b>Quantile</b> - Equal number of features per size class</li>
         </ul>
         
-        <h3>💾 Saving Symbols</h3>
+        <h3>?뮶 Saving Symbols</h3>
         <ul>
             <li><b>Save to Library</b> - Stores in QGIS symbol library for reuse</li>
             <li><b>Apply to Layer</b> - Immediately applies to selected vector layer</li>
         </ul>
         
-        <h3>🔗 Links</h3>
+        <h3>?뵕 Links</h3>
         <ul>
             <li><a href="https://github.com/lzpxilfe/ArcheoGlyph">GitHub Repository</a></li>
             <li><a href="https://github.com/lzpxilfe/ArcheoGlyph/issues">Report Issues / Request Features</a></li>
             <li><a href="https://github.com/lzpxilfe/ArcheoGlyph/blob/main/docs/ai_setup_guide.md">Full AI Setup Guide</a></li>
         </ul>
         
-        <h3>👤 Author</h3>
+        <h3>?뫀 Author</h3>
         <p>Created by <b>Jinseo Hwang</b></p>
         """)
         layout.addWidget(help_text)
@@ -1014,13 +1015,16 @@ class SettingsDialog(QDialog):
         
         # Check if package is installed
         try:
-            import google.generativeai
-            self.install_status.setText("✅ Installed")
-            self.install_status.setStyleSheet("color: green; font-weight: bold;")
-        except ImportError:
+            package_found = importlib.util.find_spec("google.generativeai") is not None
+            if package_found:
+                self.install_status.setText("✅ Installed")
+                self.install_status.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                self.install_status.setText("❌ Not installed")
+                self.install_status.setStyleSheet("color: red;")
+        except Exception:
             self.install_status.setText("❌ Not installed")
             self.install_status.setStyleSheet("color: red;")
-            
     def save_settings(self):
         """Save settings."""
         self.settings.setValue('ArcheoGlyph/gemini_api_key', self.gemini_key_input.text())
@@ -1077,30 +1081,22 @@ class SettingsDialog(QDialog):
         )
 
     def test_huggingface_connection(self):
-        """Test Hugging Face connection."""
-        import requests
+        """Test Hugging Face connection asynchronously."""
         api_key = self.hf_key_input.text().strip()
 
         if not api_key:
             QMessageBox.warning(self, "No Token", "Please enter Hugging Face token.")
             return
 
-        self.hf_test_result.setText("Testing...")
-        QApplication.processEvents()
+        trigger_button = self.sender()
+        if trigger_button:
+            trigger_button.setEnabled(False)
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "image/png",
-        }
+        self.hf_test_result.setText("Testing...")
+        self.hf_test_result.setStyleSheet("color: orange;")
 
         model_id = self._normalize_hf_model_id(self.hf_model_input.text().strip())
         self.hf_model_input.setText(model_id)
-
-        payload = {
-            "inputs": "simple icon of an ancient pottery shard on white background",
-            "parameters": {"num_inference_steps": 1},
-        }
 
         candidate_models = []
         for mid in [model_id] + list(HF_FALLBACK_MODEL_IDS) + list(HF_LEGACY_MODEL_ALIASES.keys()):
@@ -1108,78 +1104,83 @@ class SettingsDialog(QDialog):
             if normalized not in candidate_models:
                 candidate_models.append(normalized)
 
-        last_status = None
-        saw_403 = False
-        saw_404 = False
+        self.hf_test_thread = HfConnectionTestThread(api_key, candidate_models)
+        self.hf_test_thread.finished.connect(
+            lambda result: self._handle_hf_test_result(result, trigger_button, model_id)
+        )
+        self.hf_test_thread.start()
 
-        try:
-            for candidate in candidate_models:
-                api_url = f"https://router.huggingface.co/hf-inference/models/{candidate}"
-                response = requests.post(api_url, headers=headers, json=payload, timeout=30)
-                response_text = (response.text or "").lower()
-                last_status = response.status_code
+    def _handle_hf_test_result(self, result, trigger_button, requested_model_id):
+        """Handle async Hugging Face connection test results."""
+        if trigger_button:
+            trigger_button.setEnabled(True)
 
-                if response.status_code == 200:
-                    if candidate != model_id:
-                        self.hf_model_input.setText(candidate)
-                        self.settings.setValue('ArcheoGlyph/hf_model_id', candidate)
-                    self.hf_test_result.setText("Connected")
-                    self.hf_test_result.setStyleSheet("color: green; font-weight: bold;")
-                    QMessageBox.information(self, "Success", f"Connected with model: {candidate}")
-                    return
+        status = ""
+        model = ""
+        message = ""
+        if isinstance(result, dict):
+            status = str(result.get("status", "")).strip().lower()
+            model = str(result.get("model", "")).strip()
+            message = str(result.get("message", "")).strip()
 
-                if response.status_code == 503 or "loading" in response_text:
-                    if candidate != model_id:
-                        self.hf_model_input.setText(candidate)
-                        self.settings.setValue('ArcheoGlyph/hf_model_id', candidate)
-                    self.hf_test_result.setText("Loading model...")
-                    self.hf_test_result.setStyleSheet("color: orange;")
-                    QMessageBox.information(
-                        self,
-                        "Loading",
-                        f"Connected, but model is initializing: {candidate}"
-                    )
-                    return
+        if status == "connected":
+            if model and model != requested_model_id:
+                self.hf_model_input.setText(model)
+                self.settings.setValue('ArcheoGlyph/hf_model_id', model)
+            self.hf_test_result.setText("Connected")
+            self.hf_test_result.setStyleSheet("color: green; font-weight: bold;")
+            QMessageBox.information(self, "Success", f"Connected with model: {model or requested_model_id}")
+            return
 
-                if response.status_code == 401:
-                    self.hf_test_result.setText("Invalid token")
-                    self.hf_test_result.setStyleSheet("color: red;")
-                    return
+        if status == "loading":
+            if model and model != requested_model_id:
+                self.hf_model_input.setText(model)
+                self.settings.setValue('ArcheoGlyph/hf_model_id', model)
+            self.hf_test_result.setText("Loading model...")
+            self.hf_test_result.setStyleSheet("color: orange;")
+            QMessageBox.information(
+                self,
+                "Loading",
+                f"Connected, but model is initializing: {model or requested_model_id}"
+            )
+            return
 
-                if response.status_code == 403:
-                    saw_403 = True
-                    continue
+        if status == "invalid_token":
+            self.hf_test_result.setText("Invalid token")
+            self.hf_test_result.setStyleSheet("color: red;")
+            QMessageBox.warning(self, "Invalid Token", "Please check your Hugging Face token.")
+            return
 
-                if response.status_code == 404:
-                    saw_404 = True
-                    continue
+        if status == "forbidden":
+            self.hf_test_result.setText("Model access denied (403)")
+            self.hf_test_result.setStyleSheet("color: red;")
+            QMessageBox.warning(
+                self,
+                "Model Access Denied",
+                "Model terms may need acceptance on Hugging Face, or the model is restricted."
+            )
+            return
 
-            if saw_403:
-                self.hf_test_result.setText("Model access denied (403)")
-                self.hf_test_result.setStyleSheet("color: red;")
-                QMessageBox.warning(
-                    self,
-                    "Model Access Denied",
-                    "Model terms may need acceptance on Hugging Face, or the model is restricted."
-                )
-            elif saw_404:
-                self.hf_test_result.setText("Model not found (404)")
-                self.hf_test_result.setStyleSheet("color: red;")
-                QMessageBox.warning(
-                    self,
-                    "Model Not Found",
-                    "No candidate model was found.\n"
-                    f"Try '{HF_DEFAULT_MODEL_ID}' or 'Qwen/Qwen-Image'."
-                )
-            else:
-                status_text = str(last_status) if last_status is not None else "unknown"
-                self.hf_test_result.setText(f"Error {status_text}")
-                self.hf_test_result.setStyleSheet("color: red;")
+        if status == "not_found":
+            self.hf_test_result.setText("Model not found (404)")
+            self.hf_test_result.setStyleSheet("color: red;")
+            QMessageBox.warning(
+                self,
+                "Model Not Found",
+                "No candidate model was found.\n"
+                f"Try '{HF_DEFAULT_MODEL_ID}' or 'Qwen/Qwen-Image'."
+            )
+            return
 
-        except Exception as e:
+        if status == "error":
             self.hf_test_result.setText("Failed")
             self.hf_test_result.setStyleSheet("color: red;")
-            QMessageBox.warning(self, "Error", str(e))
+            QMessageBox.warning(self, "Connection Failed", message or "Unknown error")
+            return
+
+        self.hf_test_result.setText("Failed")
+        self.hf_test_result.setStyleSheet("color: red;")
+        QMessageBox.warning(self, "Connection Failed", "Unexpected test result.")
         
     def install_gemini_package(self):
         """Install google-generativeai package using QProcess (Async)."""
@@ -1197,7 +1198,7 @@ class SettingsDialog(QDialog):
             return
             
         self.install_btn.setEnabled(False)
-        self.install_btn.setText("⏳ Installing...")
+        self.install_btn.setText("??Installing...")
         self.install_status.setText("Starting...")
         self.install_status.setStyleSheet("color: orange;")
         
@@ -1228,7 +1229,7 @@ class SettingsDialog(QDialog):
     def _handle_process_output(self):
         """Handle process output."""
         data = self.process.readAllStandardOutput()
-        stderr = self.process.readAllStandardError()
+        self.process.readAllStandardError()
         
         if data:
             msg = bytes(data).decode('utf-8').strip()
@@ -1241,23 +1242,23 @@ class SettingsDialog(QDialog):
     def _handle_process_finished(self, exit_code, exit_status):
         """Handle install completion."""
         self.install_btn.setEnabled(True)
-        self.install_btn.setText("📦 Install google-generativeai")
+        self.install_btn.setText("?벀 Install google-generativeai")
         
         from qgis.core import QgsMessageLog, Qgis
         
         if exit_code == 0 and exit_status == QProcess.NormalExit:
-            self.install_status.setText("✅ Installed!")
+            self.install_status.setText("??Installed!")
             self.install_status.setStyleSheet("color: green; font-weight: bold;")
             QgsMessageLog.logMessage("ArcheoGlyph: Package installed successfully.", "ArcheoGlyph", Qgis.Success)
             
             QMessageBox.information(
                 self, 
-                "Success! 🎉", 
+                "Success! ?럦", 
                 "Package installed successfully!\n\n"
                 "Please RESTART QGIS to apply changes."
             )
         else:
-            self.install_status.setText("❌ Failed")
+            self.install_status.setText("??Failed")
             self.install_status.setStyleSheet("color: red;")
             
             # Read all output for debugging
@@ -1277,7 +1278,7 @@ class SettingsDialog(QDialog):
             msg.addButton("Copy Command", QMessageBox.ActionRole)
             msg.addButton(QMessageBox.Ok)
             
-            ret = msg.exec_()
+            msg.exec_()
             
             if msg.clickedButton().text() == "Copy Command":
                 clipboard = QApplication.clipboard()
@@ -1288,8 +1289,8 @@ class SettingsDialog(QDialog):
     def _handle_process_error(self, error):
         """Handle process start error."""
         self.install_btn.setEnabled(True)
-        self.install_btn.setText("📦 Install google-generativeai")
-        self.install_status.setText("❌ Error")
+        self.install_btn.setText("?벀 Install google-generativeai")
+        self.install_status.setText("??Error")
         self.install_status.setStyleSheet("color: red;")
         
         QMessageBox.warning(
@@ -1314,7 +1315,7 @@ class SettingsDialog(QDialog):
             )
             return
             
-        self.gemini_test_result.setText("⏳ Testing...")
+        self.gemini_test_result.setText("??Testing...")
         self.gemini_test_result.setStyleSheet("color: orange;")
         
         # Disable button during test
@@ -1332,18 +1333,18 @@ class SettingsDialog(QDialog):
             button.setEnabled(True)
             
         if success:
-            self.gemini_test_result.setText("✅ Connected!")
+            self.gemini_test_result.setText("??Connected!")
             self.gemini_test_result.setStyleSheet("color: green; font-weight: bold;")
             QMessageBox.information(
                 self,
-                "Success! 🎉",
+                "Success! ?럦",
                 f"Connection successful!\n\n"
                 f"AI Response: {message[:100]}\n\n"
                 f"You're all set! Click 'Save Settings' and start generating symbols!"
             )
         else:
             if "Package" in message:
-                self.gemini_test_result.setText("❌ Package missing")
+                self.gemini_test_result.setText("??Package missing")
                 self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(
                     self,
@@ -1355,7 +1356,7 @@ class SettingsDialog(QDialog):
                     "3. Try again"
                 )
             elif "API_KEY_INVALID" in message or "invalid" in message.lower():
-                self.gemini_test_result.setText("❌ Invalid Key")
+                self.gemini_test_result.setText("??Invalid Key")
                 self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(
                     self, 
@@ -1367,7 +1368,7 @@ class SettingsDialog(QDialog):
                     "3. Copy and paste it here"
                 )
             else:
-                self.gemini_test_result.setText("❌ Failed")
+                self.gemini_test_result.setText("??Failed")
                 self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(self, "Connection Failed", f"Error: {message}")
 
@@ -1379,7 +1380,7 @@ class SettingsDialog(QDialog):
             url = "http://127.0.0.1:7860"
             self.sd_url_input.setText(url)
             
-        self.sd_test_result.setText("⏳ Testing...")
+        self.sd_test_result.setText("??Testing...")
         self.sd_test_result.setStyleSheet("color: orange;")
         QApplication.processEvents()
         
@@ -1393,18 +1394,18 @@ class SettingsDialog(QDialog):
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode())
-                    self.sd_test_result.setText(f"✅ Connected! ({len(data)} models)")
+                    self.sd_test_result.setText(f"??Connected! ({len(data)} models)")
                     self.sd_test_result.setStyleSheet("color: green; font-weight: bold;")
                     QMessageBox.information(
                         self,
-                        "Success! 🎉",
+                        "Success! ?럦",
                         f"Connected to Stable Diffusion!\n\n"
                         f"Found {len(data)} model(s).\n\n"
                         f"Don't forget to click 'Save Settings'!"
                     )
                     
         except Exception as e:
-            self.sd_test_result.setText("❌ Not connected")
+            self.sd_test_result.setText("??Not connected")
             self.sd_test_result.setStyleSheet("color: red;")
             QMessageBox.warning(
                 self,
@@ -1498,4 +1499,78 @@ class GeminiTestThread(QThread):
             self.finished.emit(False, "Package 'google-generativeai' not installed")
         except Exception as e:
             self.finished.emit(False, str(e))
+
+
+class HfConnectionTestThread(QThread):
+    """Thread for testing Hugging Face model connectivity without blocking UI."""
+    finished = pyqtSignal(object)  # dict result payload
+
+    def __init__(self, api_key, candidate_models):
+        super().__init__()
+        self.api_key = str(api_key or "").strip()
+        self.candidate_models = list(candidate_models or [])
+
+    def run(self):
+        try:
+            import requests
+        except Exception as exc:
+            self.finished.emit({"status": "error", "message": str(exc)})
+            return
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "image/png",
+        }
+        payload = {
+            "inputs": "simple icon of an ancient pottery shard on white background",
+            "parameters": {"num_inference_steps": 1},
+        }
+
+        saw_403 = False
+        saw_404 = False
+        last_status = None
+        last_error = ""
+
+        for candidate in self.candidate_models:
+            if not candidate:
+                continue
+            api_url = f"https://router.huggingface.co/hf-inference/models/{candidate}"
+            try:
+                response = requests.post(api_url, headers=headers, json=payload, timeout=12)
+            except requests.RequestException as exc:
+                last_error = str(exc)
+                continue
+
+            response_text = (response.text or "").lower()
+            last_status = response.status_code
+
+            if response.status_code == 200:
+                self.finished.emit({"status": "connected", "model": candidate})
+                return
+            if response.status_code == 503 or "loading" in response_text:
+                self.finished.emit({"status": "loading", "model": candidate})
+                return
+            if response.status_code == 401:
+                self.finished.emit({"status": "invalid_token"})
+                return
+            if response.status_code == 403:
+                saw_403 = True
+                continue
+            if response.status_code == 404:
+                saw_404 = True
+                continue
+
+        if saw_403:
+            self.finished.emit({"status": "forbidden"})
+            return
+        if saw_404:
+            self.finished.emit({"status": "not_found"})
+            return
+        if last_error:
+            self.finished.emit({"status": "error", "message": last_error})
+            return
+        self.finished.emit({"status": "error", "message": f"Error {last_status if last_status is not None else 'unknown'}"})
+
+
 
