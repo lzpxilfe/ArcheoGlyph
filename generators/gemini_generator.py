@@ -25,27 +25,24 @@ from .style_utils import (
 class GeminiGenerator:
     """Generator using Google Gemini API for symbol creation."""
     
-    # ── Shape analysis preamble (prepended to ALL style prompts) ──
+    # Shape analysis preamble (prepended to all style prompts).
     # Forces the AI to carefully study the artifact's contour before drawing.
     _SHAPE_PREAMBLE = (
         "You are an expert archaeological illustrator. "
-        "STEP 1 — SHAPE ANALYSIS: Analyze this artifact image pixel-by-pixel. "
-        "Identify the EXACT outline including all asymmetric curves, damage, notches, "
-        "and subtle irregularities. Do not idealize the shape. "
-        "STEP 2 — SCALE ANALISYS: Determine the aspect ratio of the object. "
-        "STEP 3 — SVG GENERATION: Create a high-fidelity SVG tracing. "
+        "STEP 1 - SHAPE ANALYSIS: Analyze this artifact image carefully. "
+        "Identify the measured outline, asymmetry, and diagnostic form transitions. "
+        "Keep the silhouette factual, but suppress tiny visual noise that hurts symbol legibility. "
+        "STEP 2 - SCALE ANALISYS: Determine the exact aspect ratio of the object. "
+        "STEP 3 - SVG GENERATION: Create a factual typological symbol SVG. "
         "\n\n"
         "ABSOLUTE RULES:\n"
-        "- The SVG outline MUST match the artifact silhouette EXACTLY.\n"
-        "- Do NOT simplify. Capture every small bump and curve.\n"
+        "- Preserve measured proportions and major shape cues from the reference.\n"
         "- Maintain the exact aspect ratio of the original image.\n"
-        "- Use at minimum 100+ control points with cubic bezier curves (C command) "
-        "to ensure high precision. Do NOT use straight lines for curved sections.\n"
-        "- The viewer must be able to identify the specific individual artifact "
-        "from your outline, not just the type.\n\n"
+        "- Use smooth vector geometry with sufficient control points for curved sections.\n"
+        "- Output must read as an archaeological symbol icon, not a painting.\n\n"
     )
 
-    # Style prompts — only control RENDERING style, never the shape.
+    # Style prompts: only control rendering style, never the shape.
     STYLE_PROMPTS = {
         STYLE_COLORED: (
             "RENDERING STYLE: Premium Vector Game Asset / RPG Item Icon. "
@@ -156,12 +153,14 @@ class GeminiGenerator:
         # Keep colored output non-exaggerated and documentary.
         if style_key == STYLE_COLORED:
             style_prompt = (
-                "RENDERING STYLE: Neutral archaeological plate symbol (NOT painting). "
+                "RENDERING STYLE: Archaeological catalog symbol icon (NOT painting). "
                 "1. SHAPE RULES: Strictly trace the provided silhouette constraints. "
                 "2. OUTLINE: Use a clean black outline (about 1-2px equivalent). "
-                "3. SHADING: Optional 1-2 flat tone regions only. No painterly texture. "
-                "4. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background. "
-                "5. SVG PURITY: Use simple vector paths only; do not use gradients, filters, images, or masks."
+                "3. INTERNAL STRUCTURE: Add 1-3 structural feature lines that follow form "
+                "(for example rim/shoulder/base or blade midline), and do not invent ornament. "
+                "4. SHADING: Optional 2-3 flat tone regions only. No painterly texture. "
+                "5. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background. "
+                "6. SVG PURITY: Use simple vector paths only; do not use gradients, filters, images, or masks."
             )
 
         prompt = self._SHAPE_PREAMBLE + style_prompt

@@ -3,9 +3,9 @@
 Shared style constants and normalization helpers.
 """
 
-STYLE_COLORED = "🎨 Colored"
-STYLE_LINE = "📐 Line"
-STYLE_MEASURED = "🏛️ Measured"
+STYLE_COLORED = "Colored"
+STYLE_LINE = "Line"
+STYLE_MEASURED = "Measured"
 
 STYLE_OPTIONS = [
     STYLE_COLORED,

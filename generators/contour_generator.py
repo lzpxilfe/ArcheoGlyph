@@ -118,8 +118,19 @@ class ContourGenerator:
                     path_data += f"L {pt[0]},{pt[1]} "
                 path_data += "Z"
 
-        internal_lines = self._extract_internal_lines(processing_bgr, target_mask, main_contour)
-        internal_lines.extend(self._estimate_spine_line(target_mask))
+        profile_lines = self._estimate_profile_bands(target_mask, max_lines=3)
+        spine_lines = self._estimate_spine_line(target_mask)
+        texture_lines = self._extract_internal_lines(processing_bgr, target_mask, main_contour)
+
+        if is_publication:
+            # Publication mode keeps factual texture hints plus structural cues.
+            internal_lines = texture_lines[:14] + profile_lines[:2] + spine_lines[:1]
+        elif is_line_drawing:
+            # Line mode targets typological icon readability over photo texture.
+            internal_lines = profile_lines + spine_lines[:1]
+        else:
+            # Colored mode: symbolic structural lines only (avoid painterly/noisy interiors).
+            internal_lines = profile_lines + spine_lines[:1]
 
         if is_mono:
             if is_publication:
@@ -241,6 +252,128 @@ class ContourGenerator:
         if len(points) < 6:
             return []
         return [points]
+
+    def _smooth_1d(self, values, window=9):
+        """Simple moving-average smoothing for 1D numeric arrays."""
+        if values is None or len(values) == 0:
+            return values
+        w = int(max(3, window))
+        if w % 2 == 0:
+            w += 1
+        if len(values) < w:
+            return values.astype(np.float32)
+        kernel = np.ones((w,), dtype=np.float32) / float(w)
+        return np.convolve(values.astype(np.float32), kernel, mode="same")
+
+    def _estimate_profile_bands(self, mask, max_lines=3):
+        """
+        Estimate typological structural bands (rim/shoulder/base) from silhouette profile.
+        This creates symbol-like interior cues without relying on image texture.
+        """
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 80:
+            return []
+
+        top_y = int(np.min(ys))
+        bot_y = int(np.max(ys))
+        h = max(1, bot_y - top_y + 1)
+        w = mask.shape[1]
+
+        widths = np.zeros((h,), dtype=np.float32)
+        lefts = np.zeros((h,), dtype=np.int32)
+        rights = np.zeros((h,), dtype=np.int32)
+        valid = np.zeros((h,), dtype=bool)
+
+        for y in range(top_y, bot_y + 1):
+            row = np.where(mask[y] > 0)[0]
+            idx = y - top_y
+            if len(row) < 2:
+                continue
+            left = int(row[0])
+            right = int(row[-1])
+            width = right - left
+            if width < 5:
+                continue
+            lefts[idx] = left
+            rights[idx] = right
+            widths[idx] = float(width)
+            valid[idx] = True
+
+        if int(np.count_nonzero(valid)) < 24:
+            return []
+
+        # Fill invalid rows by nearest valid width/edges.
+        valid_ids = np.where(valid)[0]
+        for i in range(h):
+            if valid[i]:
+                continue
+            nearest = valid_ids[np.argmin(np.abs(valid_ids - i))]
+            widths[i] = widths[nearest]
+            lefts[i] = lefts[nearest]
+            rights[i] = rights[nearest]
+
+        smooth_w = self._smooth_1d(widths, window=max(7, h // 18))
+        grad = np.gradient(smooth_w)
+        curv = np.gradient(grad)
+
+        y_min = int(h * 0.12)
+        y_max = int(h * 0.90)
+        if y_max <= y_min:
+            return []
+
+        candidates = []
+        max_abs_curv = float(np.max(np.abs(curv[y_min:y_max + 1]))) if y_max > y_min else 0.0
+        if max_abs_curv <= 1e-6:
+            return []
+
+        threshold = max_abs_curv * 0.23
+        for i in range(y_min, y_max + 1):
+            if abs(float(curv[i])) < threshold:
+                continue
+            ww = float(smooth_w[i])
+            if ww < (w * 0.06):
+                continue
+            candidates.append((abs(float(curv[i])), i, float(curv[i]), ww))
+
+        if not candidates:
+            return []
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        selected = []
+        min_sep = max(8, int(h * 0.13))
+        for _, idx, signed_curv, ww in candidates:
+            if any(abs(idx - sidx) < min_sep for sidx, _, _ in selected):
+                continue
+            selected.append((idx, signed_curv, ww))
+            if len(selected) >= max(1, int(max_lines)):
+                break
+
+        selected.sort(key=lambda item: item[0])
+        lines = []
+        for idx, signed_curv, ww in selected:
+            y = top_y + idx
+            x0 = int(lefts[idx])
+            x1 = int(rights[idx])
+            margin = max(2, int(ww * 0.10))
+            x0 += margin
+            x1 -= margin
+            if x1 - x0 < 10:
+                continue
+
+            # Slight arced line to mimic catalog symbol conventions.
+            arc = int(max(1, min(6, ww * 0.028)))
+            direction = -1 if signed_curv > 0 else 1
+            q1 = int(x0 + (x1 - x0) * 0.33)
+            q2 = int(x0 + (x1 - x0) * 0.66)
+            line = [
+                [x0, y],
+                [q1, y + (direction * arc)],
+                [q2, y + (direction * arc)],
+                [x1, y],
+            ]
+            lines.append(line)
+
+        return lines
 
     def _darken_hex(self, hex_color, factor):
         """Darken a hex color by multiplying channels by factor [0..1]."""

@@ -119,7 +119,10 @@ class HuggingFaceGenerator:
         elif style_key == STYLE_MEASURED:
             parts.append("style hint: black and white measured drawing, technical publication style")
         else:
-            parts.append("style hint: restrained flat symbol color, non-painterly")
+            parts.append(
+                "style hint: archaeological catalog icon, bold contour, "
+                "2-3 structural lines (rim/shoulder/base), flat 2-3 tone shading, no texture"
+            )
         if color:
             parts.append(f"material color constrained to {color}")
         if prompt:
@@ -545,10 +548,14 @@ class HuggingFaceGenerator:
             overlay_linework = str(
                 self.settings.value('ArcheoGlyph/hf_overlay_linework', 'false')
             ).strip().lower() in ("1", "true", "yes", "on")
+            overlay_opacity = 1.0
             if style_key in (STYLE_LINE, STYLE_MEASURED):
                 overlay_linework = True
-            if style_key == STYLE_COLORED and texture_noise >= 28.0:
+            if style_key == STYLE_COLORED:
                 overlay_linework = True
+                overlay_opacity = 0.52
+            if style_key == STYLE_COLORED and texture_noise >= 28.0:
+                overlay_opacity = 0.68
 
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
@@ -565,6 +572,7 @@ class HuggingFaceGenerator:
                     )
                     painter = QPainter(out)
                     painter.setRenderHint(QPainter.Antialiasing, True)
+                    painter.setOpacity(overlay_opacity)
                     painter.drawImage(0, 0, line_img)
                     painter.end()
 
