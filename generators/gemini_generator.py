@@ -5,6 +5,7 @@ Generates stylized archaeological symbols using Google Gemini API.
 """
 
 import os
+import re
 from qgis.PyQt.QtCore import QSettings
 
 
@@ -98,6 +99,8 @@ class GeminiGenerator:
         "<radialgradient",
         "<pattern",
         "<mask",
+        "<text",
+        "<clippath",
     )
     
     def __init__(self):
@@ -277,7 +280,7 @@ class GeminiGenerator:
                     if response.text:
                         svg_code = self._extract_svg(response.text)
                         if svg_code:
-                            is_safe, issue = self._is_svg_documentary_safe(svg_code)
+                            is_safe, issue = self._is_svg_documentary_safe(svg_code, style_key=style_key)
                             if is_safe:
                                 return svg_code
                             last_svg_issue = issue
@@ -349,7 +352,7 @@ class GeminiGenerator:
             return text[start:end+6]
         return None
 
-    def _is_svg_documentary_safe(self, svg_code):
+    def _is_svg_documentary_safe(self, svg_code, style_key=None):
         """Reject SVG outputs that look painterly or non-symbolic."""
         if not svg_code:
             return False, "empty SVG"
@@ -363,5 +366,40 @@ class GeminiGenerator:
         for token in self._DISALLOWED_SVG_TOKENS:
             if token in lower:
                 return False, f"contains disallowed element: {token}"
+
+        path_count = lower.count("<path")
+        if path_count <= 0:
+            return False, "no path elements found"
+        if style_key == STYLE_COLORED and path_count > 18:
+            return False, f"too many path elements for factual colored style ({path_count})"
+        if style_key in (STYLE_LINE, STYLE_MEASURED) and path_count > 42:
+            return False, f"too many path elements for line/measured style ({path_count})"
+
+        # Reject overly decorative color palettes in documentary mode.
+        fills = re.findall(r'fill\s*=\s*["\']([^"\']+)["\']', svg_code, flags=re.IGNORECASE)
+        strokes = re.findall(r'stroke\s*=\s*["\']([^"\']+)["\']', svg_code, flags=re.IGNORECASE)
+        colors = set()
+        for val in fills + strokes:
+            token = val.strip().lower()
+            if token in ("none", "transparent", "currentcolor", ""):
+                continue
+            colors.add(token)
+
+        if style_key == STYLE_COLORED and len(colors) > 6:
+            return False, f"too many distinct colors ({len(colors)})"
+        if style_key in (STYLE_LINE, STYLE_MEASURED):
+            for c in colors:
+                if c in ("#000", "#000000", "black", "#111", "#111111", "#222", "#222222"):
+                    continue
+                if re.fullmatch(r'#[0-9a-f]{6}', c):
+                    try:
+                        r = int(c[1:3], 16)
+                        g = int(c[3:5], 16)
+                        b = int(c[5:7], 16)
+                        if abs(r - g) <= 10 and abs(g - b) <= 10:
+                            continue
+                    except Exception:
+                        pass
+                return False, f"non-monochrome color detected in line/measured mode: {c}"
 
         return True, ""

@@ -99,15 +99,20 @@ class HuggingFaceGenerator:
             "documentary illustration",
             "preserve measured proportions",
             "preserve observed material characteristics",
-            "subtle material shading and patina detail",
+            "subtle material shading only",
+            "flat symbol-friendly rendering",
             "centered object",
             "plain neutral background",
             "no extra objects",
+            "no decorative motif",
+            "no engraved ornament invention",
+            "no texture collage",
         ]
         if evidence_mode:
             parts.extend([
                 "preserve silhouette and edge geometry from the reference image",
                 "preserve observed chips wear cracks and asymmetry",
+                "do not invent new internal patterns",
             ])
         if style_key == STYLE_LINE:
             parts.append("style hint: monochrome line drawing, clean contour and key internal lines")
@@ -124,7 +129,9 @@ class HuggingFaceGenerator:
     def _negative_prompt(self):
         return (
             "landscape, scenery, architecture, village, people, animals, trees, sky, clouds, "
-            "multiple objects, dramatic scene, fantasy scene, text, watermark, logo, map, diagram"
+            "multiple objects, dramatic scene, fantasy scene, text, watermark, logo, map, diagram, "
+            "ornament, decorative pattern, mosaic, tattoo pattern, mandala, collage texture, "
+            "brush strokes, painterly texture, concept art, surreal art"
         )
 
     def _normalize_style(self, style):
@@ -203,7 +210,46 @@ class HuggingFaceGenerator:
             return (88, 112, 92)
         return (int(sum_r / count), int(sum_g / count), int(sum_b / count))
 
-    def _harmonize_colored_output(self, image, base_rgb):
+    def _estimate_texture_noise(self, image, mask_img):
+        """Estimate high-frequency texture noise inside masked artifact area."""
+        if image is None or mask_img is None:
+            return 0.0
+
+        img = image.convertToFormat(QImage.Format_ARGB32)
+        w = min(img.width(), mask_img.width())
+        h = min(img.height(), mask_img.height())
+        if w < 3 or h < 3:
+            return 0.0
+
+        diff_sum = 0.0
+        samples = 0
+        for y in range(1, h - 1):
+            for x in range(1, w - 1):
+                mp = mask_img.pixelColor(x, y)
+                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
+                if not inside:
+                    continue
+
+                p = img.pixelColor(x, y)
+                l = img.pixelColor(x - 1, y)
+                r = img.pixelColor(x + 1, y)
+                u = img.pixelColor(x, y - 1)
+                d = img.pixelColor(x, y + 1)
+
+                dl = (
+                    abs(p.red() - l.red()) + abs(p.green() - l.green()) + abs(p.blue() - l.blue()) +
+                    abs(p.red() - r.red()) + abs(p.green() - r.green()) + abs(p.blue() - r.blue()) +
+                    abs(p.red() - u.red()) + abs(p.green() - u.green()) + abs(p.blue() - u.blue()) +
+                    abs(p.red() - d.red()) + abs(p.green() - d.green()) + abs(p.blue() - d.blue())
+                ) / 12.0
+                diff_sum += dl
+                samples += 1
+
+        if samples < 20:
+            return 0.0
+        return diff_sum / samples
+
+    def _harmonize_colored_output(self, image, base_rgb, flatten=False, preserve_ratio=0.18):
         """Reduce painterly drift by harmonizing output to reference material color."""
         out = image.convertToFormat(QImage.Format_ARGB32)
         br, bg, bb = base_rgb
@@ -213,13 +259,15 @@ class HuggingFaceGenerator:
                 if px.alpha() < 8:
                     continue
                 lum = (0.299 * px.red() + 0.587 * px.green() + 0.114 * px.blue()) / 255.0
+                if flatten:
+                    lum = round(lum * 3.0) / 3.0
                 shade = 0.58 + (0.64 * lum)
                 tr = max(0, min(255, int(br * shade)))
                 tg = max(0, min(255, int(bg * shade)))
                 tb = max(0, min(255, int(bb * shade)))
-                nr = int((tr * 0.78) + (px.red() * 0.22))
-                ng = int((tg * 0.78) + (px.green() * 0.22))
-                nb = int((tb * 0.78) + (px.blue() * 0.22))
+                nr = int((tr * (1.0 - preserve_ratio)) + (px.red() * preserve_ratio))
+                ng = int((tg * (1.0 - preserve_ratio)) + (px.green() * preserve_ratio))
+                nb = int((tb * (1.0 - preserve_ratio)) + (px.blue() * preserve_ratio))
                 px.setRed(max(0, min(255, nr)))
                 px.setGreen(max(0, min(255, ng)))
                 px.setBlue(max(0, min(255, nb)))
@@ -325,10 +373,16 @@ class HuggingFaceGenerator:
                         px.setAlpha(255)
                         out.setPixelColor(x, y, px)
 
+            texture_noise = self._estimate_texture_noise(generated, mask_img)
+
             if style_key == STYLE_COLORED:
+                flatten = texture_noise >= 24.0
+                preserve_ratio = 0.10 if flatten else 0.22
                 out = self._harmonize_colored_output(
                     out,
-                    self._estimate_reference_rgb(image_path, mask_img, forced_hex=color)
+                    self._estimate_reference_rgb(image_path, mask_img, forced_hex=color),
+                    flatten=flatten,
+                    preserve_ratio=preserve_ratio,
                 )
             else:
                 out = self._harmonize_mono_output(out, publication=(style_key == STYLE_MEASURED))
@@ -338,12 +392,14 @@ class HuggingFaceGenerator:
             ).strip().lower() in ("1", "true", "yes", "on")
             if style_key in (STYLE_LINE, STYLE_MEASURED):
                 overlay_linework = True
+            if style_key == STYLE_COLORED and texture_noise >= 28.0:
+                overlay_linework = True
 
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
                 line_svg = self.contour_gen.generate(
                     image_path=image_path,
-                    style=style_key,
+                    style=STYLE_LINE,
                     color=None,
                     symmetry=symmetry
                 )
@@ -356,6 +412,19 @@ class HuggingFaceGenerator:
                     painter.setRenderHint(QPainter.Antialiasing, True)
                     painter.drawImage(0, 0, line_img)
                     painter.end()
+
+            # If output remains highly noisy, fall back to deterministic factual contour.
+            if style_key == STYLE_COLORED:
+                final_noise = self._estimate_texture_noise(out, mask_img)
+                if final_noise >= 34.0:
+                    fallback = self._generate_evidence_fallback(
+                        image_path=image_path,
+                        style=style,
+                        color=color,
+                        symmetry=symmetry,
+                    )
+                    if fallback:
+                        return fallback
 
             return out
         except Exception:
@@ -449,16 +518,11 @@ class HuggingFaceGenerator:
             self.DEFAULT_MODEL_ID,
             "Qwen/Qwen-Image-Edit-2509",
             "Qwen/Qwen-Image-Edit",
-            "black-forest-labs/FLUX.2-dev",
             "black-forest-labs/FLUX.1-Kontext-dev",
+            "black-forest-labs/FLUX.2-dev",
             "black-forest-labs/FLUX.1-dev",
-            "black-forest-labs/FLUX.1-Krea-dev",
             "black-forest-labs/FLUX.1-schnell",
             "stabilityai/stable-diffusion-3.5-large",
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            "stable-diffusion-v1-5/stable-diffusion-v1-5",
-            "CompVis/stable-diffusion-v1-4",
-            "prompthero/openjourney",
         ]:
             normalized = self._normalize_model_id(fallback)
             if normalized not in models_to_try:
@@ -479,7 +543,8 @@ class HuggingFaceGenerator:
         )
 
         # 1) If reference image exists, try img2img/edit path first.
-        if image_path and os.path.exists(image_path):
+        has_reference = bool(image_path and os.path.exists(image_path))
+        if has_reference:
             try:
                 with open(image_path, 'rb') as f:
                     image_b64 = base64.b64encode(f.read()).decode('utf-8')
@@ -500,9 +565,9 @@ class HuggingFaceGenerator:
                     "parameters": {
                         "prompt": base_prompt,
                         "negative_prompt": self._negative_prompt(),
-                        "num_inference_steps": 26,
-                        "guidance_scale": 4.5,
-                        "strength": 0.35,
+                        "num_inference_steps": 24,
+                        "guidance_scale": 4.0,
+                        "strength": 0.22,
                     }
                 }
 
@@ -522,32 +587,34 @@ class HuggingFaceGenerator:
             except Exception as exc:
                 error_logs.append(f"Reference img2img setup failed: {exc}")
 
-        # 2) txt2img fallback.
-        txt2img_payload = {
-            "inputs": base_prompt,
-            "parameters": {
-                "negative_prompt": self._negative_prompt(),
-                "num_inference_steps": 30,
-                "guidance_scale": 5.0,
+        # 2) In reference mode we skip txt2img to avoid imaginative drift.
+        # txt2img is used only when there is no photo reference.
+        if not has_reference:
+            txt2img_payload = {
+                "inputs": base_prompt,
+                "parameters": {
+                    "negative_prompt": self._negative_prompt(),
+                    "num_inference_steps": 30,
+                    "guidance_scale": 5.0,
+                }
             }
-        }
 
-        result = self._try_models(
-            models_to_try=models_to_try,
-            headers=headers,
-            payload=txt2img_payload,
-            error_logs=error_logs,
-            timeout=60,
-            image_path=image_path,
-            symmetry=symmetry,
-            style=style,
-            color=color,
-        )
-        if result:
-            return result
+            result = self._try_models(
+                models_to_try=models_to_try,
+                headers=headers,
+                payload=txt2img_payload,
+                error_logs=error_logs,
+                timeout=60,
+                image_path=image_path,
+                symmetry=symmetry,
+                style=style,
+                color=color,
+            )
+            if result:
+                return result
 
         # 3) Final deterministic evidence fallback if all remote calls fail.
-        if image_path and os.path.exists(image_path):
+        if has_reference:
             contour_result = self._generate_evidence_fallback(
                 image_path=image_path,
                 style=style,
