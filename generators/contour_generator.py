@@ -124,6 +124,14 @@ class ContourGenerator:
         _, _, w_box, h_box = cv2.boundingRect(main_contour)
         aspect_balance = min(w_box, h_box) / max(1.0, float(max(w_box, h_box)))
         is_roundish = contour_circularity >= 0.70 and aspect_balance >= 0.78
+        if is_roundish:
+            hull = cv2.convexHull(main_contour)
+            hull_area = float(cv2.contourArea(hull))
+            solidity = contour_area / max(1.0, hull_area)
+            if solidity < 0.88:
+                main_contour = hull
+                contour_area = float(cv2.contourArea(main_contour))
+                contour_perimeter = float(cv2.arcLength(main_contour, True))
 
         if is_typology:
             base_epsilon = 0.0026
@@ -168,6 +176,10 @@ class ContourGenerator:
                 path_data += "Z"
 
         profile_lines = self._estimate_profile_bands(target_mask, max_lines=max(1, profile_count))
+        round_lines = self._estimate_round_bands(
+            target_mask,
+            max_lines=max(0, min(3, profile_count + 1)),
+        ) if is_roundish else []
         spine_lines = self._estimate_spine_line(target_mask)
         terminal_target = terminal_count if is_typology else 2
         terminal_lines = self._estimate_terminal_bars(
@@ -178,7 +190,7 @@ class ContourGenerator:
 
         if is_typology:
             if is_roundish:
-                internal_lines = profile_lines[:profile_count]
+                internal_lines = round_lines[:max(1, min(3, profile_count))]
                 if terminal_count > 0:
                     internal_lines += terminal_lines[:1]
             else:
@@ -195,8 +207,8 @@ class ContourGenerator:
             # Colored mode: symbolic structural lines only (avoid painterly/noisy interiors).
             if is_roundish:
                 # Circular artifacts (e.g. coins) should avoid forced vertical spine lines.
-                internal_lines = profile_lines[:max(1, min(3, profile_count))]
-                if factuality_v >= 0.72 and texture_count > 0:
+                internal_lines = round_lines[:max(1, min(3, profile_count + 1))]
+                if factuality_v >= 0.72 and texture_count > 0 and not internal_lines:
                     internal_lines += self._remove_near_horizontal_lines(texture_lines)[:1]
             else:
                 internal_lines = profile_lines[:max(1, profile_count)] + spine_lines[:1]
@@ -518,6 +530,57 @@ class ContourGenerator:
 
         return lines
 
+    def _estimate_round_bands(self, mask, max_lines=2):
+        """
+        Estimate concentric ring-like lines for circular artifacts (coins, seals).
+        Avoids forcing horizontal bars through round silhouettes.
+        """
+        line_count = int(max(0, min(3, int(max_lines))))
+        if line_count <= 0:
+            return []
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return []
+        main = max(contours, key=cv2.contourArea)
+        area = float(cv2.contourArea(main))
+        if area <= 80.0:
+            return []
+
+        perim = float(cv2.arcLength(main, True))
+        if perim <= 1e-6:
+            return []
+        circularity = (4.0 * np.pi * area) / (perim * perim)
+        x, y, w_box, h_box = cv2.boundingRect(main)
+        aspect_balance = min(w_box, h_box) / max(1.0, float(max(w_box, h_box)))
+        if circularity < 0.58 or aspect_balance < 0.62:
+            return []
+
+        (cx, cy), radius = cv2.minEnclosingCircle(main)
+        if radius < 10.0:
+            return []
+
+        ratios = [0.76, 0.58, 0.42]
+        lines = []
+        point_count = 56
+        for ratio in ratios[:line_count]:
+            r = radius * ratio
+            if r < 6.0:
+                continue
+            pts = []
+            for i in range(point_count):
+                t = (2.0 * np.pi * float(i)) / float(point_count)
+                px = int(round(cx + (r * np.cos(t))))
+                py = int(round(cy + (r * np.sin(t))))
+                px = max(0, min(mask.shape[1] - 1, px))
+                py = max(0, min(mask.shape[0] - 1, py))
+                if mask[py, px] > 0:
+                    pts.append([px, py])
+            if len(pts) >= 18:
+                pts.append(pts[0])
+                lines.append(pts)
+        return lines
+
     def _estimate_terminal_bars(self, mask, max_lines=2):
         """
         Estimate short terminal bars near top/bottom extremes.
@@ -723,6 +786,25 @@ class ContourGenerator:
         kernel5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_OPEN, kernel3, iterations=1)
         target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_CLOSE, kernel5, iterations=2)
+
+        # White-background fallback:
+        # many museum/reference photos have bright uniform background, where
+        # non-white thresholding is often more stable than chroma/luma split.
+        gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
+        border_gray = np.concatenate([
+            gray[:b, :].reshape(-1),
+            gray[-b:, :].reshape(-1),
+            gray[:, :b].reshape(-1),
+            gray[:, -b:].reshape(-1),
+        ], axis=0)
+        if float(np.mean(border_gray)) >= 180.0 and float(np.std(border_gray)) <= 36.0:
+            white_fg = cv2.threshold(gray, 242, 255, cv2.THRESH_BINARY_INV)[1]
+            white_fg = cv2.morphologyEx(white_fg, cv2.MORPH_OPEN, kernel3, iterations=1)
+            white_fg = cv2.morphologyEx(white_fg, cv2.MORPH_CLOSE, kernel5, iterations=2)
+            white_fg = self._select_primary_component(white_fg)
+            if np.count_nonzero(white_fg) >= int(h * w * 0.01):
+                combined = cv2.bitwise_or(target_mask, white_fg)
+                target_mask = self._select_primary_component(combined)
 
         refined = self._refine_with_grabcut(blurred, target_mask)
         if refined is not None:
