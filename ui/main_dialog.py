@@ -492,7 +492,7 @@ class ArcheoGlyphDialog(QDialog):
         descriptions = {
             self.autotrace_radio: "✂ Extracts contour + internal feature lines from photo (fast, offline)",
             self.gemini_radio: "🤖 Google Gemini AI generates reference-constrained symbols (factual mode)",
-            self.hf_radio: "🤗 Hugging Face AI generates symbols from the reference image (token required)",
+            self.hf_radio: "🤗 Hugging Face AI refines symbols from the reference image (token required, HF Prompt Adaptive v3)",
             self.local_radio: "💻 Local Stable Diffusion generates symbols (GPU required)",
             self.template_radio: "📋 Uses built-in SVG templates by category",
         }
@@ -596,9 +596,15 @@ class ArcheoGlyphDialog(QDialog):
                 
                 # Use prompt input
                 prompt = self.prompt_input.text().strip()
-                
-                # Fallback if empty
-                if not prompt:
+
+                if prompt:
+                    self.mode_info_label.setText(
+                        "HF Prompt Adaptive v3 active: custom text prompt will influence stylization."
+                    )
+                else:
+                    self.mode_info_label.setText(
+                        "HF Prompt Adaptive v3 active: no custom prompt detected; factual/default guidance is used."
+                    )
                     prompt = "archaeological artifact from reference photo"
 
                 kwargs = {

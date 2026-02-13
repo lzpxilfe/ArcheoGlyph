@@ -749,6 +749,12 @@ class HuggingFaceGenerator:
 
         error_logs = []
         prompt_influence = self._prompt_influence_score(prompt)
+        try:
+            p_text = str(prompt or "").strip()
+            p_short = p_text if len(p_text) <= 120 else (p_text[:117] + "...")
+            print(f"[ArcheoGlyph] HF prompt influence={prompt_influence:.2f} prompt='{p_short}'")
+        except Exception:
+            pass
         base_prompt = self._build_prompt(
             prompt=prompt,
             style=style,
