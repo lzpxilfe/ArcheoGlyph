@@ -526,6 +526,7 @@ class HuggingFaceGenerator:
         style=None,
         color=None,
         prompt_influence=0.0,
+        used_contour_seed=False,
     ):
         """
         Force generated result to follow reference silhouette and linework.
@@ -593,16 +594,20 @@ class HuggingFaceGenerator:
             if style_key in (STYLE_LINE, STYLE_MEASURED):
                 overlay_linework = True
             if style_key == STYLE_COLORED:
+                # Keep strong structural overlay only in low-prompt or contour-seed cases.
                 if overlay_linework:
-                    overlay_opacity = max(0.22, 0.58 - (0.28 * float(prompt_influence)))
-                elif float(prompt_influence) < 0.35:
+                    overlay_opacity = max(0.18, 0.52 - (0.30 * float(prompt_influence)))
+                elif used_contour_seed and float(prompt_influence) < 0.72:
                     overlay_linework = True
-                    overlay_opacity = 0.52
-                elif texture_noise >= (30.0 + (6.0 * float(prompt_influence))):
+                    overlay_opacity = max(0.22, 0.46 - (0.20 * float(prompt_influence)))
+                elif float(prompt_influence) < 0.22:
                     overlay_linework = True
-                    overlay_opacity = 0.38
+                    overlay_opacity = 0.42
+                elif texture_noise >= (32.0 + (8.0 * float(prompt_influence))):
+                    overlay_linework = True
+                    overlay_opacity = 0.30
             if style_key == STYLE_COLORED and overlay_linework and texture_noise >= 28.0:
-                overlay_opacity = min(0.72, overlay_opacity + 0.14)
+                overlay_opacity = min(0.62, overlay_opacity + 0.10)
 
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
@@ -627,7 +632,8 @@ class HuggingFaceGenerator:
             if style_key == STYLE_COLORED:
                 final_noise = self._estimate_texture_noise(out, mask_img)
                 fallback_noise_threshold = 34.0 + (14.0 * float(prompt_influence))
-                if final_noise >= fallback_noise_threshold:
+                # With strong prompt input, avoid collapsing back to contour too early.
+                if final_noise >= fallback_noise_threshold and float(prompt_influence) < 0.78:
                     fallback = self._generate_evidence_fallback(
                         image_path=image_path,
                         style=style,
@@ -653,6 +659,7 @@ class HuggingFaceGenerator:
         style=None,
         color=None,
         prompt_influence=0.0,
+        used_contour_seed=False,
     ):
         """Try a payload across model list and return first valid QImage."""
         for model in models_to_try:
@@ -678,6 +685,7 @@ class HuggingFaceGenerator:
                             style=style,
                             color=color,
                             prompt_influence=prompt_influence,
+                            used_contour_seed=used_contour_seed,
                         )
                     return image
 
@@ -764,25 +772,31 @@ class HuggingFaceGenerator:
 
         # 1) If reference image exists, try img2img/edit path first.
         has_reference = bool(image_path and os.path.exists(image_path))
+        use_contour_seed = False
         contour_seed = None
         contour_seed_b64 = None
         reference_hex = color
         if has_reference:
-            # Build deterministic Auto Trace seed first, then let HF refine tones on top of it.
-            contour_seed = self._generate_evidence_fallback(
-                image_path=image_path,
-                style=style,
-                color=color,
-                symmetry=symmetry,
-            )
-            if contour_seed is not None:
-                contour_seed_b64 = self._qimage_to_base64_png(contour_seed)
-                if not reference_hex:
-                    silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
-                    if silhouette_bytes:
-                        mask_img = QImage()
-                        if mask_img.loadFromData(silhouette_bytes):
-                            reference_hex = self._rgb_to_hex(self._estimate_reference_rgb(image_path, mask_img))
+            # Prompt-heavy requests should keep more model freedom.
+            use_contour_seed = float(prompt_influence) < 0.60
+
+            # Build deterministic Auto Trace seed only when requested by heuristic.
+            if use_contour_seed:
+                contour_seed = self._generate_evidence_fallback(
+                    image_path=image_path,
+                    style=style,
+                    color=color,
+                    symmetry=symmetry,
+                )
+                if contour_seed is not None:
+                    contour_seed_b64 = self._qimage_to_base64_png(contour_seed)
+
+            if not reference_hex:
+                silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
+                if silhouette_bytes:
+                    mask_img = QImage()
+                    if mask_img.loadFromData(silhouette_bytes):
+                        reference_hex = self._rgb_to_hex(self._estimate_reference_rgb(image_path, mask_img))
 
         if has_reference:
             try:
@@ -796,14 +810,27 @@ class HuggingFaceGenerator:
                     if reference_hex:
                         img2img_prompt += f", keep material hue near {reference_hex}"
                     img_strength = 0.18 + (0.14 * float(prompt_influence))
+                    source_tag = "contour_seed"
                 else:
                     with open(image_path, 'rb') as f:
                         image_b64 = base64.b64encode(f.read()).decode('utf-8')
-                    img2img_prompt = base_prompt
-                    img_strength = 0.22 + (0.12 * float(prompt_influence))
+                    img2img_prompt = (
+                        f"{base_prompt}, preserve measured silhouette and proportions from the reference photo, "
+                        "but allow stylistic simplification into a readable archaeological symbol icon"
+                    )
+                    img_strength = 0.28 + (0.18 * float(prompt_influence))
+                    source_tag = "reference_photo"
 
                 img_steps = int(24 + (4 * float(prompt_influence)))
                 img_guidance = 4.0 + (1.2 * float(prompt_influence))
+                img_strength = max(0.12, min(0.62, float(img_strength)))
+                try:
+                    print(
+                        f"[ArcheoGlyph] HF image source={source_tag} "
+                        f"strength={img_strength:.2f} guidance={img_guidance:.2f} steps={img_steps}"
+                    )
+                except Exception:
+                    pass
 
                 img2img_models = []
                 for mid in [
@@ -838,6 +865,7 @@ class HuggingFaceGenerator:
                     style=style,
                     color=color,
                     prompt_influence=prompt_influence,
+                    used_contour_seed=(source_tag == "contour_seed"),
                 )
                 if result:
                     return result
