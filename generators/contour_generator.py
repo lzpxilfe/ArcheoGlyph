@@ -1084,14 +1084,26 @@ class ContourGenerator:
 
         if circle_mask is not None and np.count_nonzero(circle_mask) >= int(h * w * 0.04):
             metrics = self._mask_shape_metrics(target_mask)
+            circle_area = float(np.count_nonzero(circle_mask))
             overlap = float(np.count_nonzero(cv2.bitwise_and(target_mask, circle_mask))) / float(
-                max(1, np.count_nonzero(circle_mask))
+                max(1.0, circle_area)
             )
-            if metrics["circularity"] < 0.58 or metrics["touches_border"] or overlap < 0.35:
-                clamped = cv2.bitwise_and(cv2.bitwise_or(target_mask, circle_mask), circle_mask)
-                if np.count_nonzero(clamped) < int(np.count_nonzero(circle_mask) * 0.40):
-                    clamped = circle_mask
-                target_mask = clamped
+            area_ratio = float(metrics["area"]) / max(1.0, circle_area)
+            round_candidate = (
+                metrics["aspect_balance"] >= 0.70
+                and metrics["fill_ratio"] <= 0.95
+                and (metrics["circularity"] >= 0.50 or overlap >= 0.64)
+            )
+            if round_candidate:
+                should_clamp = (
+                    metrics["touches_border"] or
+                    overlap < 0.58 or
+                    area_ratio > 1.30
+                )
+                if should_clamp:
+                    clamped = cv2.bitwise_and(cv2.bitwise_or(target_mask, circle_mask), circle_mask)
+                    if np.count_nonzero(clamped) >= int(circle_area * 0.42):
+                        target_mask = clamped
 
         refined = self._refine_with_grabcut(blurred, target_mask)
         if refined is not None:
@@ -1156,26 +1168,7 @@ class ContourGenerator:
         else:
             non_border = [item for item in candidate_items if not item[1]]
             pool = non_border if non_border else candidate_items
-
-            preferred_round = []
-            for score, touches_border, c in pool:
-                x, y, cw, ch = cv2.boundingRect(c)
-                area = float(cv2.contourArea(c))
-                perim = float(cv2.arcLength(c, True))
-                circularity = (4.0 * np.pi * area) / (perim * perim) if perim > 1e-6 else 0.0
-                fill_ratio = area / max(1.0, float(cw * ch))
-                cx = x + (cw * 0.5)
-                cy = y + (ch * 0.5)
-                d = ((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5
-                d_norm = d / max(1.0, (w * w + h * h) ** 0.5)
-                if circularity >= 0.56 and fill_ratio <= 0.93 and d_norm <= 0.38:
-                    round_score = area * (1.0 - min(0.95, d_norm)) * (0.64 + (0.36 * circularity))
-                    preferred_round.append((round_score, c))
-
-            if preferred_round:
-                best = max(preferred_round, key=lambda item: item[0])[1]
-            else:
-                best = max(pool, key=lambda item: item[0])[2]
+            best = max(pool, key=lambda item: item[0])[2]
 
         out = np.zeros((h, w), dtype=np.uint8)
         cv2.drawContours(out, [best], -1, 255, thickness=cv2.FILLED)
@@ -1193,10 +1186,14 @@ class ContourGenerator:
         circularity = (4.0 * np.pi * area) / (perim * perim) if perim > 1e-6 else 0.0
         x, y, cw, ch = cv2.boundingRect(c)
         touches_border = (x <= 1 or y <= 1 or (x + cw) >= (w - 1) or (y + ch) >= (h - 1))
+        aspect_balance = min(cw, ch) / max(1.0, float(max(cw, ch)))
+        fill_ratio = area / max(1.0, float(cw * ch))
         return {
             "area": area,
             "circularity": max(0.0, min(1.0, circularity)),
             "touches_border": bool(touches_border),
+            "aspect_balance": max(0.0, min(1.0, aspect_balance)),
+            "fill_ratio": max(0.0, min(1.0, fill_ratio)),
         }
 
     def _detect_center_circle_mask(self, gray_img):
@@ -1255,8 +1252,18 @@ class ContourGenerator:
             if best is None:
                 return None
 
-            out = np.zeros((h, w), dtype=np.uint8)
+            edges = cv2.Canny(blur, 52, 146)
             x, y, r = best
+            ring = np.zeros((h, w), dtype=np.uint8)
+            cv2.circle(ring, (int(x), int(y)), int(r), 255, thickness=2)
+            ring_pixels = int(np.count_nonzero(ring))
+            if ring_pixels <= 0:
+                return None
+            edge_support = float(np.count_nonzero(cv2.bitwise_and(edges, ring))) / float(ring_pixels)
+            if edge_support < 0.08:
+                return None
+
+            out = np.zeros((h, w), dtype=np.uint8)
             cv2.circle(out, (int(x), int(y)), int(r), 255, thickness=-1)
             out = cv2.morphologyEx(out, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
             return out
