@@ -249,6 +249,108 @@ class HuggingFaceGenerator:
             return 0.0
         return diff_sum / samples
 
+    def _estimate_luma_variance(self, image, mask_img):
+        """Estimate luminance variance inside silhouette area."""
+        if image is None or mask_img is None:
+            return 0.0
+
+        img = image.convertToFormat(QImage.Format_ARGB32)
+        w = min(img.width(), mask_img.width())
+        h = min(img.height(), mask_img.height())
+        if w < 2 or h < 2:
+            return 0.0
+
+        total = 0.0
+        total_sq = 0.0
+        count = 0
+        for y in range(h):
+            for x in range(w):
+                mp = mask_img.pixelColor(x, y)
+                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
+                if not inside:
+                    continue
+
+                px = img.pixelColor(x, y)
+                lum = (0.299 * px.red()) + (0.587 * px.green()) + (0.114 * px.blue())
+                total += lum
+                total_sq += (lum * lum)
+                count += 1
+
+        if count < 20:
+            return 0.0
+        mean = total / count
+        var = (total_sq / count) - (mean * mean)
+        return max(0.0, var)
+
+    def _apply_reference_tone_map(self, image, image_path, mask_img, strength=0.5):
+        """
+        Apply a coarse (3-level) tone map from the reference photo.
+        Keeps factual highlights/shadows without introducing painterly noise.
+        """
+        ref = QImage(image_path)
+        if ref.isNull():
+            return image
+
+        out = image.convertToFormat(QImage.Format_ARGB32)
+        ref = ref.scaled(out.width(), out.height(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        ref = ref.convertToFormat(QImage.Format_ARGB32)
+
+        w = min(out.width(), mask_img.width())
+        h = min(out.height(), mask_img.height())
+        if w < 2 or h < 2:
+            return out
+
+        min_l = 255.0
+        max_l = 0.0
+        for y in range(h):
+            for x in range(w):
+                mp = mask_img.pixelColor(x, y)
+                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
+                if not inside:
+                    continue
+                rp = ref.pixelColor(x, y)
+                lum = (0.299 * rp.red()) + (0.587 * rp.green()) + (0.114 * rp.blue())
+                if lum < min_l:
+                    min_l = lum
+                if lum > max_l:
+                    max_l = lum
+
+        span = max_l - min_l
+        if span < 6.0:
+            return out
+
+        s = max(0.0, min(1.0, float(strength)))
+        for y in range(h):
+            for x in range(w):
+                mp = mask_img.pixelColor(x, y)
+                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
+                if not inside:
+                    continue
+
+                rp = ref.pixelColor(x, y)
+                lum = (0.299 * rp.red()) + (0.587 * rp.green()) + (0.114 * rp.blue())
+                norm = (lum - min_l) / span
+                if norm < 0.34:
+                    tone = 0.90
+                elif norm < 0.68:
+                    tone = 1.00
+                else:
+                    tone = 1.10
+
+                px = out.pixelColor(x, y)
+                tr = max(0, min(255, int(px.red() * tone)))
+                tg = max(0, min(255, int(px.green() * tone)))
+                tb = max(0, min(255, int(px.blue() * tone)))
+                nr = int((px.red() * (1.0 - s)) + (tr * s))
+                ng = int((px.green() * (1.0 - s)) + (tg * s))
+                nb = int((px.blue() * (1.0 - s)) + (tb * s))
+                px.setRed(max(0, min(255, nr)))
+                px.setGreen(max(0, min(255, ng)))
+                px.setBlue(max(0, min(255, nb)))
+                px.setAlpha(255)
+                out.setPixelColor(x, y, px)
+        return out
+
     def _harmonize_colored_output(self, image, base_rgb, flatten=False, preserve_ratio=0.18):
         """Reduce painterly drift by harmonizing output to reference material color."""
         out = image.convertToFormat(QImage.Format_ARGB32)
@@ -333,7 +435,30 @@ class HuggingFaceGenerator:
                 color=color,
                 symmetry=symmetry
             )
-            return self._render_svg_to_image(svg_code)
+            image = self._render_svg_to_image(svg_code)
+            if image is None:
+                return None
+
+            style_key = self._normalize_style(style)
+            if style_key != STYLE_COLORED:
+                return image
+
+            silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
+            if not silhouette_bytes:
+                return image
+            mask_img = QImage()
+            if not mask_img.loadFromData(silhouette_bytes):
+                return image
+
+            image = image.scaled(mask_img.width(), mask_img.height(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            image = self._harmonize_colored_output(
+                image,
+                self._estimate_reference_rgb(image_path, mask_img, forced_hex=color),
+                flatten=False,
+                preserve_ratio=0.24,
+            )
+            image = self._apply_reference_tone_map(image, image_path, mask_img, strength=0.58)
+            return image
         except Exception:
             return None
 
@@ -377,7 +502,7 @@ class HuggingFaceGenerator:
 
             if style_key == STYLE_COLORED:
                 flatten = texture_noise >= 24.0
-                preserve_ratio = 0.10 if flatten else 0.22
+                preserve_ratio = 0.16 if flatten else 0.30
                 out = self._harmonize_colored_output(
                     out,
                     self._estimate_reference_rgb(image_path, mask_img, forced_hex=color),
@@ -386,6 +511,12 @@ class HuggingFaceGenerator:
                 )
             else:
                 out = self._harmonize_mono_output(out, publication=(style_key == STYLE_MEASURED))
+
+            # If colored output is too flat, inject measured tone structure from reference image.
+            if style_key == STYLE_COLORED:
+                luma_var = self._estimate_luma_variance(out, mask_img)
+                if luma_var < 110.0:
+                    out = self._apply_reference_tone_map(out, image_path, mask_img, strength=0.52)
 
             overlay_linework = str(
                 self.settings.value('ArcheoGlyph/hf_overlay_linework', 'false')

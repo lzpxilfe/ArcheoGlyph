@@ -6,7 +6,9 @@ Generates stylized archaeological symbols using Google Gemini API.
 
 import os
 import re
-from qgis.PyQt.QtCore import QSettings
+from qgis.PyQt.QtCore import QSettings, Qt, QByteArray, QRectF
+from qgis.PyQt.QtGui import QImage, QPainter
+from qgis.PyQt.QtSvg import QSvgRenderer
 
 
 
@@ -282,8 +284,19 @@ class GeminiGenerator:
                         if svg_code:
                             is_safe, issue = self._is_svg_documentary_safe(svg_code, style_key=style_key)
                             if is_safe:
-                                return svg_code
-                            last_svg_issue = issue
+                                if silhouette_bytes:
+                                    is_match, shape_issue = self._matches_reference_silhouette(
+                                        svg_code=svg_code,
+                                        silhouette_bytes=silhouette_bytes,
+                                        style_key=style_key,
+                                    )
+                                    if is_match:
+                                        return svg_code
+                                    last_svg_issue = shape_issue
+                                else:
+                                    return svg_code
+                            else:
+                                last_svg_issue = issue
                         
                     # If we got a response but no SVG, maybe try next model
                     break 
@@ -403,3 +416,94 @@ class GeminiGenerator:
                 return False, f"non-monochrome color detected in line/measured mode: {c}"
 
         return True, ""
+
+    def _render_svg_to_image(self, svg_code, width, height):
+        """Render SVG into a fixed-size transparent image."""
+        if not svg_code or width < 2 or height < 2:
+            return None
+
+        renderer = QSvgRenderer(QByteArray(svg_code.encode('utf-8')))
+        if not renderer.isValid():
+            return None
+
+        renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+        image = QImage(int(width), int(height), QImage.Format_ARGB32_Premultiplied)
+        image.fill(Qt.transparent)
+
+        view_box = renderer.viewBoxF()
+        if not view_box.isValid() or view_box.width() <= 0 or view_box.height() <= 0:
+            default_size = renderer.defaultSize()
+            if default_size.isValid() and default_size.width() > 0 and default_size.height() > 0:
+                view_box = QRectF(0.0, 0.0, float(default_size.width()), float(default_size.height()))
+            else:
+                view_box = QRectF(0.0, 0.0, float(width), float(height))
+
+        scale = min(float(width) / view_box.width(), float(height) / view_box.height())
+        target_w = view_box.width() * scale
+        target_h = view_box.height() * scale
+        target_rect = QRectF((width - target_w) * 0.5, (height - target_h) * 0.5, target_w, target_h)
+
+        painter = QPainter(image)
+        renderer.render(painter, target_rect)
+        painter.end()
+        return image
+
+    def _matches_reference_silhouette(self, svg_code, silhouette_bytes, style_key=None):
+        """Validate generated SVG silhouette against contour-derived reference mask."""
+        if not silhouette_bytes:
+            return True, ""
+
+        ref_mask = QImage()
+        if not ref_mask.loadFromData(silhouette_bytes):
+            return True, ""
+
+        rendered = self._render_svg_to_image(svg_code, ref_mask.width(), ref_mask.height())
+        if rendered is None:
+            return False, "failed to rasterize SVG for silhouette check"
+
+        inter = 0
+        union = 0
+        ref_count = 0
+        pred_count = 0
+
+        h = min(ref_mask.height(), rendered.height())
+        w = min(ref_mask.width(), rendered.width())
+        for y in range(h):
+            for x in range(w):
+                rp = ref_mask.pixelColor(x, y)
+                ref_inside = (rp.red() < 90 and rp.green() < 90 and rp.blue() < 90)
+
+                gp = rendered.pixelColor(x, y)
+                pred_inside = (
+                    gp.alpha() > 16 and
+                    not (gp.red() > 248 and gp.green() > 248 and gp.blue() > 248 and gp.alpha() > 220)
+                )
+
+                if ref_inside:
+                    ref_count += 1
+                if pred_inside:
+                    pred_count += 1
+                if ref_inside and pred_inside:
+                    inter += 1
+                if ref_inside or pred_inside:
+                    union += 1
+
+        if ref_count < 40:
+            return True, ""
+        if union <= 0 or pred_count <= 0:
+            return False, "empty rendered geometry against reference silhouette"
+
+        iou = float(inter) / float(union)
+        recall = float(inter) / float(ref_count)
+        precision = float(inter) / float(pred_count)
+
+        if style_key == STYLE_COLORED:
+            ok = (iou >= 0.72 and recall >= 0.84 and precision >= 0.72)
+        elif style_key == STYLE_LINE:
+            ok = (iou >= 0.42 and recall >= 0.66)
+        else:
+            ok = (iou >= 0.50 and recall >= 0.72)
+
+        if ok:
+            return True, ""
+        return False, f"silhouette mismatch (IoU={iou:.2f}, recall={recall:.2f}, precision={precision:.2f})"
