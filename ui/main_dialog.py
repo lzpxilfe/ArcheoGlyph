@@ -5,7 +5,7 @@ ArcheoGlyph - Main Dialog UI
 
 import os
 import base64
-from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread, QObject, QByteArray, QPointF
+from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread, QObject, QByteArray, QPointF, QRectF
 from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent, QPainter, QPen, QBrush, QPainterPath, QCursor
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -680,14 +680,30 @@ class ArcheoGlyphDialog(QDialog):
         
         if not renderer.isValid():
             return None
-            
+
+        renderer.setAspectRatioMode(Qt.KeepAspectRatio)
         pixmap = QPixmap(256, 256)
         pixmap.fill(Qt.transparent)
-        
+
+        view_box = renderer.viewBoxF()
+        if not view_box.isValid() or view_box.width() <= 0 or view_box.height() <= 0:
+            default_size = renderer.defaultSize()
+            if default_size.isValid() and default_size.width() > 0 and default_size.height() > 0:
+                view_box = QRectF(0, 0, float(default_size.width()), float(default_size.height()))
+            else:
+                view_box = QRectF(0, 0, 256.0, 256.0)
+
+        scale = min(256.0 / view_box.width(), 256.0 / view_box.height())
+        target_w = view_box.width() * scale
+        target_h = view_box.height() * scale
+        target_x = (256.0 - target_w) * 0.5
+        target_y = (256.0 - target_h) * 0.5
+        target_rect = QRectF(target_x, target_y, target_w, target_h)
+
         painter = QPainter(pixmap)
-        renderer.render(painter)
+        renderer.render(painter, target_rect)
         painter.end()
-        
+
         return pixmap
             
     def save_to_library(self):
