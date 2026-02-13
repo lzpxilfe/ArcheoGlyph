@@ -193,9 +193,9 @@ class ContourGenerator:
         )
         texture_lines = self._extract_internal_lines(processing_bgr, target_mask, main_contour)
         round_motif_limit = int(round(self._clamp(
-            (1.0 + (7.0 * factuality_v) - (4.5 * symbolic_v) - (2.5 * exaggeration_v)),
+            (2.0 + (8.0 * factuality_v) - (3.0 * symbolic_v) - (2.0 * exaggeration_v)),
             0.0,
-            6.0,
+            10.0,
         )))
         round_motif_lines = self._select_round_inner_motif_lines(
             texture_lines,
@@ -611,6 +611,30 @@ class ContourGenerator:
         arc_len = float(np.sum(np.sqrt(np.sum(seg * seg, axis=1))))
         return (cx, cy), arc_len
 
+    def _line_ring_likeness(self, line, cx, cy):
+        """
+        Return a ring-likeness score in [0,1] where 1 means near-concentric arc.
+        """
+        if not line or len(line) < 4:
+            return 0.0
+        arr = np.asarray(line, dtype=np.float32)
+        dx = arr[:, 0] - float(cx)
+        dy = arr[:, 1] - float(cy)
+        rr = np.sqrt((dx * dx) + (dy * dy))
+        r_mean = float(np.mean(rr)) if len(rr) > 0 else 0.0
+        if r_mean <= 1e-6:
+            return 0.0
+        r_std = float(np.std(rr))
+        radial_cv = r_std / r_mean
+        # Near-ring lines have small radial variation from center.
+        radial_score = max(0.0, min(1.0, 1.0 - (radial_cv / 0.18)))
+
+        angles = np.unwrap(np.arctan2(dy, dx))
+        ang_span = float(np.max(angles) - np.min(angles)) if len(angles) > 1 else 0.0
+        # Long angular sweep indicates circular bands/arcs.
+        sweep_score = max(0.0, min(1.0, ang_span / (np.pi * 0.80)))
+        return max(0.0, min(1.0, (0.65 * radial_score) + (0.35 * sweep_score)))
+
     def _select_round_inner_motif_lines(self, lines, mask, max_lines=4):
         """
         Select internal motif lines for round artifacts while suppressing border noise.
@@ -656,9 +680,15 @@ class ContourGenerator:
             if d_norm > 0.92:
                 continue
 
+            ring_like = self._line_ring_likeness(line, cx, cy)
+            # Drop lines that look like circular bands unless they are very central.
+            if ring_like >= 0.82 and d_norm > 0.45:
+                continue
+
             length_score = min(1.0, arc_len / max(1.0, 0.18 * float(max(bw, bh))))
             center_score = max(0.0, 1.0 - d_norm)
-            score = (0.45 * center_score) + (0.55 * length_score)
+            motif_weight = 1.0 - (0.72 * ring_like)
+            score = ((0.45 * center_score) + (0.55 * length_score)) * motif_weight
             candidates.append((score, (lx, ly), line))
 
         if not candidates:
@@ -679,7 +709,10 @@ class ContourGenerator:
                         inside += 1
                 if inside / float(max(1, len(arr))) < 0.80:
                     continue
-                backup.append((arc_len, (lx, ly), line))
+                ring_like = self._line_ring_likeness(line, cx, cy)
+                if ring_like >= 0.88 and (((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5) > (0.50 * r_ref):
+                    continue
+                backup.append((arc_len * (1.0 - (0.58 * ring_like)), (lx, ly), line))
             if not backup:
                 return []
             backup.sort(key=lambda item: item[0], reverse=True)
