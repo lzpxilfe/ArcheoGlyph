@@ -187,10 +187,22 @@ class ContourGenerator:
             max_lines=terminal_target,
         )
         texture_lines = self._extract_internal_lines(processing_bgr, target_mask, main_contour)
+        round_motif_limit = int(round(self._clamp(
+            (1.0 + (7.0 * factuality_v) - (4.5 * symbolic_v) - (2.5 * exaggeration_v)),
+            0.0,
+            6.0,
+        )))
+        round_motif_lines = self._select_round_inner_motif_lines(
+            texture_lines,
+            target_mask,
+            max_lines=round_motif_limit,
+        ) if is_roundish else []
 
         if is_typology:
             if is_roundish:
                 internal_lines = round_lines[:max(1, min(3, profile_count))]
+                if round_motif_lines:
+                    internal_lines += round_motif_lines[:max(1, min(2, round_motif_limit))]
                 if terminal_count > 0:
                     internal_lines += terminal_lines[:1]
             else:
@@ -208,7 +220,9 @@ class ContourGenerator:
             if is_roundish:
                 # Circular artifacts (e.g. coins) should avoid forced vertical spine lines.
                 internal_lines = round_lines[:max(1, min(3, profile_count + 1))]
-                if factuality_v >= 0.72 and texture_count > 0 and not internal_lines:
+                if round_motif_lines:
+                    internal_lines += round_motif_lines[:round_motif_limit]
+                elif factuality_v >= 0.72 and texture_count > 0 and not internal_lines:
                     internal_lines += self._remove_near_horizontal_lines(texture_lines)[:1]
             else:
                 internal_lines = profile_lines[:max(1, profile_count)] + spine_lines[:1]
@@ -580,6 +594,84 @@ class ContourGenerator:
                 pts.append(pts[0])
                 lines.append(pts)
         return lines
+
+    def _line_centroid_and_length(self, line):
+        """Return centroid (x,y) and arc-length of a polyline."""
+        if not line or len(line) < 2:
+            return None, 0.0
+        arr = np.asarray(line, dtype=np.float32)
+        cx = float(np.mean(arr[:, 0]))
+        cy = float(np.mean(arr[:, 1]))
+        seg = np.diff(arr, axis=0)
+        arc_len = float(np.sum(np.sqrt(np.sum(seg * seg, axis=1))))
+        return (cx, cy), arc_len
+
+    def _select_round_inner_motif_lines(self, lines, mask, max_lines=4):
+        """
+        Select internal motif lines for round artifacts while suppressing border noise.
+        """
+        limit = int(max(0, int(max_lines)))
+        if limit <= 0 or not lines:
+            return []
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 40:
+            return []
+
+        x0 = int(np.min(xs))
+        x1 = int(np.max(xs))
+        y0 = int(np.min(ys))
+        y1 = int(np.max(ys))
+        bw = max(1, x1 - x0)
+        bh = max(1, y1 - y0)
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        r_ref = max(12.0, 0.5 * float(max(bw, bh)))
+
+        margin_x = max(4, int(bw * 0.10))
+        margin_y = max(4, int(bh * 0.10))
+        min_len = max(12.0, float(min(bw, bh)) * 0.08)
+        max_len = float(max(bw, bh)) * 0.88
+
+        candidates = []
+        for line in lines:
+            center, arc_len = self._line_centroid_and_length(line)
+            if center is None or arc_len < min_len or arc_len > max_len:
+                continue
+            lx, ly = center
+
+            # Keep features away from silhouette edge.
+            if lx <= (x0 + margin_x) or lx >= (x1 - margin_x):
+                continue
+            if ly <= (y0 + margin_y) or ly >= (y1 - margin_y):
+                continue
+
+            d = ((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5
+            d_norm = d / r_ref
+            if d_norm > 0.74:
+                continue
+
+            length_score = min(1.0, arc_len / max(1.0, 0.26 * float(max(bw, bh))))
+            center_score = max(0.0, 1.0 - d_norm)
+            score = (0.62 * center_score) + (0.38 * length_score)
+            candidates.append((score, (lx, ly), line))
+
+        if not candidates:
+            return []
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        selected = []
+        selected_centers = []
+        min_sep = max(6.0, 0.10 * float(min(bw, bh)))
+
+        for _, center, line in candidates:
+            if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in selected_centers):
+                continue
+            selected.append(line)
+            selected_centers.append(center)
+            if len(selected) >= limit:
+                break
+        return selected
 
     def _estimate_terminal_bars(self, mask, max_lines=2):
         """
