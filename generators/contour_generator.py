@@ -74,15 +74,7 @@ class ContourGenerator:
         if img is None:
             raise ValueError("Failed to load image.")
 
-        original_h, original_w = img.shape[:2]
-        max_dim = 1500
-
-        processing_img = img
-        if max(original_h, original_w) > max_dim:
-            scale_factor = max_dim / max(original_h, original_w)
-            new_w = int(original_w * scale_factor)
-            new_h = int(original_h * scale_factor)
-            processing_img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        processing_img, _analysis_scale = self._adaptive_prescale(img)
 
         if len(processing_img.shape) == 4:
             processing_bgr = cv2.cvtColor(processing_img, cv2.COLOR_BGRA2BGR)
@@ -507,6 +499,41 @@ class ContourGenerator:
     def _clamp(self, value, lower, upper):
         """Clamp numeric value into [lower, upper]."""
         return max(lower, min(upper, value))
+
+    def _adaptive_prescale(self, img):
+        """
+        Resize input image for contour analysis.
+        - Downscale very large inputs for speed/stability.
+        - Upscale low-resolution inputs to recover edge/motif geometry.
+        Returns (resized_img, scale_factor).
+        """
+        if img is None:
+            return img, 1.0
+        h, w = img.shape[:2]
+        if h < 2 or w < 2:
+            return img, 1.0
+
+        max_side = float(max(h, w))
+        min_side = float(min(h, w))
+        scale = 1.0
+
+        # Bound huge inputs.
+        if max_side > 1600.0:
+            scale = 1600.0 / max_side
+        # Low-resolution catalog/screenshot inputs need analysis upscaling.
+        elif max_side < 720.0:
+            scale = min(3.0, 960.0 / max_side)
+        elif min_side < 420.0:
+            scale = min(2.2, 640.0 / min_side)
+
+        if abs(scale - 1.0) < 0.05:
+            return img, 1.0
+
+        new_w = max(2, int(round(float(w) * scale)))
+        new_h = max(2, int(round(float(h) * scale)))
+        interpolation = cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA
+        resized = cv2.resize(img, (new_w, new_h), interpolation=interpolation)
+        return resized, float(scale)
 
     def _remove_near_horizontal_lines(self, lines, ratio=0.35):
         """Drop near-horizontal lines to avoid crossbar artifacts in line style."""
