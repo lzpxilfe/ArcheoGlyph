@@ -212,7 +212,7 @@ class ContourGenerator:
             # Round measured drawings (e.g. bronze mirrors) need richer motif capture.
             round_motif_select_limit = max(
                 round_motif_limit,
-                max(10, min(16, texture_count + 8)),
+                max(7, min(11, texture_count + 4)),
             )
         round_motif_lines = self._select_round_inner_motif_lines(
             texture_lines + self._extract_round_motif_lines(
@@ -263,7 +263,7 @@ class ContourGenerator:
             if is_roundish:
                 # For round artifacts, prefer motif lines over forced center spine.
                 internal_lines = []
-                motif_target = max(12, min(18, round_motif_select_limit + 4))
+                motif_target = max(7, min(11, round_motif_select_limit + 1))
                 prefer_region = len(round_relief_region_lines) >= 4
                 motif_lines = []
                 candidate_pool = []
@@ -284,13 +284,13 @@ class ContourGenerator:
                     motif_lines = self._select_round_inner_motif_lines(
                         candidate_pool,
                         target_mask,
-                        max_lines=max(round_motif_select_limit + 4, 12),
+                        max_lines=max(round_motif_select_limit + 2, 8),
                         prefer_outer=True,
                     )
                 if len(motif_lines) < 2 and candidate_pool:
                     motif_lines = candidate_pool
                 if motif_lines:
-                    internal_lines += motif_lines[:max(7, motif_target // 2)]
+                    internal_lines += motif_lines[:max(4, motif_target // 2)]
                 # Always backfill with region/relief candidates to meet motif density target.
                 if round_polar_motif_lines:
                     internal_lines = self._merge_distinct_lines(
@@ -337,7 +337,7 @@ class ContourGenerator:
                 internal_lines = self._augment_round_rotational_symmetry(
                     internal_lines,
                     target_mask,
-                    desired_lines=max(8, motif_target - 2),
+                    desired_lines=max(5, motif_target - 1),
                 )
                 ys_round, xs_round = np.where(target_mask > 0)
                 if len(xs_round) > 50:
@@ -348,7 +348,7 @@ class ContourGenerator:
                 else:
                     angular_cov = 1.0
                     ring_ratio = 0.0
-                if len(internal_lines) < 7 or angular_cov < 0.40 or ring_ratio > 0.48:
+                if len(internal_lines) < 4 or angular_cov < 0.34 or ring_ratio > 0.58:
                     angular_markers = self._estimate_round_angular_motif_markers(
                         processing_bgr,
                         target_mask,
@@ -465,10 +465,10 @@ class ContourGenerator:
                 )
         elif is_mono:
             if is_publication:
-                outline_width = "1.6"
-                detail_width = "1.15" if is_roundish else "1.0"
+                outline_width = "1.8"
+                detail_width = "1.35" if is_roundish else "1.0"
                 detail_dash = "" if is_roundish else ' stroke-dasharray="1.2 2.2"'
-                detail_opacity = "0.88" if is_roundish else "0.7"
+                detail_opacity = "0.94" if is_roundish else "0.7"
             else:
                 outline_width = "2.2"
                 detail_width = "1.25"
@@ -585,9 +585,9 @@ class ContourGenerator:
         cy_ref = float(np.mean(ys))
         r_ref = max(12.0, 0.5 * float(max(bw, bh)))
         min_arc = max(10.0, 0.034 * float(min(bw, bh)))
-        min_sep = max(4.2, 0.052 * float(min(bw, bh)))
+        min_sep = max(6.0, 0.070 * float(min(bw, bh)))
         angle_bin_count = 12
-        per_bin_limit = 2
+        per_bin_limit = 1
 
         candidates = []
         for line in lines:
@@ -623,7 +623,7 @@ class ContourGenerator:
 
             d_norm = (((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5) / max(1e-6, r_ref)
             # Exclude center-boss region and very outer rim noise.
-            if d_norm < 0.22 or d_norm > 0.92:
+            if d_norm < 0.14 or d_norm > 0.92:
                 continue
 
             out_line = approx.astype(int).tolist()
@@ -640,9 +640,9 @@ class ContourGenerator:
 
             angle = float(np.arctan2(cy - cy_ref, cx - cx_ref))
             angle_bin = int(((angle + np.pi) / (2.0 * np.pi)) * angle_bin_count) % angle_bin_count
-            band_score = max(0.25, 1.0 - abs(d_norm - 0.62))
+            band_score = max(0.30, 1.0 - (abs(d_norm - 0.50) / 0.62))
             complexity = min(1.0, float(len(out_line)) / 20.0)
-            score = (0.55 * band_score) + (0.35 * complexity) + (0.10 * (1.0 - min(1.0, ring_like)))
+            score = (0.40 * band_score) + (0.42 * complexity) + (0.18 * (1.0 - min(1.0, ring_like)))
             if closed and out_line[0] != out_line[-1]:
                 out_line.append(out_line[0])
 
@@ -2064,9 +2064,9 @@ class ContourGenerator:
                     continue
                 length_score = min(1.0, arc_len / max(1.0, 0.16 * float(max(bw, bh))))
                 center_score = max(0.0, 1.0 - d_norm)
-                band_score = max(0.0, 1.0 - (abs(d_norm - 0.62) / 0.62))
+                band_score = max(0.20, 1.0 - (abs(d_norm - 0.50) / 0.62))
                 motif_weight = 1.0 - (0.48 * ring_like)
-                score = ((0.25 * center_score) + (0.50 * length_score) + (0.25 * band_score)) * motif_weight
+                score = ((0.32 * center_score) + (0.43 * length_score) + (0.25 * band_score)) * motif_weight
                 if score < 0.06:
                     continue
             else:
@@ -2106,7 +2106,7 @@ class ContourGenerator:
                 if prefer_outer:
                     if ring_like >= 0.95 and d_norm > 0.28:
                         continue
-                    backup_score = arc_len * (1.0 - (0.42 * ring_like)) * max(0.25, 1.0 - abs(d_norm - 0.62))
+                    backup_score = arc_len * (1.0 - (0.42 * ring_like)) * max(0.25, 1.0 - abs(d_norm - 0.50))
                 else:
                     if ring_like >= 0.88 and d_norm > 0.50:
                         continue
