@@ -1705,10 +1705,31 @@ class ContourGenerator:
     def _get_mask(self, bgr_img):
         """Internal helper: produce silhouette mask using selected backend."""
         backend = str(self.settings.value('ArcheoGlyph/mask_backend', 'auto')).strip().lower()
-        if backend in ("sam", "auto"):
+        if backend == "sam":
             sam_mask = self._get_mask_sam(bgr_img)
             if sam_mask is not None:
+                sam_score = self._mask_selection_score(bgr_img, sam_mask)
+                if sam_score >= 0.22:
+                    return sam_mask
+            return self._get_mask_opencv(bgr_img)
+
+        if backend == "auto":
+            cv_mask = self._get_mask_opencv(bgr_img)
+            sam_mask = self._get_mask_sam(bgr_img)
+
+            if sam_mask is None:
+                return cv_mask
+            if cv_mask is None:
                 return sam_mask
+
+            score_cv = self._mask_selection_score(bgr_img, cv_mask)
+            score_sam = self._mask_selection_score(bgr_img, sam_mask)
+            if score_sam >= (score_cv + 0.08):
+                return sam_mask
+            if score_cv >= (score_sam + 0.04):
+                return cv_mask
+            return sam_mask if score_sam >= score_cv else cv_mask
+
         return self._get_mask_opencv(bgr_img)
 
     def _get_mask_opencv(self, bgr_img):
@@ -1902,6 +1923,74 @@ class ContourGenerator:
             "aspect_balance": max(0.0, min(1.0, aspect_balance)),
             "fill_ratio": max(0.0, min(1.0, fill_ratio)),
         }
+
+    def _mask_selection_score(self, bgr_img, mask):
+        """
+        Compute a backend-agnostic mask quality score.
+        Higher is better for selecting between SAM and OpenCV masks in auto mode.
+        """
+        if mask is None or mask.size == 0:
+            return -1.0
+
+        h, w = mask.shape[:2]
+        total = float(max(1, h * w))
+        fg = float(np.count_nonzero(mask))
+        if fg < max(80.0, total * 0.0015):
+            return -1.0
+
+        area_ratio = fg / total
+        if area_ratio <= 0.004 or area_ratio >= 0.92:
+            return -0.5
+
+        metrics = self._mask_shape_metrics(mask)
+
+        # Area plausibility: broad enough for mirrors, but penalize near-full-frame blobs.
+        if area_ratio <= 0.06:
+            area_score = 0.45 + (0.55 * ((area_ratio - 0.004) / max(1e-6, 0.056)))
+        elif area_ratio <= 0.58:
+            area_score = 1.0
+        else:
+            area_score = max(0.0, 1.0 - ((area_ratio - 0.58) / 0.30))
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if contours:
+            c = max(contours, key=cv2.contourArea)
+            x, y, cw, ch = cv2.boundingRect(c)
+            cx = x + (cw * 0.5)
+            cy = y + (ch * 0.5)
+            d = ((cx - (w * 0.5)) ** 2 + (cy - (h * 0.5)) ** 2) ** 0.5
+            d_norm = d / max(1.0, (w * w + h * h) ** 0.5)
+            center_score = max(0.0, 1.0 - (d_norm / 0.62))
+        else:
+            center_score = 0.0
+
+        border_score = 0.0 if metrics["touches_border"] else 1.0
+
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 48, 142)
+        k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        boundary = cv2.morphologyEx(mask, cv2.MORPH_GRADIENT, k3)
+        boundary_count = int(np.count_nonzero(boundary))
+        if boundary_count < 40:
+            edge_score = 0.0
+        else:
+            overlap = float(np.count_nonzero(cv2.bitwise_and(edges, boundary))) / float(boundary_count)
+            edge_score = max(0.0, min(1.0, overlap / 0.42))
+
+        score = (
+            (0.46 * edge_score) +
+            (0.24 * center_score) +
+            (0.18 * area_score) +
+            (0.12 * border_score)
+        )
+
+        # Penalize suspicious near-rectangular full masks.
+        if metrics["fill_ratio"] >= 0.96 and metrics["aspect_balance"] >= 0.58:
+            score -= 0.22
+        if area_ratio > 0.78 and metrics["touches_border"]:
+            score -= 0.35
+
+        return float(score)
 
     def _detect_center_circle_mask(self, gray_img):
         """Detect a dominant near-center circle and return it as a binary mask."""
