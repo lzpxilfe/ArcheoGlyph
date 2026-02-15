@@ -1855,6 +1855,11 @@ class ContourGenerator:
         if not contours:
             return mask
 
+        # Recover tall/slender artifacts (e.g. daggers) when large blobs dominate.
+        slender = self._recover_slender_component(mask)
+        if slender is not None:
+            return slender
+
         cx_ref = w * 0.5
         cy_ref = h * 0.5
         candidate_items = []
@@ -1901,6 +1906,81 @@ class ContourGenerator:
         out = np.zeros((h, w), dtype=np.uint8)
         cv2.drawContours(out, [best], -1, 255, thickness=cv2.FILLED)
         return out
+
+    def _recover_slender_component(self, mask):
+        """
+        Try to recover a tall slender foreground component when the main mask is blob-like.
+        Prevents swords/daggers from being swallowed by large background chunks.
+        """
+        h, w = mask.shape[:2]
+        total = float(max(1, h * w))
+        min_area = max(40.0, total * 0.0012)
+        cx_ref = w * 0.5
+        cy_ref = h * 0.5
+
+        kernels = [
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 5)),
+        ]
+        for kernel in kernels:
+            eroded = cv2.erode(mask, kernel, iterations=1)
+            if np.count_nonzero(eroded) < int(total * 0.0008):
+                continue
+
+            contours, _ = cv2.findContours(eroded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            if not contours:
+                continue
+
+            candidates = []
+            for c in contours:
+                area = float(cv2.contourArea(c))
+                if area < min_area:
+                    continue
+                x, y, cw, ch = cv2.boundingRect(c)
+                if cw < 2 or ch < 2:
+                    continue
+
+                tall = ch / max(1.0, float(cw))
+                if tall < 2.4:
+                    continue
+                fill_ratio = area / max(1.0, float(cw * ch))
+                if fill_ratio > 0.82:
+                    continue
+
+                cx = x + (cw * 0.5)
+                cy = y + (ch * 0.5)
+                d = ((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5
+                d_norm = d / max(1.0, (w * w + h * h) ** 0.5)
+                if d_norm > 0.34:
+                    continue
+
+                score = area * (1.0 - min(0.92, d_norm))
+                score *= (0.55 + (0.45 * min(1.0, tall / 4.2)))
+                score *= (1.10 - (0.55 * min(1.0, fill_ratio)))
+                candidates.append((score, c))
+
+            if not candidates:
+                continue
+
+            best = max(candidates, key=lambda item: item[0])[1]
+            out = np.zeros((h, w), dtype=np.uint8)
+            cv2.drawContours(out, [best], -1, 255, thickness=cv2.FILLED)
+
+            grow = cv2.dilate(out, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)), iterations=2)
+            out = cv2.bitwise_and(grow, mask)
+            out = self._smooth_mask_edges(out)
+
+            chk_contours, _ = cv2.findContours(out, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            if not chk_contours:
+                continue
+            chk = max(chk_contours, key=cv2.contourArea)
+            chk_area = float(cv2.contourArea(chk))
+            x, y, cw, ch = cv2.boundingRect(chk)
+            tall = ch / max(1.0, float(cw))
+            if chk_area >= (total * 0.0018) and tall >= 1.9:
+                return out
+
+        return None
 
     def _mask_shape_metrics(self, mask):
         """Return simple shape metrics for the dominant foreground component."""
@@ -2317,6 +2397,8 @@ class ContourGenerator:
             kernel = np.ones((3, 3), np.uint8)
             target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_OPEN, kernel, iterations=1)
             target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
+            target_mask = self._select_primary_component(target_mask)
+            target_mask = self._smooth_mask_edges(target_mask)
             return target_mask
         except Exception:
             return None
