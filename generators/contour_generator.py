@@ -2073,6 +2073,24 @@ class ContourGenerator:
             )
             mask = cv2.bitwise_or(bin_otsu, bin_adapt)
 
+            # Canny-derived fill candidate (helps when object edges are clearer than tone).
+            med = float(np.median(blur))
+            lo = int(max(16, 0.66 * med))
+            hi = int(min(220, 1.33 * med))
+            edges = cv2.Canny(blur, lo, hi)
+            ek = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            edges = cv2.dilate(edges, ek, iterations=1)
+            edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, ek, iterations=2)
+            edge_fill = np.zeros((h, w), dtype=np.uint8)
+            edge_contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            for ec in edge_contours:
+                ea = float(cv2.contourArea(ec))
+                if ea < max(40.0, total * 0.0009) or ea > (total * 0.65):
+                    continue
+                cv2.drawContours(edge_fill, [ec], -1, 255, thickness=cv2.FILLED)
+            if np.count_nonzero(edge_fill) > 0:
+                mask = cv2.bitwise_or(mask, edge_fill)
+
             k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
             k5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k3, iterations=1)
