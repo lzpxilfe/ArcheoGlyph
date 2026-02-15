@@ -110,7 +110,7 @@ class HuggingFaceGenerator:
             "centered object",
             "plain neutral background",
             "no extra objects",
-            "no decorative motif",
+            "no decorative motif invention",
             "no engraved ornament invention",
             "no texture collage",
         ]
@@ -118,12 +118,16 @@ class HuggingFaceGenerator:
             parts.extend([
                 "preserve silhouette and edge geometry from the reference image",
                 "preserve observed chips wear cracks and asymmetry",
+                "retain observed engraved motifs and relief lines from the reference image",
                 "do not invent new internal patterns",
             ])
         if style_key == STYLE_LINE:
             parts.append("style hint: monochrome line drawing, clean contour and key internal lines")
         elif style_key == STYLE_MEASURED:
-            parts.append("style hint: black and white measured drawing, technical publication style")
+            parts.append(
+                "style hint: black and white measured drawing, technical publication style, "
+                "preserve observed internal motifs as simplified factual linework"
+            )
         elif style_key == STYLE_TYPOLOGY:
             parts.append(
                 "style hint: archaeological typology icon, standardized silhouette, "
@@ -151,7 +155,8 @@ class HuggingFaceGenerator:
         return (
             "landscape, scenery, architecture, village, people, animals, trees, sky, clouds, "
             "multiple objects, dramatic scene, fantasy scene, text, watermark, logo, map, diagram, "
-            "ornament, decorative pattern, mosaic, tattoo pattern, mandala, collage texture, "
+            "invented decorative background pattern, mandala-style radial fantasy pattern, "
+            "mosaic, tattoo pattern, collage texture, "
             "brush strokes, painterly texture, concept art, surreal art"
         )
 
@@ -628,8 +633,12 @@ class HuggingFaceGenerator:
                 self.settings.value('ArcheoGlyph/hf_overlay_linework', 'false')
             ).strip().lower() in ("1", "true", "yes", "on")
             overlay_opacity = 1.0
-            if style_key in (STYLE_LINE, STYLE_MEASURED):
+            if style_key == STYLE_LINE:
                 overlay_linework = True
+                overlay_opacity = 0.94
+            elif style_key == STYLE_MEASURED:
+                overlay_linework = True
+                overlay_opacity = 0.62 if used_contour_seed else 0.74
             if style_key == STYLE_TYPOLOGY:
                 overlay_linework = True
                 overlay_opacity = max(0.55, 0.72 - (0.15 * float(prompt_influence)))
@@ -647,7 +656,12 @@ class HuggingFaceGenerator:
 
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
-                overlay_style = STYLE_TYPOLOGY if style_key == STYLE_TYPOLOGY else STYLE_LINE
+                if style_key == STYLE_TYPOLOGY:
+                    overlay_style = STYLE_TYPOLOGY
+                elif style_key == STYLE_MEASURED:
+                    overlay_style = STYLE_MEASURED
+                else:
+                    overlay_style = STYLE_LINE
                 line_svg = self.contour_gen.generate(
                     image_path=image_path,
                     style=overlay_style,
@@ -829,8 +843,16 @@ class HuggingFaceGenerator:
         contour_seed_b64 = None
         reference_hex = color
         if has_reference:
-            if style_key in (STYLE_LINE, STYLE_MEASURED):
+            if style_key == STYLE_LINE:
                 use_contour_seed = True
+            elif style_key == STYLE_MEASURED:
+                # Measured HF should usually learn motifs from the real photo, not only contour seed.
+                use_contour_seed = (
+                    factuality_v >= 95 and
+                    symbolic_v <= 8 and
+                    exaggeration_v <= 8 and
+                    float(prompt_influence) < 0.05
+                )
             elif style_key == STYLE_TYPOLOGY:
                 use_contour_seed = (
                     factuality_v >= 70 and
@@ -881,7 +903,8 @@ class HuggingFaceGenerator:
                         image_b64 = base64.b64encode(f.read()).decode('utf-8')
                     img2img_prompt = (
                         f"{base_prompt}, preserve measured silhouette and proportions from the reference photo, "
-                        "but allow stylistic simplification into a readable archaeological symbol icon"
+                        "retain observed engraved motifs and relief zones as simplified factual linework, "
+                        "do not invent motifs, allow stylistic simplification into a readable archaeological symbol icon"
                     )
                     img_strength = 0.28 + (0.18 * float(prompt_influence))
                     source_tag = "reference_photo"
