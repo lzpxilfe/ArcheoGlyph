@@ -1845,6 +1845,27 @@ class ContourGenerator:
             center_fallback = self._get_mask_center_grabcut(blurred)
             if center_fallback is not None:
                 target_mask = center_fallback
+
+        # Fallback: when current mask is blob-like, try recovering a tall/slender object
+        # directly from image intensity (useful for daggers/spears on bright background).
+        slender_candidate = self._recover_tall_component_from_image(blurred)
+        if slender_candidate is not None:
+            current_features = self._mask_bbox_features(target_mask)
+            candidate_features = self._mask_bbox_features(slender_candidate)
+            score_current = self._mask_selection_score(blurred, target_mask)
+            score_candidate = self._mask_selection_score(blurred, slender_candidate)
+
+            choose_candidate = False
+            if candidate_features["tall_ratio"] >= 2.8 and current_features["tall_ratio"] < 2.1:
+                choose_candidate = True
+            if candidate_features["tall_ratio"] >= (current_features["tall_ratio"] * 1.35) and score_candidate >= (score_current - 0.04):
+                choose_candidate = True
+            if score_candidate >= (score_current + 0.08):
+                choose_candidate = True
+
+            if choose_candidate:
+                target_mask = slender_candidate
+
         target_mask = self._smooth_mask_edges(target_mask)
         return target_mask
 
@@ -2003,6 +2024,115 @@ class ContourGenerator:
             "aspect_balance": max(0.0, min(1.0, aspect_balance)),
             "fill_ratio": max(0.0, min(1.0, fill_ratio)),
         }
+
+    def _mask_bbox_features(self, mask):
+        """Return bbox-derived features for dominant component."""
+        h, w = mask.shape[:2]
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return {
+                "area_ratio": 0.0,
+                "tall_ratio": 0.0,
+                "fill_ratio": 0.0,
+                "center_dist_norm": 1.0,
+            }
+        c = max(contours, key=cv2.contourArea)
+        area = float(cv2.contourArea(c))
+        x, y, cw, ch = cv2.boundingRect(c)
+        bbox_area = max(1.0, float(cw * ch))
+        cx = x + (cw * 0.5)
+        cy = y + (ch * 0.5)
+        d = ((cx - (w * 0.5)) ** 2 + (cy - (h * 0.5)) ** 2) ** 0.5
+        d_norm = d / max(1.0, (w * w + h * h) ** 0.5)
+        return {
+            "area_ratio": area / max(1.0, float(h * w)),
+            "tall_ratio": float(ch) / max(1.0, float(cw)),
+            "fill_ratio": area / bbox_area,
+            "center_dist_norm": d_norm,
+        }
+
+    def _recover_tall_component_from_image(self, bgr_img):
+        """
+        Recover a tall/slender centered component directly from image intensities.
+        Useful when initial mask is a broad blob but object is dagger-like.
+        """
+        try:
+            h, w = bgr_img.shape[:2]
+            total = float(max(1, h * w))
+            gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(gray, (5, 5), 0)
+
+            bin_otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+            bin_adapt = cv2.adaptiveThreshold(
+                blur,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV,
+                31,
+                6,
+            )
+            mask = cv2.bitwise_or(bin_otsu, bin_adapt)
+
+            k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            k5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k3, iterations=1)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k5, iterations=2)
+
+            # Prefer centered band to suppress side/background blobs.
+            band = np.zeros((h, w), dtype=np.uint8)
+            x0 = int(max(0, w * 0.20))
+            x1 = int(min(w, w * 0.80))
+            band[:, x0:x1] = 255
+            mask = cv2.bitwise_and(mask, band)
+
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            if not contours:
+                return None
+
+            cx_ref = w * 0.5
+            cy_ref = h * 0.5
+            min_area = max(60.0, total * 0.0015)
+            max_area = total * 0.35
+            candidates = []
+            for c in contours:
+                area = float(cv2.contourArea(c))
+                if area < min_area or area > max_area:
+                    continue
+                x, y, cw, ch = cv2.boundingRect(c)
+                if cw < 2 or ch < 2:
+                    continue
+
+                tall = float(ch) / max(1.0, float(cw))
+                if tall < 2.5:
+                    continue
+
+                fill_ratio = area / max(1.0, float(cw * ch))
+                if fill_ratio > 0.86:
+                    continue
+
+                cx = x + (cw * 0.5)
+                cy = y + (ch * 0.5)
+                d = ((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5
+                d_norm = d / max(1.0, (w * w + h * h) ** 0.5)
+                if d_norm > 0.36:
+                    continue
+
+                score = area * (1.0 - min(0.95, d_norm))
+                score *= (0.60 + (0.40 * min(1.0, tall / 5.0)))
+                score *= (1.08 - (0.55 * min(1.0, fill_ratio)))
+                candidates.append((score, c))
+
+            if not candidates:
+                return None
+
+            best = max(candidates, key=lambda item: item[0])[1]
+            out = np.zeros((h, w), dtype=np.uint8)
+            cv2.drawContours(out, [best], -1, 255, thickness=cv2.FILLED)
+            out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, k5, iterations=1)
+            out = self._smooth_mask_edges(out)
+            return self._select_primary_component(out)
+        except Exception:
+            return None
 
     def _mask_selection_score(self, bgr_img, mask):
         """
