@@ -52,21 +52,32 @@ class ArcheoGlyph:
         Prevents stale old-model settings from lingering across updates.
         """
         settings = QSettings()
+        if settings.value('ArcheoGlyph/auto_update_models', None) is None:
+            settings.setValue('ArcheoGlyph/auto_update_models', 'true')
+        if not str(settings.value('ArcheoGlyph/sam_model_type', '')).strip():
+            settings.setValue('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-small')
         saved_version = str(settings.value('ArcheoGlyph/code_version', '')).strip()
         if saved_version == PLUGIN_VERSION:
             return
 
         hf_model = str(settings.value('ArcheoGlyph/hf_model_id', '')).strip()
-        if not hf_model or hf_model in HF_LEGACY_MODEL_ALIASES:
+        if not hf_model:
             settings.setValue('ArcheoGlyph/hf_model_id', HF_DEFAULT_MODEL_ID)
+        elif hf_model in HF_LEGACY_MODEL_ALIASES:
+            settings.setValue('ArcheoGlyph/hf_model_id', HF_LEGACY_MODEL_ALIASES.get(hf_model, HF_DEFAULT_MODEL_ID))
 
         # Safety migration: invalid SAM setup should not block Auto Trace.
         mask_backend = str(settings.value('ArcheoGlyph/mask_backend', 'auto')).strip().lower()
         if mask_backend not in ("auto", "opencv", "sam"):
             mask_backend = "auto"
             settings.setValue('ArcheoGlyph/mask_backend', mask_backend)
+        sam_model_type = str(settings.value('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-small')).strip().lower()
+        if not sam_model_type:
+            sam_model_type = "hf:facebook/sam2.1-hiera-small"
+            settings.setValue('ArcheoGlyph/sam_model_type', sam_model_type)
+        uses_hf_sam = sam_model_type.startswith("hf:")
         sam_checkpoint = str(settings.value('ArcheoGlyph/sam_checkpoint_path', '')).strip()
-        if mask_backend == "sam" and (not sam_checkpoint or not os.path.exists(sam_checkpoint)):
+        if mask_backend == "sam" and (not uses_hf_sam) and (not sam_checkpoint or not os.path.exists(sam_checkpoint)):
             settings.setValue('ArcheoGlyph/mask_backend', 'auto')
 
         # Persist plugin code version marker.

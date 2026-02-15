@@ -32,6 +32,8 @@ class ContourGenerator:
         self.settings = QSettings()
         self._sam_model = None
         self._sam_cache_key = None
+        self._sam_hf_generator = None
+        self._sam_hf_cache_key = None
 
     def _load_image(self, image_path):
         """Load image from path with cv2.imdecode."""
@@ -110,6 +112,10 @@ class ContourGenerator:
         factuality_v = controls[STYLE_CONTROL_FACTUALITY] / 100.0
         symbolic_v = controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS] / 100.0
         exaggeration_v = controls[STYLE_CONTROL_EXAGGERATION] / 100.0
+        if is_publication:
+            # Measured style should remain documentation-first even when user sliders are high.
+            symbolic_v = min(symbolic_v, 0.45)
+            exaggeration_v = min(exaggeration_v, 0.35)
         profile_count = int(round(self._clamp((0.8 + (2.6 * symbolic_v) + (1.2 * exaggeration_v) - (1.2 * factuality_v)), 0.0, 4.0)))
         terminal_count = int(round(self._clamp((0.2 + (2.0 * symbolic_v) + (1.4 * exaggeration_v) - (0.9 * factuality_v)), 0.0, 4.0)))
         texture_count = int(round(self._clamp((2.0 + (13.0 * factuality_v) - (8.0 * symbolic_v) - (5.0 * exaggeration_v)), 0.0, 18.0)))
@@ -231,6 +237,12 @@ class ContourGenerator:
             main_contour,
             max_lines=max(8, round_motif_select_limit * 2),
         ) if (is_roundish and is_publication) else []
+        round_polar_motif_lines = self._extract_round_polar_motif_lines(
+            processing_bgr,
+            target_mask,
+            main_contour,
+            max_lines=max(8, round_motif_select_limit * 2),
+        ) if (is_roundish and is_publication) else []
         round_center_motif_lines = self._extract_round_center_motif_lines(
             processing_bgr,
             target_mask,
@@ -256,12 +268,14 @@ class ContourGenerator:
                 motif_lines = []
                 candidate_pool = []
                 if prefer_region:
-                    candidate_pool = list(round_relief_region_lines)
+                    candidate_pool = list(round_polar_motif_lines)
+                    candidate_pool += list(round_relief_region_lines)
                     candidate_pool += list(round_center_motif_lines)
                     candidate_pool += list(round_motif_lines[:max(2, motif_target // 4)])
                 else:
                     candidate_pool = (
-                        list(round_center_motif_lines)
+                        list(round_polar_motif_lines)
+                        + list(round_center_motif_lines)
                         + list(round_motif_lines)
                         + list(round_relief_lines)
                         + list(round_relief_region_lines)
@@ -278,6 +292,14 @@ class ContourGenerator:
                 if motif_lines:
                     internal_lines += motif_lines[:max(7, motif_target // 2)]
                 # Always backfill with region/relief candidates to meet motif density target.
+                if round_polar_motif_lines:
+                    internal_lines = self._merge_distinct_lines(
+                        internal_lines,
+                        round_polar_motif_lines,
+                        min_center_sep=2.8,
+                        max_lines=motif_target,
+                        min_arc_len=6.0,
+                    )
                 if round_relief_region_lines:
                     internal_lines = self._merge_distinct_lines(
                         internal_lines,
@@ -307,11 +329,55 @@ class ContourGenerator:
                     target_mask,
                     max_lines=motif_target,
                 )
+                internal_lines = self._suppress_round_ring_lines(
+                    internal_lines,
+                    target_mask,
+                    max_ring_lines=0,
+                )
                 internal_lines = self._augment_round_rotational_symmetry(
                     internal_lines,
                     target_mask,
                     desired_lines=max(8, motif_target - 2),
                 )
+                ys_round, xs_round = np.where(target_mask > 0)
+                if len(xs_round) > 50:
+                    cx_round = float(np.mean(xs_round))
+                    cy_round = float(np.mean(ys_round))
+                    angular_cov = self._round_line_angular_coverage(internal_lines, cx_round, cy_round, bins=12)
+                    ring_ratio = self._round_ring_line_ratio(internal_lines, target_mask)
+                else:
+                    angular_cov = 1.0
+                    ring_ratio = 0.0
+                if len(internal_lines) < 7 or angular_cov < 0.40 or ring_ratio > 0.48:
+                    angular_markers = self._estimate_round_angular_motif_markers(
+                        processing_bgr,
+                        target_mask,
+                        max_lines=max(8, motif_target),
+                    )
+                    internal_lines = self._merge_distinct_lines(
+                        internal_lines,
+                        angular_markers,
+                        min_center_sep=2.8,
+                        max_lines=motif_target,
+                        min_arc_len=6.0,
+                    )
+                    internal_lines = self._merge_distinct_lines(
+                        internal_lines,
+                        round_polar_motif_lines,
+                        min_center_sep=2.8,
+                        max_lines=motif_target,
+                        min_arc_len=6.0,
+                    )
+                    internal_lines = self._regularize_round_publication_lines(
+                        internal_lines,
+                        target_mask,
+                        max_lines=motif_target,
+                    )
+                    internal_lines = self._suppress_round_ring_lines(
+                        internal_lines,
+                        target_mask,
+                        max_ring_lines=1,
+                    )
                 if round_lines and len(internal_lines) < 5:
                     anchor = round_lines[1] if len(round_lines) > 1 else round_lines[0]
                     internal_lines = [anchor] + internal_lines
@@ -715,6 +781,228 @@ class ContourGenerator:
                 centers.append(center)
 
         return out[:target]
+
+    def _round_ring_line_ratio(self, lines, mask):
+        """Estimate how many lines are ring-like for round artifacts."""
+        if not lines:
+            return 0.0
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 40:
+            return 0.0
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        ring_count = 0
+        valid_count = 0
+        for line in lines:
+            _, arc_len = self._line_centroid_and_length(line)
+            if arc_len < 6.0:
+                continue
+            valid_count += 1
+            ring_like = self._line_ring_likeness(line, cx, cy)
+            angle_span = self._line_angle_span(line, cx, cy)
+            if ring_like >= 0.90 and angle_span >= (np.pi * 0.70):
+                ring_count += 1
+        if valid_count <= 0:
+            return 0.0
+        return float(ring_count) / float(valid_count)
+
+    def _suppress_round_ring_lines(self, lines, mask, max_ring_lines=1):
+        """
+        Keep motif-like lines for measured round artifacts and cap concentric bands.
+        """
+        if not lines:
+            return []
+        keep_ring = max(0, int(max_ring_lines))
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 40:
+            return list(lines)
+
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        r_ref = max(10.0, 0.5 * float(max(np.max(xs) - np.min(xs), np.max(ys) - np.min(ys))))
+
+        ring_items = []
+        motif_items = []
+        for line in lines:
+            center, arc_len = self._line_centroid_and_length(line)
+            if center is None or arc_len < 4.0:
+                continue
+            d_norm = (((center[0] - cx) ** 2 + (center[1] - cy) ** 2) ** 0.5) / max(1e-6, r_ref)
+            ring_like = self._line_ring_likeness(line, cx, cy)
+            angle_span = self._line_angle_span(line, cx, cy)
+            is_ring = ring_like >= 0.90 and angle_span >= (np.pi * 0.80) and d_norm >= 0.20
+            motif_score = arc_len * (1.0 - (0.45 * ring_like)) * max(0.20, 1.0 - abs(d_norm - 0.60))
+            if is_ring:
+                ring_items.append((motif_score, line))
+            else:
+                motif_items.append((motif_score, line))
+
+        motif_items.sort(key=lambda item: item[0], reverse=True)
+        ring_items.sort(key=lambda item: item[0], reverse=True)
+
+        out = [item[1] for item in motif_items]
+        if keep_ring > 0 and ring_items:
+            out.extend(item[1] for item in ring_items[:keep_ring])
+
+        if not out:
+            all_items = motif_items + ring_items
+            all_items.sort(key=lambda item: item[0], reverse=True)
+            out = [item[1] for item in all_items[:max(1, keep_ring)]]
+        return out
+
+    def _estimate_round_angular_motif_markers(self, bgr_img, mask, max_lines=12):
+        """
+        Sector-based fallback for measured round artifacts.
+        Uses angular sectors over an annulus to recover interior motif islands when
+        ring-like edges dominate.
+        """
+        limit = int(max(0, int(max_lines)))
+        if limit <= 0:
+            return []
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 90:
+            return []
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        r_ref = max(10.0, 0.5 * float(max(np.max(xs) - np.min(xs), np.max(ys) - np.min(ys))))
+
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+
+        blur_sigma = max(1.6, float(min(mask.shape[0], mask.shape[1])) * 0.008)
+        low = cv2.GaussianBlur(enhanced, (0, 0), blur_sigma)
+        high = cv2.absdiff(enhanced, low)
+        lap = cv2.convertScaleAbs(cv2.Laplacian(enhanced, cv2.CV_16S, ksize=3))
+        gx = cv2.Sobel(enhanced, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(enhanced, cv2.CV_32F, 0, 1, ksize=3)
+        grad = cv2.convertScaleAbs(cv2.magnitude(gx, gy))
+        detail = cv2.addWeighted(high, 0.64, lap, 0.52, 0)
+        detail = cv2.addWeighted(detail, 0.74, grad, 0.30, 0)
+
+        _, otsu_bin = cv2.threshold(detail, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        adaptive_bin = cv2.adaptiveThreshold(
+            detail,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            27,
+            -3,
+        )
+        edges = cv2.Canny(enhanced, 24, 92)
+        fused = cv2.bitwise_or(otsu_bin, adaptive_bin)
+        fused = cv2.bitwise_or(fused, edges)
+
+        h, w = mask.shape[:2]
+        yy, xx = np.indices((h, w))
+        rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
+        boss_r = self._estimate_round_boss_radius(gray, mask, cx, cy, r_ref)
+        inner_ratio = 0.24
+        if boss_r > 0.0:
+            inner_ratio = max(inner_ratio, min(0.50, (boss_r / max(1e-6, r_ref)) * 1.15))
+        annulus = ((rr >= (inner_ratio * r_ref)) & (rr <= (0.93 * r_ref))).astype(np.uint8) * 255
+        interior = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
+        fused = cv2.bitwise_and(fused, fused, mask=interior)
+        fused = cv2.bitwise_and(fused, annulus)
+
+        mask_contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if mask_contours:
+            boundary = np.zeros_like(mask)
+            cv2.drawContours(boundary, [max(mask_contours, key=cv2.contourArea)], -1, 255, thickness=4)
+            fused[boundary > 0] = 0
+
+        fused = cv2.morphologyEx(
+            fused,
+            cv2.MORPH_OPEN,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2)),
+            iterations=1,
+        )
+        fused = cv2.morphologyEx(
+            fused,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+            iterations=1,
+        )
+
+        contours, _ = cv2.findContours(fused, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return []
+
+        min_area = max(7.0, float((r_ref * r_ref) * 0.0010))
+        max_area = float((r_ref * r_ref) * 0.11)
+        min_arc = max(8.0, 0.028 * float(min(h, w)))
+        sector_count = max(10, min(24, int(limit * 2)))
+        min_sep = max(3.2, 0.040 * float(min(h, w)))
+
+        candidates = []
+        for contour in contours:
+            area = float(abs(cv2.contourArea(contour)))
+            if area < min_area or area > max_area:
+                continue
+            arc_len = float(cv2.arcLength(contour, True))
+            if arc_len < min_arc:
+                continue
+
+            epsilon = max(1.0, 0.0090 * arc_len)
+            approx = cv2.approxPolyDP(contour, epsilon, True).reshape(-1, 2)
+            if approx.shape[0] < 3:
+                continue
+
+            arr = np.asarray(approx, dtype=np.int32)
+            arr[:, 0] = np.clip(arr[:, 0], 0, w - 1)
+            arr[:, 1] = np.clip(arr[:, 1], 0, h - 1)
+
+            center = np.mean(arr, axis=0)
+            lx = float(center[0])
+            ly = float(center[1])
+            ix = int(max(0, min(w - 1, int(round(lx)))))
+            iy = int(max(0, min(h - 1, int(round(ly)))))
+            if mask[iy, ix] == 0:
+                continue
+
+            d_norm = (((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5) / max(1e-6, r_ref)
+            if d_norm < (inner_ratio * 0.80) or d_norm > 0.95:
+                continue
+
+            inside_ratio = float(np.mean(mask[arr[:, 1], arr[:, 0]] > 0))
+            if inside_ratio < 0.86:
+                continue
+
+            line = arr.tolist()
+            if line[0] != line[-1]:
+                line.append(line[0])
+            ring_like = self._line_ring_likeness(line, cx, cy)
+            angle_span = self._line_angle_span(line, cx, cy)
+            if ring_like >= 0.92 and angle_span >= (np.pi * 0.75):
+                continue
+
+            theta = float(np.arctan2(ly - cy, lx - cx))
+            sector_idx = int(((theta + np.pi) / (2.0 * np.pi)) * sector_count) % sector_count
+            complexity = min(1.0, float(len(line)) / 20.0)
+            band_score = max(0.22, 1.0 - abs(d_norm - 0.58))
+            score = (1.6 * area) + (0.60 * arc_len) + (9.0 * band_score) + (7.0 * complexity) - (9.0 * ring_like)
+            candidates.append((score, sector_idx, (lx, ly), line))
+
+        if not candidates:
+            return []
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        selected = []
+        centers = []
+        used_sector = {}
+        for _, sector_idx, center, line in candidates:
+            if int(used_sector.get(sector_idx, 0)) >= 1:
+                continue
+            if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in centers):
+                continue
+            selected.append(line)
+            centers.append(center)
+            used_sector[sector_idx] = int(used_sector.get(sector_idx, 0)) + 1
+            if len(selected) >= limit:
+                break
+
+        return selected[:limit]
 
     def _polyline_to_path(self, points):
         """Convert list of points to SVG polyline path."""
@@ -1286,6 +1574,193 @@ class ContourGenerator:
         candidates.sort(key=lambda item: item[0], reverse=True)
         return [item[1] for item in candidates[:limit]]
 
+    def _extract_round_polar_motif_lines(self, bgr_img, mask, main_contour, max_lines=16):
+        """
+        Extract inner motifs for round artifacts using polar-unwrapped detail analysis.
+        This reduces ring bias by filtering long angular runs that represent concentric bands.
+        """
+        limit = int(max(0, int(max_lines)))
+        if limit <= 0:
+            return []
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 120:
+            return []
+
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        r_ref = max(12.0, 0.5 * float(max(np.max(xs) - np.min(xs), np.max(ys) - np.min(ys))))
+        if r_ref < 14.0:
+            return []
+
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.8, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+
+        boss_r = self._estimate_round_boss_radius(gray, mask, cx, cy, r_ref)
+        inner_r = 0.24 * r_ref
+        if boss_r > 0.0:
+            inner_r = max(inner_r, min(0.54 * r_ref, boss_r * 1.12))
+        outer_r = 0.93 * r_ref
+        if (outer_r - inner_r) < 8.0:
+            return []
+
+        polar_max = max(6.0, 0.98 * r_ref)
+        n_theta = int(max(320, min(840, round(5.4 * r_ref))))
+        n_rad = int(max(110, min(460, round(1.25 * r_ref))))
+        try:
+            polar = cv2.warpPolar(
+                enhanced,
+                (n_theta, n_rad),
+                (cx, cy),
+                polar_max,
+                cv2.WARP_POLAR_LINEAR,
+            )
+        except Exception:
+            return []
+        if polar is None or polar.size == 0:
+            return []
+
+        r0_idx = int(max(0, min(n_rad - 2, round((inner_r / polar_max) * (n_rad - 1)))))
+        r1_idx = int(max(r0_idx + 1, min(n_rad - 1, round((outer_r / polar_max) * (n_rad - 1)))))
+        if r1_idx <= r0_idx:
+            return []
+
+        polar_crop = polar[r0_idx:r1_idx + 1, :]
+        if polar_crop.size == 0:
+            return []
+
+        # Enhance local relief in polar space.
+        blur = cv2.GaussianBlur(polar_crop, (0, 0), 3.2, 1.2)
+        highpass = cv2.absdiff(polar_crop, blur.astype(np.uint8))
+        grad_r = cv2.convertScaleAbs(cv2.Sobel(polar_crop, cv2.CV_16S, 0, 1, ksize=3))
+        grad_t = cv2.convertScaleAbs(cv2.Sobel(polar_crop, cv2.CV_16S, 1, 0, ksize=3))
+        fused = cv2.addWeighted(highpass, 0.58, grad_r, 0.44, 0)
+        fused = cv2.addWeighted(fused, 0.84, grad_t, 0.22, 0)
+
+        _, otsu_bin = cv2.threshold(fused, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        adaptive_bin = cv2.adaptiveThreshold(
+            fused,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            29,
+            -2,
+        )
+        edges = cv2.Canny(polar_crop, 26, 96)
+        polar_bin = cv2.bitwise_or(otsu_bin, adaptive_bin)
+        polar_bin = cv2.bitwise_or(polar_bin, edges)
+        polar_bin = cv2.morphologyEx(
+            polar_bin,
+            cv2.MORPH_OPEN,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2)),
+            iterations=1,
+        )
+        polar_bin = cv2.morphologyEx(
+            polar_bin,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+            iterations=1,
+        )
+
+        contours, _ = cv2.findContours(polar_bin, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return []
+
+        crop_h, crop_w = polar_bin.shape[:2]
+        min_area = max(7.0, float(crop_h * crop_w) * 0.00020)
+        max_area = float(crop_h * crop_w) * 0.28
+        min_arc = max(8.0, 0.030 * float(min(mask.shape[0], mask.shape[1])))
+        sector_count = max(10, min(24, limit * 2))
+        min_sep = max(3.0, 0.040 * float(min(mask.shape[0], mask.shape[1])))
+
+        candidates = []
+        h_img, w_img = mask.shape[:2]
+        for contour in contours:
+            area = float(abs(cv2.contourArea(contour)))
+            if area < min_area or area > max_area:
+                continue
+
+            x, y, bw, bh = cv2.boundingRect(contour)
+            # Reject long angular runs with tiny radial span (concentric band artifacts).
+            if bw >= int(0.32 * crop_w) and bh <= max(3, int(0.06 * crop_h)):
+                continue
+            if bw >= int(0.52 * crop_w) and bh <= max(5, int(0.10 * crop_h)):
+                continue
+
+            arc_len = float(cv2.arcLength(contour, True))
+            if arc_len < min_arc:
+                continue
+
+            eps = max(1.0, 0.010 * arc_len)
+            approx = cv2.approxPolyDP(contour, eps, True).reshape(-1, 2)
+            if approx.shape[0] < 3:
+                continue
+
+            cart_pts = []
+            inside_hits = 0
+            for px, py in approx:
+                gx = int(np.clip(px, 0, crop_w - 1))
+                gy = int(np.clip(py, 0, crop_h - 1))
+                theta = (float(gx) / float(max(1, n_theta - 1))) * (2.0 * np.pi)
+                global_r_idx = int(np.clip(gy + r0_idx, 0, n_rad - 1))
+                radius = (float(global_r_idx) / float(max(1, n_rad - 1))) * polar_max
+                x_img = int(round(cx + (radius * np.cos(theta))))
+                y_img = int(round(cy + (radius * np.sin(theta))))
+                x_img = int(np.clip(x_img, 0, w_img - 1))
+                y_img = int(np.clip(y_img, 0, h_img - 1))
+                cart_pts.append([x_img, y_img])
+                if mask[y_img, x_img] > 0:
+                    inside_hits += 1
+
+            if len(cart_pts) < 3:
+                continue
+            inside_ratio = inside_hits / float(max(1, len(cart_pts)))
+            if inside_ratio < 0.84:
+                continue
+
+            if cart_pts[0] != cart_pts[-1]:
+                cart_pts.append(cart_pts[0])
+
+            center, cart_arc = self._line_centroid_and_length(cart_pts)
+            if center is None or cart_arc < 8.0:
+                continue
+            d_norm = (((center[0] - cx) ** 2 + (center[1] - cy) ** 2) ** 0.5) / max(1e-6, r_ref)
+            if d_norm < 0.18 or d_norm > 0.95:
+                continue
+
+            ring_like = self._line_ring_likeness(cart_pts, cx, cy)
+            ang_span = self._line_angle_span(cart_pts, cx, cy)
+            if ring_like >= 0.90 and ang_span >= (np.pi * 0.62) and d_norm > 0.24:
+                continue
+
+            theta_c = float(np.arctan2(center[1] - cy, center[0] - cx))
+            sector_idx = int(((theta_c + np.pi) / (2.0 * np.pi)) * sector_count) % sector_count
+            complexity = min(1.0, float(len(cart_pts)) / 20.0)
+            band_score = max(0.25, 1.0 - abs(d_norm - 0.60))
+            score = (1.3 * area) + (0.55 * cart_arc) + (8.0 * complexity) + (10.0 * band_score) - (10.0 * ring_like)
+            candidates.append((score, sector_idx, center, cart_pts))
+
+        if not candidates:
+            return []
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        selected = []
+        centers = []
+        used_sector = {}
+        for _, sector_idx, center, line in candidates:
+            if int(used_sector.get(sector_idx, 0)) >= 1:
+                continue
+            if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in centers):
+                continue
+            selected.append(line)
+            centers.append(center)
+            used_sector[sector_idx] = int(used_sector.get(sector_idx, 0)) + 1
+            if len(selected) >= limit:
+                break
+
+        return selected[:limit]
+
     def _estimate_spine_line(self, mask):
         """Estimate central spine line from mask when texture lines are weak."""
         ys, xs = np.where(mask > 0)
@@ -1814,11 +2289,48 @@ class ContourGenerator:
         backend = str(self.settings.value('ArcheoGlyph/mask_backend', 'auto')).strip().lower()
         if backend == "sam":
             sam_mask = self._get_mask_sam(bgr_img)
-            if sam_mask is not None:
+            cv_mask = self._get_mask_opencv(bgr_img)
+
+            if sam_mask is None:
+                return cv_mask
+            if cv_mask is None:
                 sam_score = self._mask_selection_score(bgr_img, sam_mask)
-                if sam_score >= 0.22:
-                    return sam_mask
-            return self._get_mask_opencv(bgr_img)
+                return sam_mask if sam_score >= 0.22 else self._get_mask_opencv(bgr_img)
+
+            score_sam = self._mask_selection_score(bgr_img, sam_mask)
+            score_cv = self._mask_selection_score(bgr_img, cv_mask)
+            feat_sam = self._mask_bbox_features(sam_mask)
+            feat_cv = self._mask_bbox_features(cv_mask)
+
+            # Guard: SAM occasionally picks tiny centered fragments on reflective round artifacts.
+            tiny_sam = (
+                feat_sam["area_ratio"] < 0.018
+                and feat_cv["area_ratio"] >= (feat_sam["area_ratio"] * 2.2)
+            )
+
+            circle_pref_cv = False
+            try:
+                gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+                circle_mask = self._detect_center_circle_mask(gray)
+                if circle_mask is not None:
+                    circle_area = float(np.count_nonzero(circle_mask))
+                    if circle_area >= float(max(1, bgr_img.shape[0] * bgr_img.shape[1])) * 0.04:
+                        overlap_sam = float(np.count_nonzero(cv2.bitwise_and(sam_mask, circle_mask))) / max(1.0, circle_area)
+                        overlap_cv = float(np.count_nonzero(cv2.bitwise_and(cv_mask, circle_mask))) / max(1.0, circle_area)
+                        if overlap_sam < 0.18 and overlap_cv >= (overlap_sam + 0.16):
+                            circle_pref_cv = True
+            except Exception:
+                circle_pref_cv = False
+
+            if tiny_sam and score_cv >= (score_sam - 0.06):
+                return cv_mask
+            if circle_pref_cv and score_cv >= (score_sam - 0.08):
+                return cv_mask
+            if score_sam >= (score_cv + 0.08):
+                return sam_mask
+            if score_cv >= (score_sam + 0.03):
+                return cv_mask
+            return sam_mask if score_sam >= score_cv else cv_mask
 
         if backend == "auto":
             cv_mask = self._get_mask_opencv(bgr_img)
@@ -2571,11 +3083,19 @@ class ContourGenerator:
 
     def _get_mask_sam(self, bgr_img):
         """
-        Optional SAM backend for users who installed segment-anything and checkpoint.
-        Falls back to OpenCV if unavailable.
+        Optional SAM backend.
+        Supports:
+        - SAM1 (segment-anything + local checkpoint)
+        - SAM2.1/SAM3 (transformers mask-generation via HF model ID)
         """
-        checkpoint = str(self.settings.value('ArcheoGlyph/sam_checkpoint_path', '')).strip()
         model_type = str(self.settings.value('ArcheoGlyph/sam_model_type', 'vit_b')).strip() or "vit_b"
+        if model_type.lower().startswith("hf:"):
+            model_id = model_type[3:].strip()
+            if not model_id:
+                model_id = "facebook/sam2.1-hiera-small"
+            return self._get_mask_sam_hf(bgr_img, model_id)
+
+        checkpoint = str(self.settings.value('ArcheoGlyph/sam_checkpoint_path', '')).strip()
         if not checkpoint:
             return None
 
@@ -2657,6 +3177,186 @@ class ContourGenerator:
             return target_mask
         except Exception:
             return None
+
+    def _get_mask_sam_hf(self, bgr_img, model_id):
+        """
+        HF/Transformers SAM2.1/SAM3 path.
+        Expects model_id like 'facebook/sam2.1-hiera-small' or 'facebook/sam3-hiera-large'.
+        """
+        model_id = (model_id or "").strip()
+        if not model_id:
+            return None
+
+        try:
+            import torch
+            from PIL import Image
+            from transformers import pipeline
+        except Exception:
+            return None
+
+        device = 0 if torch.cuda.is_available() else -1
+        cache_key = (model_id, device)
+        try:
+            if self._sam_hf_generator is None or self._sam_hf_cache_key != cache_key:
+                self._sam_hf_generator = pipeline(
+                    task="mask-generation",
+                    model=model_id,
+                    device=device,
+                )
+                self._sam_hf_cache_key = cache_key
+        except Exception:
+            self._sam_hf_generator = None
+            self._sam_hf_cache_key = None
+            return None
+
+        try:
+            rgb = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(rgb)
+            output = self._sam_hf_generator(image)
+        except Exception:
+            return None
+
+        # Pipeline usually returns a list with one dict per image.
+        payload = output
+        if isinstance(output, list) and output:
+            payload = output[0]
+        if not isinstance(payload, dict):
+            return None
+
+        raw_masks = payload.get("masks", None)
+        raw_scores = payload.get("scores", None)
+
+        def _as_mask_list(value):
+            if value is None:
+                return []
+            if isinstance(value, (list, tuple)):
+                return list(value)
+            try:
+                if hasattr(value, "detach"):
+                    arr_v = value.detach().cpu().numpy()
+                else:
+                    arr_v = np.asarray(value)
+            except Exception:
+                return []
+            if arr_v is None:
+                return []
+            if arr_v.ndim == 2:
+                return [arr_v]
+            if arr_v.ndim >= 3:
+                return [arr_v[i] for i in range(arr_v.shape[0])]
+            return []
+
+        def _as_score_list(value):
+            if value is None:
+                return []
+            if isinstance(value, (list, tuple)):
+                out = []
+                for sv in value:
+                    try:
+                        out.append(float(sv))
+                    except Exception:
+                        continue
+                return out
+            try:
+                if hasattr(value, "detach"):
+                    arr_s = value.detach().cpu().numpy()
+                else:
+                    arr_s = np.asarray(value)
+            except Exception:
+                return []
+            if arr_s is None:
+                return []
+            arr_s = np.asarray(arr_s).reshape(-1)
+            out = []
+            for sv in arr_s:
+                try:
+                    out.append(float(sv))
+                except Exception:
+                    continue
+            return out
+
+        masks = _as_mask_list(raw_masks)
+        scores = _as_score_list(raw_scores)
+        if len(masks) == 0:
+            return None
+
+        h, w = bgr_img.shape[:2]
+        total = float(max(1, h * w))
+        circle_mask = None
+        circle_area = 0.0
+        try:
+            gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+            circle_mask = self._detect_center_circle_mask(gray)
+            if circle_mask is not None:
+                circle_area = float(np.count_nonzero(circle_mask))
+                if circle_area < (total * 0.04):
+                    circle_mask = None
+                    circle_area = 0.0
+        except Exception:
+            circle_mask = None
+            circle_area = 0.0
+
+        best = None
+        best_score = -1.0
+
+        for idx, mask_item in enumerate(masks):
+            arr = None
+            try:
+                if hasattr(mask_item, "detach"):
+                    arr = mask_item.detach().cpu().numpy()
+                else:
+                    arr = np.asarray(mask_item)
+            except Exception:
+                continue
+
+            if arr is None:
+                continue
+            if arr.ndim == 3 and arr.shape[0] == 1:
+                arr = arr[0]
+            if arr.ndim == 3 and arr.shape[-1] == 1:
+                arr = arr[:, :, 0]
+            if arr.ndim != 2:
+                continue
+
+            if arr.shape[0] != h or arr.shape[1] != w:
+                arr = cv2.resize(arr.astype(np.float32), (w, h), interpolation=cv2.INTER_NEAREST)
+
+            if arr.dtype == np.bool_:
+                m = arr.astype(np.uint8) * 255
+            else:
+                thr = 0.5 if float(np.max(arr)) <= 1.0 else 127.0
+                m = (arr > thr).astype(np.uint8) * 255
+
+            if int(np.count_nonzero(m)) < max(80, int(h * w * 0.002)):
+                continue
+
+            m = self._select_primary_component(m)
+            m = self._smooth_mask_edges(m)
+
+            m_area = float(np.count_nonzero(m))
+            if circle_mask is not None and circle_area > 0.0:
+                overlap_circle = float(np.count_nonzero(cv2.bitwise_and(m, circle_mask))) / max(1.0, circle_area)
+                # Reject tiny center fragments when a dominant round silhouette is detected.
+                if m_area < (circle_area * 0.12) and overlap_circle < 0.20:
+                    continue
+            else:
+                overlap_circle = 0.0
+
+            quality = self._mask_selection_score(bgr_img, m)
+            if idx < len(scores):
+                try:
+                    quality += (0.06 * float(scores[idx]))
+                except Exception:
+                    pass
+            if circle_mask is not None and circle_area > 0.0:
+                area_ratio_to_circle = m_area / max(1.0, circle_area)
+                area_match = max(0.0, 1.0 - abs(area_ratio_to_circle - 1.0))
+                quality += (0.14 * overlap_circle) + (0.08 * area_match)
+            if quality > best_score:
+                best_score = quality
+                best = m
+
+        return best
 
     def _extract_dominant_color(self, bgr_img, mask=None):
         """

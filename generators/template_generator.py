@@ -656,10 +656,60 @@ class TemplateGenerator:
         elif "weapon" in key or "blade" in key or "arrow shaft" in key:
             self._draw_weapon(painter, size, m)
         elif "fortress" in key or "castle" in key or "gate" in key or "tower" in key:
-            self._draw_fortress(painter, size, m)
+            if "gate" in key:
+                self._draw_gate(painter, size, m)
+            elif "tower" in key:
+                self._draw_tower(painter, size, m)
+            else:
+                self._draw_fortress(painter, size, m)
         elif "dwelling" in key or "house" in key or "workshop" in key:
-            self._draw_dwelling(painter, size, m)
-        elif "tomb" in key or "mound" in key or "barrow" in key:
+            if "workshop" in key:
+                self._draw_workshop(painter, size, m)
+            else:
+                self._draw_dwelling(painter, size, m)
+        elif "road" in key or "pavement" in key:
+            self._draw_road(painter, size, m, q_color)
+        elif "bridge" in key:
+            self._draw_bridge(painter, size, m, q_color)
+        elif "terrace" in key:
+            self._draw_terrace(painter, size, m, q_color)
+        elif "wall" in key or "rampart" in key:
+            self._draw_wall(painter, size, m)
+        elif "posthole" in key:
+            self._draw_posthole(painter, size, m, q_color)
+        elif "test pit" in key:
+            self._draw_test_pit(painter, size, m, q_color)
+        elif "pit" in key:
+            self._draw_pit(painter, size, m, q_color)
+        elif "ash layer" in key:
+            self._draw_ash_layer(painter, size, m, q_color)
+        elif "burnt" in key:
+            self._draw_burnt_area(painter, size, m, q_color)
+        elif "canal" in key or "water channel" in key:
+            self._draw_canal(painter, size, m, q_color)
+        elif "ditch" in key or "moat" in key:
+            self._draw_ditch(painter, size, m, q_color)
+        elif "standing stone" in key:
+            self._draw_standing_stone(painter, size, m, q_color)
+        elif "stone align" in key:
+            self._draw_stone_alignment(painter, size, m)
+        elif "trench" in key:
+            self._draw_trench(painter, size, m, q_color)
+        elif "grid corner" in key:
+            self._draw_grid_corner(painter, size, m, q_color)
+        elif "excavation" in key:
+            self._draw_excavation(painter, size, m, q_color)
+        elif "datum" in key:
+            self._draw_datum_point(painter, size, m, q_color)
+        elif "photo point" in key:
+            self._draw_photo_point(painter, size, m, q_color)
+        elif "survey" in key:
+            self._draw_survey_point(painter, size, m, q_color)
+        elif "sample location" in key:
+            self._draw_sample_location(painter, size, m, q_color)
+        elif "find" in key:
+            self._draw_find_spot(painter, size, m, q_color)
+        elif "tomb" in key or "barrow" in key or ("mound" in key and "shell" not in key and "midden" not in key):
             self._draw_tomb(painter, size, m)
         elif "temple" in key or "shrine" in key:
             self._draw_temple(painter, size, m, q_color)
@@ -667,32 +717,18 @@ class TemplateGenerator:
             self._draw_kiln(painter, size, m)
         elif "well" in key:
             self._draw_well(painter, size, m, q_color)
-        elif "wall" in key or "rampart" in key or "road" in key or "pavement" in key or "bridge" in key or "terrace" in key:
-            self._draw_wall(painter, size, m)
-        elif "pit" in key or "posthole" in key or "test pit" in key:
-            self._draw_pit(painter, size, m, q_color)
         elif "human" in key or "skull" in key or "skeleton" in key:
             self._draw_skull(painter, size, m, q_color)
         elif "burial" in key or "cremation" in key:
             self._draw_burial(painter, size, m, q_color)
-        elif "hearth" in key or "fire" in key or "burnt" in key:
+        elif "hearth" in key or "fire" in key:
             self._draw_hearth(painter, size, m, q_color)
-        elif "midden" in key or "shell" in key or "ash layer" in key:
+        elif "midden" in key or "shell" in key:
             self._draw_midden(painter, size, m)
-        elif "ditch" in key or "moat" in key or "canal" in key or "water channel" in key:
-            self._draw_ditch(painter, size, m, q_color)
-        elif "stone align" in key or "standing stone" in key:
-            self._draw_stone_alignment(painter, size, m)
         elif "dolmen" in key:
             self._draw_dolmen(painter, size, m)
         elif "rock art" in key:
             self._draw_rock_art(painter, size, m, q_color)
-        elif "excavation" in key or "trench" in key or "grid corner" in key:
-            self._draw_excavation(painter, size, m, q_color)
-        elif "survey" in key or "datum" in key or "photo point" in key:
-            self._draw_survey_point(painter, size, m, q_color)
-        elif "find" in key or "sample location" in key:
-            self._draw_find_spot(painter, size, m, q_color)
         else:
             painter.drawEllipse(m, m, size - 2*m, size - 2*m)
             
@@ -704,20 +740,38 @@ class TemplateGenerator:
     # ═══════════════════════════════════════════════════════
 
     def _draw_pottery(self, painter, s, m):
-        """Jar/vessel shape."""
+        """Vessel profile with section-style interior cues."""
         p = QPainterPath()
         cx = s / 2
-        p.moveTo(cx - 30, m + 20)
-        p.lineTo(cx + 30, m + 20)
-        p.lineTo(cx + 25, m + 40)
-        p.quadTo(cx + 65, s * 0.55, cx + 50, s - m)
-        p.lineTo(cx - 50, s - m)
-        p.quadTo(cx - 65, s * 0.55, cx - 25, m + 40)
+        p.moveTo(cx - 24, m + 22)
+        p.lineTo(cx + 24, m + 22)
+        p.quadTo(cx + 28, m + 36, cx + 24, m + 44)
+        p.quadTo(cx + 68, s * 0.56, cx + 52, s - m)
+        p.lineTo(cx - 52, s - m)
+        p.quadTo(cx - 68, s * 0.56, cx - 24, m + 44)
+        p.quadTo(cx - 28, m + 36, cx - 24, m + 22)
         p.closeSubpath()
         painter.drawPath(p)
+
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        line_pen = QPen(old_pen.color().darker(140), 1.1)
+        painter.setPen(line_pen)
+        painter.setBrush(Qt.NoBrush)
+
+        # Split-profile convention used in ceramic illustration.
+        painter.drawLine(int(cx), int(m + 24), int(cx), int(s - m - 2))
+        painter.drawLine(int(cx - 24), int(m + 30), int(cx + 24), int(m + 30))
+        painter.drawLine(int(cx - 44), int(s - m - 8), int(cx + 44), int(s - m - 8))
+        for i in range(6):
+            y = int(m + 50 + (i * 24))
+            painter.drawLine(int(cx - 46 + (i % 2) * 4), y, int(cx - 12), y + 8)
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
         
     def _draw_stone_tool(self, painter, s, m):
-        """Arrowhead/point shape."""
+        """Arrowhead/point with flake-scar style internal lines."""
         pts = [
             QPointF(s/2, m),
             QPointF(s - m, s - m - 40),
@@ -725,6 +779,18 @@ class TemplateGenerator:
             QPointF(m, s - m - 40),
         ]
         painter.drawPolygon(QPolygonF(pts))
+
+        cx = s / 2.0
+        old_pen = painter.pen()
+        scar_pen = QPen(old_pen.color().darker(145), 1.0)
+        painter.setPen(scar_pen)
+        painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 12))
+        for i in range(4):
+            y = int(m + 38 + i * 34)
+            offset = 12 + i * 2
+            painter.drawLine(int(cx - offset), y, int(cx - 4), y + 10)
+            painter.drawLine(int(cx + offset), y, int(cx + 4), y + 10)
+        painter.setPen(old_pen)
         
     def _draw_bronze(self, painter, s, m):
         """Default bronze icon: medium typological dagger silhouette."""
@@ -1019,6 +1085,15 @@ class TemplateGenerator:
         p.quadTo(s - m, s * 0.3, s - m, s - m)
         p.closeSubpath()
         painter.drawPath(p)
+        old_pen = painter.pen()
+        hatch_pen = QPen(old_pen.color().darker(140), 1.0)
+        painter.setPen(hatch_pen)
+        span = float(s - (2 * m) - 36)
+        for i in range(8):
+            x = int(m + 18 + ((span / 7.0) * i))
+            y = int((s - m - 26) - (18 - abs(3.5 - i) * 3.5))
+            painter.drawLine(x, y, x - 7, y + 11)
+        painter.setPen(old_pen)
 
     def _draw_temple(self, painter, s, m, color):
         """Temple — pagoda/traditional roof shape."""
@@ -1078,6 +1153,56 @@ class TemplateGenerator:
             x = m + i * step
             painter.drawLine(x, int(cy - wall_h/2), x, int(cy))
             painter.drawLine(x + step//2, int(cy), x + step//2, int(cy + wall_h/2))
+
+    def _draw_gate(self, painter, s, m):
+        """Gate icon with twin posts and lintel."""
+        old_brush = painter.brush()
+        old_pen = painter.pen()
+        post_w = 30
+        top_y = m + 40
+        bottom_y = s - m
+        painter.drawRect(m + 24, top_y, post_w, bottom_y - top_y)
+        painter.drawRect(s - m - 24 - post_w, top_y, post_w, bottom_y - top_y)
+        painter.drawRect(m + 16, m + 16, s - 2 * m - 32, 24)
+        painter.setBrush(Qt.NoBrush)
+        arch_pen = QPen(old_pen.color().darker(130), 1.4)
+        painter.setPen(arch_pen)
+        painter.drawArc(m + 40, top_y + 10, s - 2 * m - 80, 70, 0, 180 * 16)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_tower(self, painter, s, m):
+        """Tower icon with crenellation and slit windows."""
+        old_brush = painter.brush()
+        old_pen = painter.pen()
+        x = int(s / 2 - 40)
+        y = m + 20
+        w = 80
+        h = s - 2 * m - 20
+        painter.drawRect(x, y, w, h)
+        crenel_w = 16
+        for i in range(5):
+            if i % 2 == 0:
+                painter.drawRect(x + i * crenel_w, y - 14, crenel_w, 14)
+        painter.setBrush(Qt.white)
+        painter.drawRect(x + 32, y + 32, 16, 18)
+        painter.drawRect(x + 32, y + 66, 16, 18)
+        painter.drawRect(x + 30, y + h - 42, 20, 28)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_workshop(self, painter, s, m):
+        """Workshop icon: dwelling body + crossed tool cue."""
+        self._draw_dwelling(painter, s, m)
+        old_pen = painter.pen()
+        tool_pen = QPen(old_pen.color().darker(145), 1.8)
+        painter.setPen(tool_pen)
+        cx = s / 2
+        y = int(s * 0.6)
+        painter.drawLine(int(cx - 34), y - 8, int(cx + 18), y + 20)
+        painter.drawLine(int(cx + 34), y - 8, int(cx - 18), y + 20)
+        painter.drawRect(int(cx + 14), y + 16, 12, 6)
+        painter.setPen(old_pen)
 
     def _draw_pit(self, painter, s, m, color):
         """Pit — dashed circle."""
@@ -1175,6 +1300,14 @@ class TemplateGenerator:
         p2.closeSubpath()
         painter.drawPath(p2)
         painter.setBrush(old_brush)
+        old_pen = painter.pen()
+        stipple_pen = QPen(old_pen.color().darker(135), 1.0)
+        painter.setPen(stipple_pen)
+        for i in range(14):
+            x = int(m + 20 + (i * 14))
+            y = int(s - m - 16 - ((i % 3) * 9))
+            painter.drawEllipse(x, y, 4, 3)
+        painter.setPen(old_pen)
 
     def _draw_ditch(self, painter, s, m, color):
         """Ditch/moat — concentric dashed arcs."""
@@ -1188,6 +1321,24 @@ class TemplateGenerator:
         painter.drawArc(m + inner, m + inner, s - 2*m - 2*inner, s - 2*m - 2*inner, 30 * 16, 300 * 16)
         painter.setBrush(color)
 
+    def _draw_canal(self, painter, s, m, color):
+        """Canal/water-channel with paired lines and flow arrows."""
+        old_brush = painter.brush()
+        old_pen = painter.pen()
+        painter.setBrush(Qt.NoBrush)
+        flow_pen = QPen(color.darker(120), 2.4)
+        painter.setPen(flow_pen)
+        painter.drawArc(m + 18, m + 30, s - 2 * m - 36, s - 2 * m - 60, 40 * 16, 270 * 16)
+        painter.drawArc(m + 36, m + 48, s - 2 * m - 72, s - 2 * m - 96, 40 * 16, 270 * 16)
+        for i in range(3):
+            x = int(m + 76 + i * 44)
+            y = int(s / 2 + (i % 2) * 8)
+            painter.drawLine(x, y, x + 12, y)
+            painter.drawLine(x + 12, y, x + 7, y - 4)
+            painter.drawLine(x + 12, y, x + 7, y + 4)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
     def _draw_stone_alignment(self, painter, s, m):
         """Standing stones — row of vertical rectangles."""
         stones = 5
@@ -1198,6 +1349,27 @@ class TemplateGenerator:
             h = 50 + (i % 3) * 25
             y = s - m - h
             painter.drawRect(int(x), int(y), int(sw), int(h))
+
+    def _draw_standing_stone(self, painter, s, m, color):
+        """Single monolith with pecked face marks."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        p = QPainterPath()
+        p.moveTo(s * 0.42, s - m)
+        p.quadTo(s * 0.32, s * 0.62, s * 0.36, s * 0.34)
+        p.quadTo(s * 0.41, m + 6, s * 0.50, m + 14)
+        p.quadTo(s * 0.62, m + 22, s * 0.64, s * 0.42)
+        p.quadTo(s * 0.66, s * 0.66, s * 0.58, s - m)
+        p.closeSubpath()
+        painter.drawPath(p)
+        painter.setBrush(Qt.NoBrush)
+        peck_pen = QPen(color.darker(145), 1.0)
+        painter.setPen(peck_pen)
+        for i in range(5):
+            y = int(m + 42 + i * 28)
+            painter.drawLine(int(s * 0.46), y, int(s * 0.54), y + 5)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
 
     def _draw_dolmen(self, painter, s, m):
         """Dolmen — capstone on two uprights."""
@@ -1236,6 +1408,51 @@ class TemplateGenerator:
             painter.drawLine(int(x0), int(y0), int(x1), int(y1))
         painter.setBrush(color)
 
+    def _draw_ash_layer(self, painter, s, m, color):
+        """Ash layer as horizontal banding with dense stipple."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        band_h = int((s - 2 * m) * 0.55)
+        top = int(s / 2 - band_h / 2)
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 85))
+        painter.drawRect(m + 14, top, s - 2 * m - 28, band_h)
+        painter.setBrush(Qt.NoBrush)
+        stipple_pen = QPen(color.darker(150), 1.0)
+        painter.setPen(stipple_pen)
+        for i in range(9):
+            y = top + 12 + i * 12
+            painter.drawLine(m + 20, y, s - m - 20, y)
+        for i in range(28):
+            x = int(m + 24 + (i * 7))
+            y = int(top + 8 + ((i * 11) % max(12, band_h - 12)))
+            painter.drawPoint(x, y)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_burnt_area(self, painter, s, m, color):
+        """Burnt feature with charred irregular boundary."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        p = QPainterPath()
+        p.moveTo(m + 30, s * 0.72)
+        p.quadTo(s * 0.28, s * 0.36, s * 0.46, m + 24)
+        p.quadTo(s * 0.70, m + 34, s - m - 20, s * 0.54)
+        p.quadTo(s * 0.72, s * 0.78, s * 0.52, s - m - 12)
+        p.quadTo(s * 0.34, s - m - 4, m + 30, s * 0.72)
+        p.closeSubpath()
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 95))
+        painter.drawPath(p)
+        painter.setBrush(Qt.NoBrush)
+        char_pen = QPen(color.darker(160), 1.2)
+        painter.setPen(char_pen)
+        for i in range(12):
+            x = int(m + 38 + i * 13)
+            y = int(s * 0.42 + (i % 4) * 18)
+            painter.drawLine(x - 4, y - 3, x + 4, y + 3)
+            painter.drawLine(x - 3, y + 4, x + 3, y - 4)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
     # ═══════════════════════════════════════════════════════
     #  Drawing methods — Survey / General
     # ═══════════════════════════════════════════════════════
@@ -1254,6 +1471,15 @@ class TemplateGenerator:
             x = m + 15 + i * step
             painter.drawLine(int(x), m + 15, int(x), s - m - 15)
         painter.setBrush(color)
+        old_pen = painter.pen()
+        n_pen = QPen(color.darker(150), 1.6)
+        painter.setPen(n_pen)
+        nx = s - m - 34
+        ny = m + 24
+        painter.drawLine(nx, ny + 16, nx, ny - 10)
+        painter.drawLine(nx, ny - 10, nx - 5, ny - 3)
+        painter.drawLine(nx, ny - 10, nx + 5, ny - 3)
+        painter.setPen(old_pen)
 
     def _draw_survey_point(self, painter, s, m, color):
         """Survey point — crosshair with circle."""
@@ -1284,6 +1510,200 @@ class TemplateGenerator:
         painter.setBrush(Qt.white)
         ir = 20
         painter.drawEllipse(int(cx - ir), int(s * 0.28), ir * 2, ir * 2)
+
+    def _draw_trench(self, painter, s, m, color):
+        """Trench as elongated rectangle with cut hatch."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        x = m + 20
+        y = int(s * 0.36)
+        w = s - 2 * m - 40
+        h = int(s * 0.28)
+        painter.drawRect(x, y, w, h)
+        painter.setBrush(Qt.NoBrush)
+        hatch_pen = QPen(color.darker(145), 1.0, Qt.DashLine)
+        painter.setPen(hatch_pen)
+        for i in range(8):
+            dx = int(x + 8 + i * (w - 16) / 7.0)
+            painter.drawLine(dx, y + 4, dx - 8, y + h - 4)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_datum_point(self, painter, s, m, color):
+        """Datum point: control-point triangle with center marker."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        cx = s / 2.0
+        top = m + 24
+        left = m + 34
+        right = s - m - 34
+        base = s - m - 24
+        tri = QPolygonF([
+            QPointF(cx, top),
+            QPointF(right, base),
+            QPointF(left, base),
+        ])
+        painter.drawPolygon(tri)
+        painter.setBrush(Qt.white)
+        painter.drawEllipse(int(cx - 8), int(s / 2 - 8), 16, 16)
+        painter.setBrush(Qt.NoBrush)
+        x_pen = QPen(color.darker(145), 1.4)
+        painter.setPen(x_pen)
+        painter.drawLine(int(cx), int(s / 2 - 18), int(cx), int(s / 2 + 18))
+        painter.drawLine(int(cx - 18), int(s / 2), int(cx + 18), int(s / 2))
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_photo_point(self, painter, s, m, color):
+        """Photo point: camera body + viewing cone."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        body_x = int(s * 0.34)
+        body_y = int(s * 0.42)
+        body_w = int(s * 0.32)
+        body_h = int(s * 0.22)
+        painter.drawRect(body_x, body_y, body_w, body_h)
+        painter.setBrush(Qt.white)
+        painter.drawEllipse(int(s / 2 - 16), int(body_y + 12), 32, 32)
+        painter.drawRect(int(body_x + 8), int(body_y - 10), 18, 10)
+        cone_pen = QPen(color.darker(150), 1.2, Qt.DotLine)
+        painter.setPen(cone_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawLine(int(s / 2), int(body_y + body_h / 2), s - m - 6, int(s * 0.28))
+        painter.drawLine(int(s / 2), int(body_y + body_h / 2), s - m - 6, int(s * 0.72))
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_grid_corner(self, painter, s, m, color):
+        """Grid corner: L marker with tied coordinate ticks."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        painter.setBrush(Qt.NoBrush)
+        grid_pen = QPen(color.darker(145), 3.0)
+        painter.setPen(grid_pen)
+        x0 = m + 26
+        y0 = s - m - 26
+        painter.drawLine(x0, y0, x0 + 120, y0)
+        painter.drawLine(x0, y0, x0, y0 - 120)
+        tick_pen = QPen(color.darker(150), 1.3)
+        painter.setPen(tick_pen)
+        for i in range(1, 4):
+            painter.drawLine(x0 + i * 30, y0 - 6, x0 + i * 30, y0 + 6)
+            painter.drawLine(x0 - 6, y0 - i * 30, x0 + 6, y0 - i * 30)
+        painter.setBrush(color)
+        painter.drawEllipse(x0 - 5, y0 - 5, 10, 10)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_sample_location(self, painter, s, m, color):
+        """Sample location: core tube marker inside ring."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        cx = s / 2.0
+        cy = s / 2.0
+        r = s / 2.0 - m - 24
+        painter.drawEllipse(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
+        tube = QPainterPath()
+        tube.moveTo(cx - 12, m + 36)
+        tube.lineTo(cx + 12, m + 36)
+        tube.lineTo(cx + 8, s - m - 34)
+        tube.lineTo(cx - 8, s - m - 34)
+        tube.closeSubpath()
+        painter.drawPath(tube)
+        painter.setBrush(Qt.white)
+        painter.drawEllipse(int(cx - 9), int(m + 28), 18, 18)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_road(self, painter, s, m, color):
+        """Road/pavement with carriageway edges and center line."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        painter.setBrush(Qt.NoBrush)
+        edge_pen = QPen(color.darker(130), 2.2)
+        painter.setPen(edge_pen)
+        painter.drawArc(m + 12, m + 34, s - 2 * m - 24, s - 2 * m - 68, 25 * 16, 310 * 16)
+        painter.drawArc(m + 40, m + 56, s - 2 * m - 80, s - 2 * m - 112, 25 * 16, 310 * 16)
+        center_pen = QPen(color.darker(150), 1.3, Qt.DashLine)
+        painter.setPen(center_pen)
+        painter.drawArc(m + 26, m + 45, s - 2 * m - 52, s - 2 * m - 90, 25 * 16, 310 * 16)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_bridge(self, painter, s, m, color):
+        """Bridge with deck and two arch openings."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        deck_y = int(s * 0.42)
+        painter.drawRect(m + 16, deck_y, s - 2 * m - 32, 22)
+        painter.setBrush(Qt.white)
+        painter.drawArc(m + 28, deck_y + 8, int((s - 2 * m - 56) / 2), 80, 0, 180 * 16)
+        painter.drawArc(int(s / 2), deck_y + 8, int((s - 2 * m - 56) / 2), 80, 0, 180 * 16)
+        painter.setBrush(Qt.NoBrush)
+        water_pen = QPen(color.darker(145), 1.1, Qt.DotLine)
+        painter.setPen(water_pen)
+        painter.drawLine(m + 24, int(s * 0.78), s - m - 24, int(s * 0.78))
+        painter.drawLine(m + 30, int(s * 0.84), s - m - 30, int(s * 0.84))
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_terrace(self, painter, s, m, color):
+        """Terrace with stepped contour bands."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        painter.setBrush(Qt.NoBrush)
+        contour_pen = QPen(color.darker(140), 2.0)
+        painter.setPen(contour_pen)
+        for i in range(4):
+            y = int(m + 36 + i * 40)
+            inset = 18 + i * 10
+            painter.drawLine(m + inset, y, s - m - inset, y)
+            painter.drawLine(m + inset, y, m + inset + 12, y - 8)
+            painter.drawLine(s - m - inset, y, s - m - inset - 12, y - 8)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_posthole(self, painter, s, m, color):
+        """Posthole with center post and packing stones."""
+        import math
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        cx = s / 2.0
+        cy = s / 2.0
+        r = s / 2.0 - m - 24
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 65))
+        ring_pen = QPen(color.darker(125), 2.2, Qt.DashLine)
+        painter.setPen(ring_pen)
+        painter.drawEllipse(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
+        painter.setBrush(color.darker(140))
+        painter.setPen(QPen(color.darker(150), 1.0))
+        painter.drawEllipse(int(cx - 8), int(cy - 8), 16, 16)
+        for i in range(6):
+            rad = (math.pi / 3.0) * i
+            px = cx + (r - 10) * math.cos(rad)
+            py = cy + (r - 10) * math.sin(rad)
+            painter.drawEllipse(int(px - 4), int(py - 3), 8, 6)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
+
+    def _draw_test_pit(self, painter, s, m, color):
+        """Test pit as square cut with section cross."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        x = m + 28
+        y = m + 28
+        w = s - 2 * m - 56
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 55))
+        pit_pen = QPen(color.darker(130), 2.0, Qt.DashLine)
+        painter.setPen(pit_pen)
+        painter.drawRect(x, y, w, w)
+        painter.setBrush(Qt.NoBrush)
+        cross_pen = QPen(color.darker(145), 1.4)
+        painter.setPen(cross_pen)
+        painter.drawLine(x + 8, y + 8, x + w - 8, y + w - 8)
+        painter.drawLine(x + w - 8, y + 8, x + 8, y + w - 8)
+        painter.setBrush(old_brush)
+        painter.setPen(old_pen)
 
     def get_available_templates(self):
         """Return list of available template types."""

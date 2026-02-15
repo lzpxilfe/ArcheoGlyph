@@ -270,11 +270,16 @@ class GeminiGenerator:
         if silhouette_bytes and style_key == STYLE_COLORED:
              parts.append({"mime_type": "image/png", "data": silhouette_bytes}) # Image 2: Mask
         
-        # Priorities: Pro models (better vision) > Flash models (faster)
-        # We want QUALITY for this task as requested by user.
-        # Priorities: v3.0 (Latest Preview) > v2.0 (Stable until Mar 2026) > v1.5 (Legacy)
-        # We want STABILITY and SPEED. 'gemini-2.0' is ending soon, v3 is next.
-        start_models = ['gemini-3-flash-preview', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-3-pro-preview']
+        # Priorities: latest generation first, then stable high-throughput fallbacks.
+        start_models = [
+            'gemini-3-pro-image-preview',
+            'gemini-3-pro-preview',
+            'gemini-3-flash-preview',
+            'gemini-2.5-pro',
+            'gemini-2.5-flash-image',
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',
+        ]
         
         # Explicitly exclude models known to be unstable or quota-restricted for general use
         # "deep-research" caused 429 errors.
@@ -297,7 +302,7 @@ class GeminiGenerator:
                     models_to_try.append(available_map[m_pref])
                     continue
                     
-                # Prefix match (e.g. 'gemini-1.5-pro' matches 'gemini-1.5-pro-001')
+                # Prefix match (e.g. 'gemini-2.5-flash' matches 'gemini-2.5-flash-preview-09-2025')
                 # We find the *latest* version if multiple exist (usually lexicographically last is best estimate if versioned)
                 matches = [name for name in available_map.keys() if name.startswith(m_pref) and not is_excluded(name)]
                 if matches:
@@ -325,7 +330,12 @@ class GeminiGenerator:
                 
         except Exception:
              # Offline fallback or API error list
-            models_to_try = ['models/gemini-1.5-pro', 'models/gemini-1.5-flash']
+            models_to_try = [
+                'models/gemini-3-pro-preview',
+                'models/gemini-3-flash-preview',
+                'models/gemini-2.5-flash',
+                'models/gemini-2.0-flash',
+            ]
         
         last_error = None
         last_svg_issue = None

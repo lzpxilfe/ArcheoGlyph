@@ -637,8 +637,12 @@ class HuggingFaceGenerator:
                 overlay_linework = True
                 overlay_opacity = 0.94
             elif style_key == STYLE_MEASURED:
-                overlay_linework = True
-                overlay_opacity = 0.62 if used_contour_seed else 0.74
+                # Respect user setting for measured mode to avoid collapsing into Auto Trace look.
+                if used_contour_seed:
+                    overlay_linework = True
+                    overlay_opacity = 0.44
+                else:
+                    overlay_opacity = 0.40 if overlay_linework else 0.0
             if style_key == STYLE_TYPOLOGY:
                 overlay_linework = True
                 overlay_opacity = max(0.55, 0.72 - (0.15 * float(prompt_influence)))
