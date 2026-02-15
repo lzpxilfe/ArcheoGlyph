@@ -206,7 +206,7 @@ class ContourGenerator:
             # Round measured drawings (e.g. bronze mirrors) need richer motif capture.
             round_motif_select_limit = max(
                 round_motif_limit,
-                max(6, min(12, texture_count + 2)),
+                max(10, min(16, texture_count + 8)),
             )
         round_motif_lines = self._select_round_inner_motif_lines(
             texture_lines + self._extract_round_motif_lines(
@@ -250,7 +250,7 @@ class ContourGenerator:
                 if len(motif_lines) < 2 and round_relief_lines:
                     motif_lines = round_relief_lines
                 if motif_lines:
-                    motif_target = max(3, min(round_motif_select_limit, texture_count + 2))
+                    motif_target = max(7, min(round_motif_select_limit, texture_count + 8))
                     internal_lines += motif_lines[:motif_target]
                 # Keep one circular band only as fallback when motif capture is weak.
                 if len(internal_lines) < 2 and round_lines:
@@ -586,7 +586,16 @@ class ContourGenerator:
         )
 
         edges = cv2.Canny(enhanced, 24, 92)
+        detail_bin = cv2.adaptiveThreshold(
+            enhanced,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV,
+            31,
+            6,
+        )
         fused = cv2.bitwise_or(grad_bin, edges)
+        fused = cv2.bitwise_or(fused, detail_bin)
 
         interior = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
         h, w = mask.shape[:2]
@@ -602,21 +611,31 @@ class ContourGenerator:
             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2)),
             iterations=1,
         )
+        fused = cv2.morphologyEx(
+            fused,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+            iterations=1,
+        )
 
         boundary = np.zeros_like(mask)
-        cv2.drawContours(boundary, [main_contour], -1, 255, thickness=6)
+        cv2.drawContours(boundary, [main_contour], -1, 255, thickness=4)
         fused[boundary > 0] = 0
 
         line_contours, _ = cv2.findContours(fused, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
         if not line_contours:
             return []
 
-        min_len = max(7.0, float(min(bw, bh)) * 0.016)
+        min_len = max(9.0, float(min(bw, bh)) * 0.020)
         max_len = float(max(bw, bh)) * 1.30
+        min_area = max(4.0, float(bw * bh) * 0.00035)
         selected_items = []
         for contour in line_contours:
             arc_len = float(cv2.arcLength(contour, False))
             if arc_len < min_len or arc_len > max_len:
+                continue
+            area = float(abs(cv2.contourArea(contour)))
+            if area < min_area and arc_len < (min_len * 1.55):
                 continue
 
             epsilon = 0.0030 * arc_len
@@ -643,11 +662,16 @@ class ContourGenerator:
                 continue
 
             ring_like = self._line_ring_likeness(arr.tolist(), cx, cy)
-            if ring_like >= 0.97 and d_norm > 0.28:
+            ang_span = self._line_angle_span(arr.tolist(), cx, cy)
+            if ring_like >= 0.96 and ang_span >= (np.pi * 1.55) and d_norm > 0.28:
                 continue
 
-            band_score = max(0.20, 1.0 - abs(d_norm - 0.62))
-            score = arc_len * (1.0 - (0.40 * ring_like)) * band_score
+            complexity = min(1.0, float(pts.shape[0]) / 18.0)
+            band_score = max(0.18, 1.0 - abs(d_norm - 0.62))
+            area_score = min(1.0, area / max(1.0, 0.02 * float(bw * bh)))
+            score = (
+                arc_len * (0.55 + (0.45 * complexity)) * band_score * (1.0 - (0.30 * ring_like))
+            ) + (24.0 * area_score)
             selected_items.append((score, arr.tolist()))
 
         if not selected_items:
@@ -894,6 +918,18 @@ class ContourGenerator:
         sweep_score = max(0.0, min(1.0, ang_span / (np.pi * 0.80)))
         return max(0.0, min(1.0, (0.65 * radial_score) + (0.35 * sweep_score)))
 
+    def _line_angle_span(self, line, cx, cy):
+        """Return unwrapped angular span (radians) of a polyline around center."""
+        if not line or len(line) < 3:
+            return 0.0
+        arr = np.asarray(line, dtype=np.float32)
+        dx = arr[:, 0] - float(cx)
+        dy = arr[:, 1] - float(cy)
+        angles = np.unwrap(np.arctan2(dy, dx))
+        if len(angles) < 2:
+            return 0.0
+        return float(np.max(angles) - np.min(angles))
+
     def _select_round_inner_motif_lines(self, lines, mask, max_lines=4, prefer_outer=False):
         """
         Select internal motif lines for round artifacts while suppressing border noise.
@@ -1003,9 +1039,14 @@ class ContourGenerator:
         candidates.sort(key=lambda item: item[0], reverse=True)
         selected = []
         selected_centers = []
-        min_sep = max(5.0, 0.07 * float(min(bw, bh)))
-        used_angle_bins = set()
-        angle_bin_count = 12
+        min_sep = (
+            max(4.0, 0.05 * float(min(bw, bh)))
+            if prefer_outer
+            else max(5.0, 0.07 * float(min(bw, bh)))
+        )
+        used_angle_bins = {}
+        angle_bin_count = 16 if prefer_outer else 12
+        per_bin_limit = 2 if prefer_outer else 1
 
         for _, center, d_norm, line in candidates:
             if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in selected_centers):
@@ -1013,9 +1054,10 @@ class ContourGenerator:
             if prefer_outer and d_norm >= 0.24:
                 theta = float(np.arctan2(center[1] - cy, center[0] - cx))
                 angle_bin = int(((theta + np.pi) / (2.0 * np.pi)) * angle_bin_count) % angle_bin_count
-                if angle_bin in used_angle_bins:
+                used_count = int(used_angle_bins.get(angle_bin, 0))
+                if used_count >= per_bin_limit:
                     continue
-                used_angle_bins.add(angle_bin)
+                used_angle_bins[angle_bin] = used_count + 1
             selected.append(line)
             selected_centers.append(center)
             if len(selected) >= limit:
