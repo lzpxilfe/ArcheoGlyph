@@ -245,7 +245,7 @@ class ContourGenerator:
             if is_roundish:
                 # For round artifacts, prefer motif lines over forced center spine.
                 internal_lines = []
-                motif_target = max(7, min(round_motif_select_limit, texture_count + 8))
+                motif_target = max(12, min(18, round_motif_select_limit + 4))
                 motif_lines = round_motif_lines
                 if round_relief_lines or round_relief_region_lines:
                     motif_lines = self._select_round_inner_motif_lines(
@@ -257,13 +257,31 @@ class ContourGenerator:
                 if len(motif_lines) < 2 and (round_relief_lines or round_relief_region_lines):
                     motif_lines = round_relief_lines + round_relief_region_lines
                 if motif_lines:
-                    internal_lines += motif_lines[:motif_target]
-                if len(internal_lines) < max(6, motif_target // 2) and round_relief_region_lines:
+                    internal_lines += motif_lines[:max(7, motif_target // 2)]
+                # Always backfill with region/relief candidates to meet motif density target.
+                if round_relief_region_lines:
                     internal_lines = self._merge_distinct_lines(
                         internal_lines,
                         round_relief_region_lines,
-                        min_center_sep=4.0,
-                        max_lines=max(round_motif_select_limit, 12),
+                        min_center_sep=3.2,
+                        max_lines=motif_target,
+                        min_arc_len=8.0,
+                    )
+                if round_relief_lines:
+                    internal_lines = self._merge_distinct_lines(
+                        internal_lines,
+                        round_relief_lines,
+                        min_center_sep=3.2,
+                        max_lines=motif_target,
+                        min_arc_len=8.0,
+                    )
+                if round_motif_lines:
+                    internal_lines = self._merge_distinct_lines(
+                        internal_lines,
+                        round_motif_lines,
+                        min_center_sep=3.0,
+                        max_lines=motif_target,
+                        min_arc_len=7.0,
                     )
                 # Keep one circular band only as fallback when motif capture is weak.
                 if len(internal_lines) < 2 and round_lines:
@@ -406,7 +424,14 @@ class ContourGenerator:
             filtered.append(line)
         return filtered
 
-    def _merge_distinct_lines(self, base_lines, extra_lines, min_center_sep=6.0, max_lines=12):
+    def _merge_distinct_lines(
+        self,
+        base_lines,
+        extra_lines,
+        min_center_sep=6.0,
+        max_lines=12,
+        min_arc_len=2.0,
+    ):
         """
         Merge line sets while avoiding near-duplicate center positions.
         Keeps insertion order and caps output size.
@@ -425,11 +450,12 @@ class ContourGenerator:
             return out[:target]
 
         min_sep = max(1.0, float(min_center_sep))
+        min_arc = max(0.0, float(min_arc_len))
         for line in extra_lines or []:
             if len(out) >= target:
                 break
             center, arc_len = self._line_centroid_and_length(line)
-            if center is None or arc_len < 2.0:
+            if center is None or arc_len < min_arc:
                 continue
             if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in centers):
                 continue
