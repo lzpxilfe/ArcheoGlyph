@@ -201,15 +201,23 @@ class ContourGenerator:
             0.0,
             10.0,
         )))
+        round_motif_select_limit = round_motif_limit
+        if is_roundish and is_publication:
+            # Round measured drawings (e.g. bronze mirrors) need richer motif capture.
+            round_motif_select_limit = max(
+                round_motif_limit,
+                max(6, min(12, texture_count + 2)),
+            )
         round_motif_lines = self._select_round_inner_motif_lines(
             texture_lines + self._extract_round_motif_lines(
                 processing_bgr,
                 target_mask,
                 main_contour,
-                max_lines=max(18, round_motif_limit * 3),
+                max_lines=max(18, round_motif_select_limit * 3),
             ),
             target_mask,
-            max_lines=round_motif_limit,
+            max_lines=round_motif_select_limit,
+            prefer_outer=(is_roundish and is_publication),
         ) if is_roundish else []
 
         if is_typology:
@@ -226,8 +234,10 @@ class ContourGenerator:
                 # For round artifacts, prefer motif lines over forced center spine.
                 internal_lines = []
                 if round_motif_lines:
-                    internal_lines += round_motif_lines[:max(2, min(texture_count, round_motif_limit))]
-                if round_lines:
+                    motif_target = max(3, min(round_motif_select_limit, texture_count + 2))
+                    internal_lines += round_motif_lines[:motif_target]
+                # Keep one circular band only as fallback when motif capture is weak.
+                if len(internal_lines) < 2 and round_lines:
                     internal_lines += round_lines[:1]
             else:
                 # Publication mode keeps factual texture hints plus structural cues.
@@ -757,7 +767,7 @@ class ContourGenerator:
         sweep_score = max(0.0, min(1.0, ang_span / (np.pi * 0.80)))
         return max(0.0, min(1.0, (0.65 * radial_score) + (0.35 * sweep_score)))
 
-    def _select_round_inner_motif_lines(self, lines, mask, max_lines=4):
+    def _select_round_inner_motif_lines(self, lines, mask, max_lines=4, prefer_outer=False):
         """
         Select internal motif lines for round artifacts while suppressing border noise.
         """
@@ -779,8 +789,9 @@ class ContourGenerator:
         cy = float(np.mean(ys))
         r_ref = max(12.0, 0.5 * float(max(bw, bh)))
 
-        margin_x = max(3, int(bw * 0.04))
-        margin_y = max(3, int(bh * 0.04))
+        edge_margin_ratio = 0.02 if prefer_outer else 0.04
+        margin_x = max(2, int(bw * edge_margin_ratio))
+        margin_y = max(2, int(bh * edge_margin_ratio))
         min_len = max(6.0, float(min(bw, bh)) * 0.03)
         max_len = float(max(bw, bh)) * 1.20
 
@@ -799,21 +810,34 @@ class ContourGenerator:
 
             d = ((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5
             d_norm = d / r_ref
-            if d_norm > 0.92:
+            if d_norm > (0.97 if prefer_outer else 0.92):
                 continue
 
             ring_like = self._line_ring_likeness(line, cx, cy)
-            # Drop lines that look like circular bands unless they are very central.
-            if ring_like >= 0.82 and d_norm > 0.45:
+            if prefer_outer:
+                # Measured round artifacts should keep relief motifs across mid/outer bands.
+                if ring_like >= 0.94 and d_norm > 0.30:
+                    continue
+                length_score = min(1.0, arc_len / max(1.0, 0.16 * float(max(bw, bh))))
+                center_score = max(0.0, 1.0 - d_norm)
+                band_score = max(0.0, 1.0 - (abs(d_norm - 0.62) / 0.62))
+                motif_weight = 1.0 - (0.48 * ring_like)
+                score = ((0.25 * center_score) + (0.50 * length_score) + (0.25 * band_score)) * motif_weight
+                if score < 0.06:
+                    continue
+            else:
+                # Drop lines that look like circular bands unless they are very central.
+                if ring_like >= 0.82 and d_norm > 0.45:
+                    continue
+                length_score = min(1.0, arc_len / max(1.0, 0.18 * float(max(bw, bh))))
+                center_score = max(0.0, 1.0 - d_norm)
+                motif_weight = 1.0 - (0.72 * ring_like)
+                score = ((0.45 * center_score) + (0.55 * length_score)) * motif_weight
+                if score < 0.08:
+                    continue
+            if score <= 0.0:
                 continue
-
-            length_score = min(1.0, arc_len / max(1.0, 0.18 * float(max(bw, bh))))
-            center_score = max(0.0, 1.0 - d_norm)
-            motif_weight = 1.0 - (0.72 * ring_like)
-            score = ((0.45 * center_score) + (0.55 * length_score)) * motif_weight
-            if score < 0.08:
-                continue
-            candidates.append((score, (lx, ly), line))
+            candidates.append((score, (lx, ly), d_norm, line))
 
         if not candidates:
             backup = []
@@ -834,22 +858,37 @@ class ContourGenerator:
                 if inside / float(max(1, len(arr))) < 0.80:
                     continue
                 ring_like = self._line_ring_likeness(line, cx, cy)
-                if ring_like >= 0.88 and (((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5) > (0.50 * r_ref):
-                    continue
-                backup.append((arc_len * (1.0 - (0.58 * ring_like)), (lx, ly), line))
+                d_norm = (((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5) / max(1e-6, r_ref)
+                if prefer_outer:
+                    if ring_like >= 0.95 and d_norm > 0.28:
+                        continue
+                    backup_score = arc_len * (1.0 - (0.42 * ring_like)) * max(0.25, 1.0 - abs(d_norm - 0.62))
+                else:
+                    if ring_like >= 0.88 and d_norm > 0.50:
+                        continue
+                    backup_score = arc_len * (1.0 - (0.58 * ring_like))
+                backup.append((backup_score, (lx, ly), d_norm, line))
             if not backup:
                 return []
             backup.sort(key=lambda item: item[0], reverse=True)
-            candidates = [(float(item[0]), item[1], item[2]) for item in backup]
+            candidates = [(float(item[0]), item[1], item[2], item[3]) for item in backup]
 
         candidates.sort(key=lambda item: item[0], reverse=True)
         selected = []
         selected_centers = []
         min_sep = max(5.0, 0.07 * float(min(bw, bh)))
+        used_angle_bins = set()
+        angle_bin_count = 12
 
-        for _, center, line in candidates:
+        for _, center, d_norm, line in candidates:
             if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in selected_centers):
                 continue
+            if prefer_outer and d_norm >= 0.24:
+                theta = float(np.arctan2(center[1] - cy, center[0] - cx))
+                angle_bin = int(((theta + np.pi) / (2.0 * np.pi)) * angle_bin_count) % angle_bin_count
+                if angle_bin in used_angle_bins:
+                    continue
+                used_angle_bins.add(angle_bin)
             selected.append(line)
             selected_centers.append(center)
             if len(selected) >= limit:
