@@ -283,6 +283,11 @@ class ContourGenerator:
                         max_lines=motif_target,
                         min_arc_len=7.0,
                     )
+                internal_lines = self._regularize_round_publication_lines(
+                    internal_lines,
+                    target_mask,
+                    max_lines=motif_target,
+                )
                 # Keep one circular band only as fallback when motif capture is weak.
                 if len(internal_lines) < 2 and round_lines:
                     internal_lines += round_lines[:1]
@@ -462,6 +467,77 @@ class ContourGenerator:
             out.append(line)
             centers.append(center)
         return out[:target]
+
+    def _regularize_round_publication_lines(self, lines, mask, max_lines=14):
+        """
+        Simplify and de-noise measured round motif lines into readable publication geometry.
+        """
+        limit = int(max(0, int(max_lines)))
+        if limit <= 0:
+            return []
+        if not lines:
+            return []
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 40:
+            return list(lines[:limit])
+        x0 = int(np.min(xs))
+        x1 = int(np.max(xs))
+        y0 = int(np.min(ys))
+        y1 = int(np.max(ys))
+        bw = max(1, x1 - x0)
+        bh = max(1, y1 - y0)
+        min_arc = max(8.0, 0.026 * float(min(bw, bh)))
+        min_sep = max(3.8, 0.045 * float(min(bw, bh)))
+
+        selected = []
+        centers = []
+        for line in lines:
+            arr = np.asarray(line, dtype=np.int32)
+            if arr.ndim != 2 or arr.shape[0] < 3:
+                continue
+
+            closed = bool(arr.shape[0] >= 3 and np.array_equal(arr[0], arr[-1]))
+            curve = arr.reshape(-1, 1, 2).astype(np.float32)
+            arc_len = float(cv2.arcLength(curve, closed))
+            if arc_len < min_arc:
+                continue
+
+            eps = max(0.8, 0.012 * arc_len)
+            approx = cv2.approxPolyDP(curve, eps, closed).reshape(-1, 2)
+            if approx.shape[0] < (3 if closed else 2):
+                continue
+
+            approx[:, 0] = np.clip(approx[:, 0], 0, mask.shape[1] - 1)
+            approx[:, 1] = np.clip(approx[:, 1], 0, mask.shape[0] - 1)
+
+            cx = float(np.mean(approx[:, 0]))
+            cy = float(np.mean(approx[:, 1]))
+            if cx <= (x0 + 2) or cx >= (x1 - 2) or cy <= (y0 + 2) or cy >= (y1 - 2):
+                continue
+
+            inside = 0
+            for px, py in approx:
+                if mask[int(py), int(px)] > 0:
+                    inside += 1
+            if inside / float(max(1, len(approx))) < 0.84:
+                continue
+
+            center = (cx, cy)
+            if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in centers):
+                continue
+
+            out_line = approx.astype(int).tolist()
+            if closed and out_line[0] != out_line[-1]:
+                out_line.append(out_line[0])
+            selected.append(out_line)
+            centers.append(center)
+            if len(selected) >= limit:
+                break
+
+        if not selected:
+            return list(lines[:limit])
+        return selected[:limit]
 
     def _polyline_to_path(self, points):
         """Convert list of points to SVG polyline path."""
@@ -671,14 +747,14 @@ class ContourGenerator:
         h, w = mask.shape[:2]
         yy, xx = np.indices((h, w))
         rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
-        annulus = ((rr >= (0.18 * r_ref)) & (rr <= (0.93 * r_ref))).astype(np.uint8) * 255
+        annulus = ((rr >= (0.28 * r_ref)) & (rr <= (0.93 * r_ref))).astype(np.uint8) * 255
 
         fused = cv2.bitwise_and(fused, fused, mask=interior)
         fused = cv2.bitwise_and(fused, annulus)
         fused = cv2.morphologyEx(
             fused,
             cv2.MORPH_OPEN,
-            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2)),
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
             iterations=1,
         )
         fused = cv2.morphologyEx(
@@ -696,9 +772,9 @@ class ContourGenerator:
         if not line_contours:
             return []
 
-        min_len = max(9.0, float(min(bw, bh)) * 0.020)
+        min_len = max(12.0, float(min(bw, bh)) * 0.028)
         max_len = float(max(bw, bh)) * 1.30
-        min_area = max(4.0, float(bw * bh) * 0.00035)
+        min_area = max(8.0, float(bw * bh) * 0.00060)
         selected_items = []
         for contour in line_contours:
             arc_len = float(cv2.arcLength(contour, False))
@@ -708,7 +784,7 @@ class ContourGenerator:
             if area < min_area and arc_len < (min_len * 1.55):
                 continue
 
-            epsilon = 0.0030 * arc_len
+            epsilon = 0.0060 * arc_len
             approx = cv2.approxPolyDP(contour, epsilon, False)
             pts = approx.reshape(-1, 2)
             if pts.shape[0] < 2:
@@ -797,7 +873,7 @@ class ContourGenerator:
         h, w = mask.shape[:2]
         yy, xx = np.indices((h, w))
         rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
-        annulus = ((rr >= (0.16 * r_ref)) & (rr <= (0.94 * r_ref))).astype(np.uint8) * 255
+        annulus = ((rr >= (0.30 * r_ref)) & (rr <= (0.94 * r_ref))).astype(np.uint8) * 255
         interior = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
 
         fused = cv2.bitwise_and(fused, fused, mask=interior)
@@ -805,7 +881,7 @@ class ContourGenerator:
         fused = cv2.morphologyEx(
             fused,
             cv2.MORPH_OPEN,
-            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2)),
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
             iterations=1,
         )
         fused = cv2.morphologyEx(
@@ -823,9 +899,9 @@ class ContourGenerator:
         if not contours:
             return []
 
-        min_area = max(6.0, float(bw * bh) * 0.00045)
+        min_area = max(10.0, float(bw * bh) * 0.00090)
         max_area = float(bw * bh) * 0.12
-        min_arc = max(10.0, float(min(bw, bh)) * 0.026)
+        min_arc = max(14.0, float(min(bw, bh)) * 0.036)
 
         candidates = []
         for contour in contours:
@@ -836,7 +912,7 @@ class ContourGenerator:
             if arc_len < min_arc:
                 continue
 
-            epsilon = max(1.0, 0.0045 * arc_len)
+            epsilon = max(1.2, 0.0095 * arc_len)
             approx = cv2.approxPolyDP(contour, epsilon, True)
             pts = approx.reshape(-1, 2)
             if pts.shape[0] < 3:
@@ -864,6 +940,9 @@ class ContourGenerator:
             ring_like = self._line_ring_likeness(line, cx, cy)
             ang_span = self._line_angle_span(line, cx, cy)
             if ring_like >= 0.95 and ang_span >= (np.pi * 1.35) and d_norm > 0.25:
+                continue
+            compactness = area / max(1e-6, arc_len * arc_len)
+            if compactness < 0.0024:
                 continue
 
             complexity = min(1.0, float(len(line)) / 22.0)
