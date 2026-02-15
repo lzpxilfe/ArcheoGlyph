@@ -61,10 +61,13 @@ class ArcheoGlyph:
             settings.setValue('ArcheoGlyph/hf_model_id', HF_DEFAULT_MODEL_ID)
 
         # Safety migration: invalid SAM setup should not block Auto Trace.
-        mask_backend = str(settings.value('ArcheoGlyph/mask_backend', 'opencv')).strip().lower()
+        mask_backend = str(settings.value('ArcheoGlyph/mask_backend', 'auto')).strip().lower()
+        if mask_backend not in ("auto", "opencv", "sam"):
+            mask_backend = "auto"
+            settings.setValue('ArcheoGlyph/mask_backend', mask_backend)
         sam_checkpoint = str(settings.value('ArcheoGlyph/sam_checkpoint_path', '')).strip()
         if mask_backend == "sam" and (not sam_checkpoint or not os.path.exists(sam_checkpoint)):
-            settings.setValue('ArcheoGlyph/mask_backend', 'opencv')
+            settings.setValue('ArcheoGlyph/mask_backend', 'auto')
 
         # Persist plugin code version marker.
         settings.setValue('ArcheoGlyph/code_version', PLUGIN_VERSION)

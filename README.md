@@ -76,7 +76,7 @@ Use `Settings > Hugging Face > Advanced`:
 1. Click `Install SAM Package`
 2. Click `Download ViT-B Checkpoint`
 3. Click `Auto-Find Downloaded File`
-4. Set backend to `SAM (Optional)` and save settings
+4. Set backend to `Auto (Recommended: SAM -> OpenCV fallback)` and save settings
 
 ## Documentation
 - `docs/ai_setup_guide.md`

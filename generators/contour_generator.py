@@ -1205,8 +1205,8 @@ class ContourGenerator:
 
     def _get_mask(self, bgr_img):
         """Internal helper: produce silhouette mask using selected backend."""
-        backend = str(self.settings.value('ArcheoGlyph/mask_backend', 'opencv')).strip().lower()
-        if backend == "sam":
+        backend = str(self.settings.value('ArcheoGlyph/mask_backend', 'auto')).strip().lower()
+        if backend in ("sam", "auto"):
             sam_mask = self._get_mask_sam(bgr_img)
             if sam_mask is not None:
                 return sam_mask

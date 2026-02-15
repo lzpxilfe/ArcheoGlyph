@@ -218,7 +218,8 @@ class SettingsDialog(QDialog):
         backend_row = QHBoxLayout()
         backend_row.addWidget(QLabel("Auto Trace Backend:"))
         self.mask_backend_combo = QComboBox()
-        self.mask_backend_combo.addItem("OpenCV (Default)", "opencv")
+        self.mask_backend_combo.addItem("Auto (Recommended: SAM -> OpenCV fallback)", "auto")
+        self.mask_backend_combo.addItem("OpenCV", "opencv")
         self.mask_backend_combo.addItem("SAM (Optional)", "sam")
         backend_row.addWidget(self.mask_backend_combo)
         advanced_layout.addLayout(backend_row)
@@ -983,7 +984,7 @@ class SettingsDialog(QDialog):
         hf_model = self._normalize_hf_model_id(hf_model)
         self.settings.setValue('ArcheoGlyph/hf_model_id', hf_model)
 
-        mask_backend = self.settings.value('ArcheoGlyph/mask_backend', 'opencv')
+        mask_backend = self.settings.value('ArcheoGlyph/mask_backend', 'auto')
         sam_checkpoint = self.settings.value('ArcheoGlyph/sam_checkpoint_path', '')
         sam_model_type = self.settings.value('ArcheoGlyph/sam_model_type', 'vit_b')
         hf_overlay_linework = str(
@@ -1032,7 +1033,7 @@ class SettingsDialog(QDialog):
         mask_backend = self.mask_backend_combo.currentData()
         sam_checkpoint = self.sam_checkpoint_input.text().strip()
 
-        # Safety: prevent broken SAM config for first-time users.
+        # Safety: strict validation only when user forces SAM-only backend.
         if mask_backend == "sam":
             if not sam_checkpoint or not os.path.exists(sam_checkpoint):
                 QMessageBox.warning(
