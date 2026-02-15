@@ -288,6 +288,12 @@ class ContourGenerator:
                     target_mask,
                     max_lines=motif_target,
                 )
+                if round_lines:
+                    anchor_lines = [round_lines[0]]
+                    if len(internal_lines) < 10 and len(round_lines) > 1:
+                        anchor_lines.append(round_lines[1])
+                    internal_lines = anchor_lines + internal_lines
+                    internal_lines = internal_lines[:max(4, motif_target)]
                 # Keep one circular band only as fallback when motif capture is weak.
                 if len(internal_lines) < 2 and round_lines:
                     internal_lines += round_lines[:1]
@@ -487,11 +493,15 @@ class ContourGenerator:
         y1 = int(np.max(ys))
         bw = max(1, x1 - x0)
         bh = max(1, y1 - y0)
-        min_arc = max(8.0, 0.026 * float(min(bw, bh)))
-        min_sep = max(3.8, 0.045 * float(min(bw, bh)))
+        cx_ref = float(np.mean(xs))
+        cy_ref = float(np.mean(ys))
+        r_ref = max(12.0, 0.5 * float(max(bw, bh)))
+        min_arc = max(10.0, 0.034 * float(min(bw, bh)))
+        min_sep = max(4.2, 0.052 * float(min(bw, bh)))
+        angle_bin_count = 12
+        per_bin_limit = 2
 
-        selected = []
-        centers = []
+        candidates = []
         for line in lines:
             arr = np.asarray(line, dtype=np.int32)
             if arr.ndim != 2 or arr.shape[0] < 3:
@@ -523,15 +533,42 @@ class ContourGenerator:
             if inside / float(max(1, len(approx))) < 0.84:
                 continue
 
-            center = (cx, cy)
-            if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in centers):
+            d_norm = (((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5) / max(1e-6, r_ref)
+            # Exclude center-boss region and very outer rim noise.
+            if d_norm < 0.34 or d_norm > 0.92:
                 continue
 
             out_line = approx.astype(int).tolist()
+            ring_like = self._line_ring_likeness(out_line, cx_ref, cy_ref)
+            if ring_like >= 0.97 and d_norm > 0.42:
+                continue
+
+            angle = float(np.arctan2(cy - cy_ref, cx - cx_ref))
+            angle_bin = int(((angle + np.pi) / (2.0 * np.pi)) * angle_bin_count) % angle_bin_count
+            band_score = max(0.25, 1.0 - abs(d_norm - 0.62))
+            complexity = min(1.0, float(len(out_line)) / 20.0)
+            score = (0.55 * band_score) + (0.35 * complexity) + (0.10 * (1.0 - min(1.0, ring_like)))
             if closed and out_line[0] != out_line[-1]:
                 out_line.append(out_line[0])
+
+            candidates.append((score, angle_bin, (cx, cy), out_line))
+
+        if not candidates:
+            return list(lines[:limit])
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        selected = []
+        centers = []
+        used_bins = {}
+        for _, angle_bin, center, out_line in candidates:
+            used_count = int(used_bins.get(angle_bin, 0))
+            if used_count >= per_bin_limit:
+                continue
+            if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in centers):
+                continue
             selected.append(out_line)
             centers.append(center)
+            used_bins[angle_bin] = used_count + 1
             if len(selected) >= limit:
                 break
 
@@ -747,7 +784,7 @@ class ContourGenerator:
         h, w = mask.shape[:2]
         yy, xx = np.indices((h, w))
         rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
-        annulus = ((rr >= (0.28 * r_ref)) & (rr <= (0.93 * r_ref))).astype(np.uint8) * 255
+        annulus = ((rr >= (0.34 * r_ref)) & (rr <= (0.93 * r_ref))).astype(np.uint8) * 255
 
         fused = cv2.bitwise_and(fused, fused, mask=interior)
         fused = cv2.bitwise_and(fused, annulus)
@@ -873,7 +910,7 @@ class ContourGenerator:
         h, w = mask.shape[:2]
         yy, xx = np.indices((h, w))
         rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
-        annulus = ((rr >= (0.30 * r_ref)) & (rr <= (0.94 * r_ref))).astype(np.uint8) * 255
+        annulus = ((rr >= (0.36 * r_ref)) & (rr <= (0.94 * r_ref))).astype(np.uint8) * 255
         interior = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
 
         fused = cv2.bitwise_and(fused, fused, mask=interior)
