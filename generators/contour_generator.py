@@ -231,6 +231,12 @@ class ContourGenerator:
             main_contour,
             max_lines=max(8, round_motif_select_limit * 2),
         ) if (is_roundish and is_publication) else []
+        round_center_motif_lines = self._extract_round_center_motif_lines(
+            processing_bgr,
+            target_mask,
+            main_contour,
+            max_lines=max(6, round_motif_select_limit),
+        ) if (is_roundish and is_publication) else []
 
         if is_typology:
             if is_roundish:
@@ -251,9 +257,15 @@ class ContourGenerator:
                 candidate_pool = []
                 if prefer_region:
                     candidate_pool = list(round_relief_region_lines)
+                    candidate_pool += list(round_center_motif_lines)
                     candidate_pool += list(round_motif_lines[:max(2, motif_target // 4)])
                 else:
-                    candidate_pool = list(round_motif_lines) + list(round_relief_lines) + list(round_relief_region_lines)
+                    candidate_pool = (
+                        list(round_center_motif_lines)
+                        + list(round_motif_lines)
+                        + list(round_relief_lines)
+                        + list(round_relief_region_lines)
+                    )
                 if candidate_pool:
                     motif_lines = self._select_round_inner_motif_lines(
                         candidate_pool,
@@ -300,11 +312,9 @@ class ContourGenerator:
                     target_mask,
                     desired_lines=max(8, motif_target - 2),
                 )
-                if round_lines:
-                    anchor_lines = [round_lines[0]]
-                    if len(internal_lines) < 10 and len(round_lines) > 1:
-                        anchor_lines.append(round_lines[1])
-                    internal_lines = anchor_lines + internal_lines
+                if round_lines and len(internal_lines) < 5:
+                    anchor = round_lines[1] if len(round_lines) > 1 else round_lines[0]
+                    internal_lines = [anchor] + internal_lines
                     internal_lines = internal_lines[:max(4, motif_target)]
                 # Keep one circular band only as fallback when motif capture is weak.
                 if len(internal_lines) < 2 and round_lines:
@@ -511,7 +521,7 @@ class ContourGenerator:
         min_arc = max(10.0, 0.034 * float(min(bw, bh)))
         min_sep = max(4.2, 0.052 * float(min(bw, bh)))
         angle_bin_count = 12
-        per_bin_limit = 1
+        per_bin_limit = 2
 
         candidates = []
         for line in lines:
@@ -547,7 +557,7 @@ class ContourGenerator:
 
             d_norm = (((cx - cx_ref) ** 2 + (cy - cy_ref) ** 2) ** 0.5) / max(1e-6, r_ref)
             # Exclude center-boss region and very outer rim noise.
-            if d_norm < 0.34 or d_norm > 0.92:
+            if d_norm < 0.22 or d_norm > 0.92:
                 continue
 
             out_line = approx.astype(int).tolist()
@@ -852,6 +862,103 @@ class ContourGenerator:
             center_weight = max(0.20, 1.0 - (0.45 * d_norm))
             score = arc_len * motif_weight * center_weight
             candidates.append((score, pts.tolist()))
+
+        if not candidates:
+            return []
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return [item[1] for item in candidates[:limit]]
+
+    def _extract_round_center_motif_lines(self, bgr_img, mask, main_contour, max_lines=12):
+        """
+        Extract motif lines from the inner-mid band of round artifacts.
+        Helps preserve central measured motifs around the boss.
+        """
+        limit = int(max(0, int(max_lines)))
+        if limit <= 0:
+            return []
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 80:
+            return []
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        r_ref = max(10.0, 0.5 * float(max(np.max(xs) - np.min(xs), np.max(ys) - np.min(ys))))
+
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.6, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+
+        lap = cv2.convertScaleAbs(cv2.Laplacian(enhanced, cv2.CV_16S, ksize=3))
+        edge = cv2.Canny(enhanced, 22, 88)
+        fused = cv2.bitwise_or(lap, edge)
+
+        h, w = mask.shape[:2]
+        yy, xx = np.indices((h, w))
+        rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
+        annulus = ((rr >= (0.18 * r_ref)) & (rr <= (0.66 * r_ref))).astype(np.uint8) * 255
+        interior = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
+
+        fused = cv2.bitwise_and(fused, fused, mask=interior)
+        fused = cv2.bitwise_and(fused, annulus)
+        fused = cv2.morphologyEx(
+            fused,
+            cv2.MORPH_OPEN,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2)),
+            iterations=1,
+        )
+        fused = cv2.morphologyEx(
+            fused,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+            iterations=1,
+        )
+
+        boundary = np.zeros_like(mask)
+        cv2.drawContours(boundary, [main_contour], -1, 255, thickness=5)
+        fused[boundary > 0] = 0
+
+        contours, _ = cv2.findContours(fused, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return []
+
+        min_len = max(9.0, 0.024 * float(min(h, w)))
+        max_len = float(max(h, w)) * 1.10
+        candidates = []
+        for c in contours:
+            arc_len = float(cv2.arcLength(c, False))
+            if arc_len < min_len or arc_len > max_len:
+                continue
+
+            epsilon = 0.0065 * arc_len
+            approx = cv2.approxPolyDP(c, epsilon, False).reshape(-1, 2)
+            if approx.shape[0] < 2:
+                continue
+
+            center = np.mean(approx, axis=0)
+            lx = float(center[0])
+            ly = float(center[1])
+            d_norm = (((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5) / max(1e-6, r_ref)
+            if d_norm < 0.16 or d_norm > 0.70:
+                continue
+
+            arr = np.asarray(approx, dtype=np.int32)
+            arr[:, 0] = np.clip(arr[:, 0], 0, w - 1)
+            arr[:, 1] = np.clip(arr[:, 1], 0, h - 1)
+            inside = 0
+            for px, py in arr:
+                if mask[int(py), int(px)] > 0:
+                    inside += 1
+            if inside / float(max(1, len(arr))) < 0.82:
+                continue
+
+            line = arr.tolist()
+            ring_like = self._line_ring_likeness(line, cx, cy)
+            if ring_like >= 0.96 and d_norm > 0.28:
+                continue
+
+            band_score = max(0.20, 1.0 - abs(d_norm - 0.40))
+            score = arc_len * (1.0 - (0.32 * ring_like)) * band_score
+            candidates.append((score, line))
 
         if not candidates:
             return []
