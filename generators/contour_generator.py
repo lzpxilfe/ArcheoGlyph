@@ -295,6 +295,11 @@ class ContourGenerator:
                     target_mask,
                     max_lines=motif_target,
                 )
+                internal_lines = self._augment_round_rotational_symmetry(
+                    internal_lines,
+                    target_mask,
+                    desired_lines=max(8, motif_target - 2),
+                )
                 if round_lines:
                     anchor_lines = [round_lines[0]]
                     if len(internal_lines) < 10 and len(round_lines) > 1:
@@ -589,6 +594,117 @@ class ContourGenerator:
         if not selected:
             return list(lines[:limit])
         return selected[:limit]
+
+    def _round_line_angular_coverage(self, lines, cx, cy, bins=12):
+        """Return angular bin coverage ratio for round motif lines."""
+        if not lines:
+            return 0.0
+        bin_count = int(max(4, int(bins)))
+        used = set()
+        for line in lines:
+            center, arc_len = self._line_centroid_and_length(line)
+            if center is None or arc_len < 4.0:
+                continue
+            theta = float(np.arctan2(center[1] - cy, center[0] - cx))
+            b = int(((theta + np.pi) / (2.0 * np.pi)) * bin_count) % bin_count
+            used.add(b)
+        return float(len(used)) / float(bin_count)
+
+    def _rotate_line_about_center(self, line, cx, cy, angle_rad):
+        """Rotate polyline points around center."""
+        if not line or len(line) < 2:
+            return []
+        c = float(np.cos(angle_rad))
+        s = float(np.sin(angle_rad))
+        out = []
+        for pt in line:
+            x = float(pt[0]) - float(cx)
+            y = float(pt[1]) - float(cy)
+            rx = (x * c) - (y * s) + float(cx)
+            ry = (x * s) + (y * c) + float(cy)
+            out.append([int(round(rx)), int(round(ry))])
+        return out
+
+    def _augment_round_rotational_symmetry(self, lines, mask, desired_lines=12):
+        """
+        If round motif lines are one-sided (lighting bias), augment by rotational copies.
+        This stabilizes measured symbols for circular artifacts.
+        """
+        target = int(max(0, int(desired_lines)))
+        if target <= 0:
+            return []
+        base_lines = list(lines or [])
+        if len(base_lines) == 0:
+            return []
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 60:
+            return base_lines[:target]
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        r_ref = max(10.0, 0.5 * float(max(np.max(xs) - np.min(xs), np.max(ys) - np.min(ys))))
+
+        coverage = self._round_line_angular_coverage(base_lines, cx, cy, bins=12)
+        if coverage >= 0.58 and len(base_lines) >= min(target, 8):
+            return base_lines[:target]
+
+        # Sort by length (longer motif lines are more stable for rotational augmentation).
+        line_items = []
+        for line in base_lines:
+            center, arc_len = self._line_centroid_and_length(line)
+            if center is None or arc_len < 7.0:
+                continue
+            line_items.append((arc_len, line))
+        if not line_items:
+            return base_lines[:target]
+        line_items.sort(key=lambda item: item[0], reverse=True)
+
+        out = [item[1] for item in line_items[:max(1, min(6, len(line_items)))]]
+        out = out[:target]
+        centers = []
+        for line in out:
+            c0, _ = self._line_centroid_and_length(line)
+            if c0 is not None:
+                centers.append(c0)
+        min_sep = max(3.8, 0.045 * float(min(mask.shape[0], mask.shape[1])))
+
+        # 4-way rotational copies preserve common mirror motif repetition.
+        angles = [np.pi * 0.5, np.pi, np.pi * 1.5]
+        for _, line in line_items:
+            if len(out) >= target:
+                break
+            for ang in angles:
+                if len(out) >= target:
+                    break
+                rot = self._rotate_line_about_center(line, cx, cy, ang)
+                if len(rot) < 2:
+                    continue
+
+                arr = np.asarray(rot, dtype=np.int32)
+                arr[:, 0] = np.clip(arr[:, 0], 0, mask.shape[1] - 1)
+                arr[:, 1] = np.clip(arr[:, 1], 0, mask.shape[0] - 1)
+
+                # Keep only lines mostly inside silhouette and out of center boss zone.
+                inside = 0
+                for px, py in arr:
+                    if mask[int(py), int(px)] > 0:
+                        inside += 1
+                if inside / float(max(1, len(arr))) < 0.88:
+                    continue
+
+                center, arc_len = self._line_centroid_and_length(arr.tolist())
+                if center is None or arc_len < 7.0:
+                    continue
+                d_norm = (((center[0] - cx) ** 2 + (center[1] - cy) ** 2) ** 0.5) / max(1e-6, r_ref)
+                if d_norm < 0.34 or d_norm > 0.93:
+                    continue
+                if any((((center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2) ** 0.5) < min_sep for c in centers):
+                    continue
+
+                out.append(arr.tolist())
+                centers.append(center)
+
+        return out[:target]
 
     def _polyline_to_path(self, points):
         """Convert list of points to SVG polyline path."""
