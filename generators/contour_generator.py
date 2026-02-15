@@ -219,6 +219,12 @@ class ContourGenerator:
             max_lines=round_motif_select_limit,
             prefer_outer=(is_roundish and is_publication),
         ) if is_roundish else []
+        round_relief_lines = self._extract_round_relief_lines(
+            processing_bgr,
+            target_mask,
+            main_contour,
+            max_lines=max(10, round_motif_select_limit * 3),
+        ) if (is_roundish and is_publication) else []
 
         if is_typology:
             if is_roundish:
@@ -233,9 +239,19 @@ class ContourGenerator:
             if is_roundish:
                 # For round artifacts, prefer motif lines over forced center spine.
                 internal_lines = []
-                if round_motif_lines:
+                motif_lines = round_motif_lines
+                if round_relief_lines:
+                    motif_lines = self._select_round_inner_motif_lines(
+                        motif_lines + round_relief_lines,
+                        target_mask,
+                        max_lines=max(round_motif_select_limit, 8),
+                        prefer_outer=True,
+                    )
+                if len(motif_lines) < 2 and round_relief_lines:
+                    motif_lines = round_relief_lines
+                if motif_lines:
                     motif_target = max(3, min(round_motif_select_limit, texture_count + 2))
-                    internal_lines += round_motif_lines[:motif_target]
+                    internal_lines += motif_lines[:motif_target]
                 # Keep one circular band only as fallback when motif capture is weak.
                 if len(internal_lines) < 2 and round_lines:
                     internal_lines += round_lines[:1]
@@ -320,9 +336,9 @@ class ContourGenerator:
         elif is_mono:
             if is_publication:
                 outline_width = "1.6"
-                detail_width = "1.0"
-                detail_dash = ' stroke-dasharray="1.2 2.2"'
-                detail_opacity = "0.7"
+                detail_width = "1.15" if is_roundish else "1.0"
+                detail_dash = "" if is_roundish else ' stroke-dasharray="1.2 2.2"'
+                detail_opacity = "0.88" if is_roundish else "0.7"
             else:
                 outline_width = "2.2"
                 detail_width = "1.25"
@@ -528,6 +544,117 @@ class ContourGenerator:
             return []
         candidates.sort(key=lambda item: item[0], reverse=True)
         return [item[1] for item in candidates[:limit]]
+
+    def _extract_round_relief_lines(self, bgr_img, mask, main_contour, max_lines=24):
+        """
+        Fallback extractor for embossed motifs on round artifacts (e.g. bronze mirrors).
+        Targets non-uniform inner relief features when generic motif extraction is sparse.
+        """
+        limit = int(max(0, int(max_lines)))
+        if limit <= 0:
+            return []
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 80:
+            return []
+
+        x0 = int(np.min(xs))
+        x1 = int(np.max(xs))
+        y0 = int(np.min(ys))
+        y1 = int(np.max(ys))
+        bw = max(1, x1 - x0)
+        bh = max(1, y1 - y0)
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        r_ref = max(10.0, 0.5 * float(max(bw, bh)))
+
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.8, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+
+        gx = cv2.Sobel(enhanced, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(enhanced, cv2.CV_32F, 0, 1, ksize=3)
+        grad = cv2.magnitude(gx, gy)
+        grad_u8 = cv2.convertScaleAbs(grad)
+        grad_bin = cv2.adaptiveThreshold(
+            grad_u8,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            21,
+            -2,
+        )
+
+        edges = cv2.Canny(enhanced, 24, 92)
+        fused = cv2.bitwise_or(grad_bin, edges)
+
+        interior = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
+        h, w = mask.shape[:2]
+        yy, xx = np.indices((h, w))
+        rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
+        annulus = ((rr >= (0.18 * r_ref)) & (rr <= (0.93 * r_ref))).astype(np.uint8) * 255
+
+        fused = cv2.bitwise_and(fused, fused, mask=interior)
+        fused = cv2.bitwise_and(fused, annulus)
+        fused = cv2.morphologyEx(
+            fused,
+            cv2.MORPH_OPEN,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2)),
+            iterations=1,
+        )
+
+        boundary = np.zeros_like(mask)
+        cv2.drawContours(boundary, [main_contour], -1, 255, thickness=6)
+        fused[boundary > 0] = 0
+
+        line_contours, _ = cv2.findContours(fused, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        if not line_contours:
+            return []
+
+        min_len = max(7.0, float(min(bw, bh)) * 0.016)
+        max_len = float(max(bw, bh)) * 1.30
+        selected_items = []
+        for contour in line_contours:
+            arc_len = float(cv2.arcLength(contour, False))
+            if arc_len < min_len or arc_len > max_len:
+                continue
+
+            epsilon = 0.0030 * arc_len
+            approx = cv2.approxPolyDP(contour, epsilon, False)
+            pts = approx.reshape(-1, 2)
+            if pts.shape[0] < 2:
+                continue
+
+            center = np.mean(pts, axis=0)
+            lx = float(center[0])
+            ly = float(center[1])
+            d_norm = (((lx - cx) ** 2 + (ly - cy) ** 2) ** 0.5) / max(1e-6, r_ref)
+            if d_norm > 0.95:
+                continue
+
+            arr = np.asarray(pts, dtype=np.int32)
+            arr[:, 0] = np.clip(arr[:, 0], 0, w - 1)
+            arr[:, 1] = np.clip(arr[:, 1], 0, h - 1)
+            inside = 0
+            for px, py in arr:
+                if mask[int(py), int(px)] > 0:
+                    inside += 1
+            if inside / float(max(1, len(arr))) < 0.78:
+                continue
+
+            ring_like = self._line_ring_likeness(arr.tolist(), cx, cy)
+            if ring_like >= 0.97 and d_norm > 0.28:
+                continue
+
+            band_score = max(0.20, 1.0 - abs(d_norm - 0.62))
+            score = arc_len * (1.0 - (0.40 * ring_like)) * band_score
+            selected_items.append((score, arr.tolist()))
+
+        if not selected_items:
+            return []
+
+        selected_items.sort(key=lambda item: item[0], reverse=True)
+        return [item[1] for item in selected_items[:limit]]
 
     def _estimate_spine_line(self, mask):
         """Estimate central spine line from mask when texture lines are weak."""
