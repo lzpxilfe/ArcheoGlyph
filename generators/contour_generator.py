@@ -246,16 +246,23 @@ class ContourGenerator:
                 # For round artifacts, prefer motif lines over forced center spine.
                 internal_lines = []
                 motif_target = max(12, min(18, round_motif_select_limit + 4))
-                motif_lines = round_motif_lines
-                if round_relief_lines or round_relief_region_lines:
+                prefer_region = len(round_relief_region_lines) >= 4
+                motif_lines = []
+                candidate_pool = []
+                if prefer_region:
+                    candidate_pool = list(round_relief_region_lines)
+                    candidate_pool += list(round_motif_lines[:max(2, motif_target // 4)])
+                else:
+                    candidate_pool = list(round_motif_lines) + list(round_relief_lines) + list(round_relief_region_lines)
+                if candidate_pool:
                     motif_lines = self._select_round_inner_motif_lines(
-                        motif_lines + round_relief_lines + round_relief_region_lines,
+                        candidate_pool,
                         target_mask,
                         max_lines=max(round_motif_select_limit + 4, 12),
                         prefer_outer=True,
                     )
-                if len(motif_lines) < 2 and (round_relief_lines or round_relief_region_lines):
-                    motif_lines = round_relief_lines + round_relief_region_lines
+                if len(motif_lines) < 2 and candidate_pool:
+                    motif_lines = candidate_pool
                 if motif_lines:
                     internal_lines += motif_lines[:max(7, motif_target // 2)]
                 # Always backfill with region/relief candidates to meet motif density target.
@@ -267,7 +274,7 @@ class ContourGenerator:
                         max_lines=motif_target,
                         min_arc_len=8.0,
                     )
-                if round_relief_lines:
+                if (not prefer_region) and round_relief_lines:
                     internal_lines = self._merge_distinct_lines(
                         internal_lines,
                         round_relief_lines,
@@ -499,7 +506,7 @@ class ContourGenerator:
         min_arc = max(10.0, 0.034 * float(min(bw, bh)))
         min_sep = max(4.2, 0.052 * float(min(bw, bh)))
         angle_bin_count = 12
-        per_bin_limit = 2
+        per_bin_limit = 1
 
         candidates = []
         for line in lines:
@@ -542,6 +549,13 @@ class ContourGenerator:
             ring_like = self._line_ring_likeness(out_line, cx_ref, cy_ref)
             if ring_like >= 0.97 and d_norm > 0.42:
                 continue
+            if not closed:
+                sx, sy = float(out_line[0][0]), float(out_line[0][1])
+                ex, ey = float(out_line[-1][0]), float(out_line[-1][1])
+                chord = ((ex - sx) ** 2 + (ey - sy) ** 2) ** 0.5
+                tortuosity = arc_len / max(1.0, chord)
+                if tortuosity > 2.35 and len(out_line) <= 12:
+                    continue
 
             angle = float(np.arctan2(cy - cy_ref, cx - cx_ref))
             angle_bin = int(((angle + np.pi) / (2.0 * np.pi)) * angle_bin_count) % angle_bin_count
@@ -728,6 +742,55 @@ class ContourGenerator:
         candidates.sort(key=lambda item: item[0], reverse=True)
         return [item[1] for item in candidates[:limit]]
 
+    def _estimate_round_boss_radius(self, gray_img, mask, cx, cy, r_ref):
+        """
+        Estimate central boss radius in round artifacts by radial edge response.
+        Returns radius in pixels; 0.0 when no reliable boss boundary is found.
+        """
+        try:
+            if r_ref <= 12.0:
+                return 0.0
+            h, w = gray_img.shape[:2]
+            blur = cv2.GaussianBlur(gray_img, (0, 0), 1.1)
+            gx = cv2.Sobel(blur, cv2.CV_32F, 1, 0, ksize=3)
+            gy = cv2.Sobel(blur, cv2.CV_32F, 0, 1, ksize=3)
+            grad = cv2.magnitude(gx, gy)
+            grad_u8 = cv2.convertScaleAbs(grad)
+
+            yy, xx = np.indices((h, w))
+            rr = np.sqrt(((xx.astype(np.float32) - float(cx)) ** 2) + ((yy.astype(np.float32) - float(cy)) ** 2))
+            valid_mask = (mask > 0).astype(np.uint8)
+            if np.count_nonzero(valid_mask) < 80:
+                return 0.0
+
+            r_min = max(4, int(round(0.10 * r_ref)))
+            r_max = max(r_min + 2, int(round(0.56 * r_ref)))
+            if r_max <= r_min:
+                return 0.0
+
+            best_r = 0.0
+            best_score = 0.0
+            for r in range(r_min, r_max + 1):
+                band = np.where((rr >= (float(r) - 1.6)) & (rr <= (float(r) + 1.6)), 255, 0).astype(np.uint8)
+                band = cv2.bitwise_and(band, valid_mask)
+                count = int(np.count_nonzero(band))
+                if count < 90:
+                    continue
+                mean_grad = float(np.mean(grad_u8[band > 0]))
+                ratio = float(r) / max(1.0, float(r_ref))
+                # Favor boss candidates in typical ratio range.
+                ratio_prior = max(0.0, 1.0 - (abs(ratio - 0.24) / 0.24))
+                score = (0.72 * mean_grad) + (28.0 * ratio_prior)
+                if score > best_score:
+                    best_score = score
+                    best_r = float(r)
+
+            if best_score < 18.0:
+                return 0.0
+            return float(best_r)
+        except Exception:
+            return 0.0
+
     def _extract_round_relief_lines(self, bgr_img, mask, main_contour, max_lines=24):
         """
         Fallback extractor for embossed motifs on round artifacts (e.g. bronze mirrors).
@@ -784,7 +847,11 @@ class ContourGenerator:
         h, w = mask.shape[:2]
         yy, xx = np.indices((h, w))
         rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
-        annulus = ((rr >= (0.34 * r_ref)) & (rr <= (0.93 * r_ref))).astype(np.uint8) * 255
+        boss_r = self._estimate_round_boss_radius(gray, mask, cx, cy, r_ref)
+        inner_ratio = 0.34
+        if boss_r > 0.0:
+            inner_ratio = max(inner_ratio, min(0.56, (boss_r / max(1e-6, r_ref)) * 1.24))
+        annulus = ((rr >= (inner_ratio * r_ref)) & (rr <= (0.93 * r_ref))).astype(np.uint8) * 255
 
         fused = cv2.bitwise_and(fused, fused, mask=interior)
         fused = cv2.bitwise_and(fused, annulus)
@@ -910,7 +977,11 @@ class ContourGenerator:
         h, w = mask.shape[:2]
         yy, xx = np.indices((h, w))
         rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
-        annulus = ((rr >= (0.36 * r_ref)) & (rr <= (0.94 * r_ref))).astype(np.uint8) * 255
+        boss_r = self._estimate_round_boss_radius(gray, mask, cx, cy, r_ref)
+        inner_ratio = 0.36
+        if boss_r > 0.0:
+            inner_ratio = max(inner_ratio, min(0.58, (boss_r / max(1e-6, r_ref)) * 1.28))
+        annulus = ((rr >= (inner_ratio * r_ref)) & (rr <= (0.94 * r_ref))).astype(np.uint8) * 255
         interior = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
 
         fused = cv2.bitwise_and(fused, fused, mask=interior)
