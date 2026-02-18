@@ -1045,8 +1045,8 @@ class SettingsDialog(QDialog):
         )
 
     def _open_sam_hf_models(self):
-        """Open official HF SAM3 model page."""
-        QDesktopServices.openUrl(QUrl("https://huggingface.co/facebook/sam3-hiera-large"))
+        """Open Hugging Face SAM model search page (works even when specific models are gated)."""
+        QDesktopServices.openUrl(QUrl("https://huggingface.co/models?search=facebook%2Fsam"))
 
     def _get_candidate_sam_paths(self):
         """Return common paths where SAM checkpoints are likely located."""
