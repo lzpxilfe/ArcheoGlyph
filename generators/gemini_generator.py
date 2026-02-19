@@ -64,7 +64,8 @@ class GeminiGenerator:
             "1. SHAPE RULES: Preserve measured proportions and diagnostic silhouette. "
             "2. OUTLINE: Bold and clean outer contour. "
             "3. INTERNAL STRUCTURE: Add 1-3 structural lines (e.g., rim/shoulder/base or blade midline). "
-            "4. SHADING: Use flat muted tones only (2-3 tone blocks), never painterly texture. "
+            "4. SHADING: Use flat muted tones only (2-3 analogous tone blocks from observed material), never painterly texture. "
+            "5. FORBIDDEN COLOR: do not use a single flat fill across the whole object. "
             "5. FORBIDDEN: no scenery, no decorative motifs, no invented ornaments."
         ),
         STYLE_LINE: (
@@ -207,8 +208,9 @@ class GeminiGenerator:
                 "1. Preserve the measured silhouette and diagnostic form transitions. "
                 "2. Use a bold outer contour and clean axis-centered composition. "
                 "3. Add 1-3 structural lines only (e.g., shoulder/band/midline). "
-                "4. Use muted flat color blocks (2-3 tones), no texture noise. "
-                "5. Avoid decorative elements and avoid scenic context."
+                "4. Use muted flat color blocks (2-3 analogous tones), no texture noise. "
+                "5. Do not render as one single flat fill color; keep visible tone separation. "
+                "6. Avoid decorative elements and avoid scenic context."
             )
 
         full_prompt = self._SHAPE_PREAMBLE + style_prompt
@@ -238,20 +240,21 @@ class GeminiGenerator:
                 "or asymmetrical objects."
             )
         
-        if color and style_key == STYLE_COLORED:
+        if color and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
              full_prompt += (
                  f"\n\nCOLOR INSTRUCTIONS:"
                  f"\n1. Detect and use the artifact's observed material color from the photo."
                  f"\n2. If user color {color} conflicts with the photo, prioritize the photo."
-                 f"\n3. Keep color variations subtle and realistic; avoid saturated fantasy tones."
-                 f"\n4. Keep the outline black and clean."
+                 f"\n3. Use 2-3 analogous muted tones from the observed material."
+                 f"\n4. Keep color variations subtle and realistic; avoid saturated fantasy tones."
+                 f"\n5. Keep the outline black and clean."
              )
         elif color:
              # For Line Drawing / Publication, color serves as a hint/tint but dominant style rules apply
              pass
              
         # Add Hybrid Logic Instructions to Prompt if applicable
-        if silhouette_bytes and style_key == STYLE_COLORED:
+        if silhouette_bytes and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
              full_prompt += (
                  "\n\nCRITICAL INSTRUCTION: Two images are provided.\n"
                  "Image 1: Original photo (material/color reference).\n"
@@ -267,7 +270,7 @@ class GeminiGenerator:
         parts.append(full_prompt)
         parts.append({"mime_type": self._get_mime_type(image_path), "data": image_data}) # Image 1: Reference
         
-        if silhouette_bytes and style_key == STYLE_COLORED:
+        if silhouette_bytes and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
              parts.append({"mime_type": "image/png", "data": silhouette_bytes}) # Image 2: Mask
         
         # Priorities: latest generation first, then stable high-throughput fallbacks.
@@ -521,16 +524,24 @@ class GeminiGenerator:
         fills = re.findall(r'fill\s*=\s*["\']([^"\']+)["\']', svg_code, flags=re.IGNORECASE)
         strokes = re.findall(r'stroke\s*=\s*["\']([^"\']+)["\']', svg_code, flags=re.IGNORECASE)
         colors = set()
+        fill_colors = set()
         for val in fills + strokes:
             token = val.strip().lower()
             if token in ("none", "transparent", "currentcolor", ""):
                 continue
             colors.add(token)
+        for val in fills:
+            token = val.strip().lower()
+            if token in ("none", "transparent", "currentcolor", ""):
+                continue
+            fill_colors.add(token)
 
         if style_key == STYLE_COLORED and len(colors) > 6:
             return False, f"too many distinct colors ({len(colors)})"
         if style_key == STYLE_TYPOLOGY and len(colors) > 5:
             return False, f"too many distinct colors for typology style ({len(colors)})"
+        if style_key == STYLE_TYPOLOGY and len(fill_colors) < 2:
+            return False, "typology output too flat: expected at least 2 distinct fill tones"
         if style_key in (STYLE_LINE, STYLE_MEASURED):
             for c in colors:
                 if c in ("#000", "#000000", "black", "#111", "#111111", "#222", "#222222"):

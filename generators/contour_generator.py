@@ -130,6 +130,13 @@ class ContourGenerator:
             return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"></svg>'
 
         final_color = color if color else self._extract_dominant_color(processing_bgr, target_mask)
+        material_palette = []
+        if not color:
+            material_palette = self._extract_material_palette(
+                processing_bgr,
+                target_mask,
+                max_colors=4,
+            )
 
         style_key = normalize_style(style)
         is_typology = style_key == STYLE_TYPOLOGY
@@ -648,14 +655,91 @@ class ContourGenerator:
                     internal_lines += self._remove_near_horizontal_lines(texture_lines)[:2]
 
         if is_typology:
-            base_color = self._muted_hex(final_color, keep=0.66)
-            outline_color = self._darken_hex(base_color, 0.50)
-            structure_color = self._darken_hex(base_color, 0.64)
-            shade_color = self._darken_hex(base_color, 0.78)
-            highlight_color = self._lighten_hex(base_color, 0.18)
+            palette_seeds = list(material_palette[:4]) if material_palette else [final_color]
+            harmonized_tones = []
+            for idx, seed in enumerate(palette_seeds):
+                mix_ratio = 0.34 if idx < 2 else 0.28
+                tone = self._blend_hex(final_color, seed, mix_ratio)
+                harmonized_tones.append(self._muted_hex(tone, keep=0.80))
+
+            if not harmonized_tones:
+                harmonized_tones.append(self._muted_hex(final_color, keep=0.66))
+            while len(harmonized_tones) < 3:
+                if len(harmonized_tones) == 1:
+                    harmonized_tones.append(self._lighten_hex(harmonized_tones[0], 0.16))
+                else:
+                    harmonized_tones.append(self._darken_hex(harmonized_tones[0], 0.84))
+
+            ordered_tones = sorted(
+                harmonized_tones[:3],
+                key=lambda c: self._hex_luminance(c),
+                reverse=True,
+            )
+            warm_highlight_color = ordered_tones[0]
+            base_color = ordered_tones[1]
+            deep_shadow_color = ordered_tones[2]
+            hi_luma = self._hex_luminance(warm_highlight_color)
+            mid_luma = self._hex_luminance(base_color)
+            lo_luma = self._hex_luminance(deep_shadow_color)
+            if (hi_luma - mid_luma) < 16.0:
+                warm_highlight_color = self._lighten_hex(base_color, 0.20)
+            if (mid_luma - lo_luma) < 16.0:
+                deep_shadow_color = self._darken_hex(base_color, 0.78)
+            if (self._hex_luminance(warm_highlight_color) - self._hex_luminance(deep_shadow_color)) < 34.0:
+                warm_highlight_color = self._lighten_hex(warm_highlight_color, 0.10)
+                deep_shadow_color = self._darken_hex(deep_shadow_color, 0.90)
+            patina_tone = (
+                harmonized_tones[3]
+                if len(harmonized_tones) > 3
+                else self._blend_hex(base_color, warm_highlight_color, 0.30)
+            )
+            patina_tone = self._muted_hex(patina_tone, keep=0.84)
+
+            outline_color = self._darken_hex(base_color, 0.56)
+            structure_color = self._darken_hex(self._blend_hex(base_color, deep_shadow_color, 0.42), 0.74)
+            shade_color = self._darken_hex(deep_shadow_color, 0.90)
+            highlight_color = self._lighten_hex(self._blend_hex(base_color, warm_highlight_color, 0.58), 0.10)
 
             svg_output.append(
-                f'<path d="{path_data}" fill="{base_color}" fill-opacity="1.0" stroke="{outline_color}" '
+                "<defs>"
+                f'<linearGradient id="agTypologyBase" x1="20%" y1="8%" x2="84%" y2="94%">'
+                f'<stop offset="0%" stop-color="{warm_highlight_color}" stop-opacity="1"/>'
+                f'<stop offset="55%" stop-color="{base_color}" stop-opacity="1"/>'
+                f'<stop offset="100%" stop-color="{deep_shadow_color}" stop-opacity="1"/>'
+                "</linearGradient>"
+                f'<radialGradient id="agTypologyHighlight" cx="30%" cy="24%" r="64%">'
+                f'<stop offset="0%" stop-color="{highlight_color}" stop-opacity="1"/>'
+                f'<stop offset="100%" stop-color="{base_color}" stop-opacity="0"/>'
+                "</radialGradient>"
+                f'<radialGradient id="agTypologyPatina" cx="66%" cy="70%" r="58%">'
+                f'<stop offset="0%" stop-color="{patina_tone}" stop-opacity="1"/>'
+                f'<stop offset="100%" stop-color="{base_color}" stop-opacity="0"/>'
+                "</radialGradient>"
+                f'<linearGradient id="agTypologyShadow" x1="44%" y1="0%" x2="58%" y2="100%">'
+                f'<stop offset="0%" stop-color="{base_color}" stop-opacity="0"/>'
+                f'<stop offset="100%" stop-color="{shade_color}" stop-opacity="1"/>'
+                "</linearGradient>"
+                "</defs>"
+            )
+
+            svg_output.append(
+                f'<path d="{path_data}" fill="url(#agTypologyBase)" fill-opacity="1.0" stroke="none" '
+                'stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+            svg_output.append(
+                f'<path d="{path_data}" fill="url(#agTypologyHighlight)" fill-opacity="0.30" stroke="none" '
+                'stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+            svg_output.append(
+                f'<path d="{path_data}" fill="url(#agTypologyPatina)" fill-opacity="0.28" stroke="none" '
+                'stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+            svg_output.append(
+                f'<path d="{path_data}" fill="url(#agTypologyShadow)" fill-opacity="0.30" stroke="none" '
+                'stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+            svg_output.append(
+                f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
                 'stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round"/>'
             )
 
@@ -736,9 +820,32 @@ class ContourGenerator:
             outline_color = self._darken_hex(final_color, 0.58)
             detail_color = self._darken_hex(final_color, 0.42)
             accent_color = self._lighten_hex(final_color, 0.14)
+            deep_fill_color = self._darken_hex(fill_color, 0.88)
+            glow_color = self._lighten_hex(fill_color, 0.22)
             fill_opacity = 0.62 if is_roundish else 0.72
             svg_output.append(
-                f'<path d="{path_data}" fill="{fill_color}" fill-opacity="{fill_opacity:.2f}" stroke="{outline_color}" '
+                "<defs>"
+                f'<linearGradient id="agColoredBase" x1="18%" y1="12%" x2="82%" y2="92%">'
+                f'<stop offset="0%" stop-color="{glow_color}" stop-opacity="1"/>'
+                f'<stop offset="62%" stop-color="{fill_color}" stop-opacity="1"/>'
+                f'<stop offset="100%" stop-color="{deep_fill_color}" stop-opacity="1"/>'
+                "</linearGradient>"
+                f'<radialGradient id="agColoredGlow" cx="28%" cy="22%" r="58%">'
+                f'<stop offset="0%" stop-color="{accent_color}" stop-opacity="1"/>'
+                f'<stop offset="100%" stop-color="{fill_color}" stop-opacity="0"/>'
+                "</radialGradient>"
+                "</defs>"
+            )
+            svg_output.append(
+                f'<path d="{path_data}" fill="url(#agColoredBase)" fill-opacity="{fill_opacity:.2f}" stroke="none" '
+                'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+            svg_output.append(
+                f'<path d="{path_data}" fill="url(#agColoredGlow)" fill-opacity="0.20" stroke="none" '
+                'stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+            svg_output.append(
+                f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
                 'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
             )
             accent_lines = (round_lines[:1] if is_roundish else profile_lines[:1])
@@ -3512,6 +3619,113 @@ class ContourGenerator:
                 break
 
         return rows[:target_lines]
+
+    def _hex_to_rgb(self, hex_color, fallback=(139, 69, 19)):
+        """Convert hex color to RGB tuple."""
+        value = str(hex_color or "").strip().lstrip("#")
+        if len(value) != 6:
+            return fallback
+        try:
+            return (
+                int(value[0:2], 16),
+                int(value[2:4], 16),
+                int(value[4:6], 16),
+            )
+        except Exception:
+            return fallback
+
+    def _rgb_to_hex(self, r, g, b):
+        """Convert RGB values to hex color."""
+        rr = max(0, min(255, int(r)))
+        gg = max(0, min(255, int(g)))
+        bb = max(0, min(255, int(b)))
+        return f"#{rr:02x}{gg:02x}{bb:02x}"
+
+    def _blend_hex(self, base_hex, mix_hex, mix_ratio=0.35):
+        """Blend two hex colors while keeping base dominance."""
+        br, bg, bb = self._hex_to_rgb(base_hex)
+        mr, mg, mb = self._hex_to_rgb(mix_hex, fallback=(br, bg, bb))
+        t = max(0.0, min(1.0, float(mix_ratio)))
+        r = (br * (1.0 - t)) + (mr * t)
+        g = (bg * (1.0 - t)) + (mg * t)
+        b = (bb * (1.0 - t)) + (mb * t)
+        return self._rgb_to_hex(r, g, b)
+
+    def _hex_luminance(self, hex_color):
+        """Return perceived luminance for a hex color."""
+        r, g, b = self._hex_to_rgb(hex_color)
+        return (0.299 * r) + (0.587 * g) + (0.114 * b)
+
+    def _hex_distance(self, color_a, color_b):
+        """Euclidean RGB distance between two hex colors."""
+        ar, ag, ab = self._hex_to_rgb(color_a)
+        br, bg, bb = self._hex_to_rgb(color_b)
+        return ((ar - br) ** 2 + (ag - bg) ** 2 + (ab - bb) ** 2) ** 0.5
+
+    def _extract_material_palette(self, bgr_img, mask=None, max_colors=4):
+        """
+        Extract a compact material palette from masked object pixels.
+        Returns colors sorted by prevalence while removing near-duplicates.
+        """
+        if bgr_img is None:
+            return []
+
+        try:
+            hsv = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)
+            h, s, v = cv2.split(hsv)
+            valid_mask = np.ones_like(h, dtype=bool)
+            if mask is not None:
+                valid_mask = (mask > 0)
+
+            color_mask = (s > 10) & (v > 24) & (v < 248) & valid_mask
+            pixels = bgr_img[color_mask]
+            if len(pixels) < 120:
+                pixels = bgr_img[valid_mask]
+            if len(pixels) < 6:
+                return []
+
+            sample_limit = 6500
+            if len(pixels) > sample_limit:
+                sampled_idx = np.linspace(
+                    0,
+                    len(pixels) - 1,
+                    num=sample_limit,
+                    dtype=np.int32,
+                )
+                pixels = pixels[sampled_idx]
+
+            samples = np.float32(pixels)
+            if len(samples) < 2:
+                only = samples[0]
+                return [self._rgb_to_hex(only[2], only[1], only[0])]
+
+            n_colors = max(2, min(int(max_colors), 5, len(samples)))
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 14, 1.0)
+            _, labels, centers = cv2.kmeans(
+                samples,
+                n_colors,
+                None,
+                criteria,
+                8,
+                cv2.KMEANS_PP_CENTERS,
+            )
+
+            counts = np.bincount(labels.reshape(-1), minlength=n_colors)
+            ranked = sorted(range(n_colors), key=lambda i: int(counts[i]), reverse=True)
+
+            palette = []
+            for idx in ranked:
+                center = centers[idx]
+                hex_color = self._rgb_to_hex(center[2], center[1], center[0])
+                if any(self._hex_distance(hex_color, existing) < 24.0 for existing in palette):
+                    continue
+                palette.append(hex_color)
+                if len(palette) >= int(max_colors):
+                    break
+
+            return palette
+        except Exception:
+            return []
 
     def _darken_hex(self, hex_color, factor):
         """Darken a hex color by multiplying channels by factor [0..1]."""

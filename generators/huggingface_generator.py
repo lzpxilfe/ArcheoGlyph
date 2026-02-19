@@ -131,7 +131,8 @@ class HuggingFaceGenerator:
         elif style_key == STYLE_TYPOLOGY:
             parts.append(
                 "style hint: archaeological typology icon, standardized silhouette, "
-                "bold outline, central axis cue, 1-3 structural bands, flat muted palette"
+                "bold outline, central axis cue, 1-3 structural bands, "
+                "2-3 analogous muted tones from observed material palette"
             )
         else:
             parts.append(
@@ -284,6 +285,158 @@ class HuggingFaceGenerator:
         g = max(0, min(255, int(rgb[1])))
         b = max(0, min(255, int(rgb[2])))
         return f"#{r:02x}{g:02x}{b:02x}"
+
+    def _blend_rgb(self, base_rgb, mix_rgb, mix_ratio=0.35):
+        """Blend two RGB tuples while preserving base tone identity."""
+        br, bg, bb = [max(0, min(255, int(v))) for v in base_rgb]
+        mr, mg, mb = [max(0, min(255, int(v))) for v in mix_rgb]
+        t = max(0.0, min(1.0, float(mix_ratio)))
+        return (
+            int((br * (1.0 - t)) + (mr * t)),
+            int((bg * (1.0 - t)) + (mg * t)),
+            int((bb * (1.0 - t)) + (mb * t)),
+        )
+
+    def _extract_reference_palette(self, image_path, mask_img, forced_hex=None, max_colors=4):
+        """
+        Extract compact material palette from masked reference image.
+        Uses coarse RGB binning to stay deterministic without heavy dependencies.
+        """
+        forced = self._parse_hex_rgb(forced_hex)
+        if forced:
+            return [forced]
+
+        ref = QImage(image_path)
+        if ref.isNull() or mask_img is None or mask_img.isNull():
+            return []
+
+        ref = ref.scaled(mask_img.width(), mask_img.height(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        ref = ref.convertToFormat(QImage.Format_ARGB32)
+
+        bins = {}
+        w = mask_img.width()
+        h = mask_img.height()
+        # Keep extraction responsive on large images.
+        step = 1 if (w * h) <= 180000 else 2
+
+        for y in range(0, h, step):
+            for x in range(0, w, step):
+                mp = mask_img.pixelColor(x, y)
+                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
+                if not inside:
+                    continue
+
+                px = ref.pixelColor(x, y)
+                if px.alpha() < 8:
+                    continue
+
+                mx = max(px.red(), px.green(), px.blue())
+                mn = min(px.red(), px.green(), px.blue())
+                sat = mx - mn
+                if sat < 8 or mx < 20 or mx > 248:
+                    continue
+
+                key = (px.red() >> 5, px.green() >> 5, px.blue() >> 5)
+                if key not in bins:
+                    bins[key] = {"count": 0, "r": 0, "g": 0, "b": 0}
+                bucket = bins[key]
+                bucket["count"] += 1
+                bucket["r"] += px.red()
+                bucket["g"] += px.green()
+                bucket["b"] += px.blue()
+
+        if not bins:
+            return []
+
+        ranked = sorted(bins.values(), key=lambda item: int(item["count"]), reverse=True)
+        palette = []
+        for item in ranked:
+            count = max(1, int(item["count"]))
+            rgb = (
+                int(item["r"] / count),
+                int(item["g"] / count),
+                int(item["b"] / count),
+            )
+            if any(
+                ((rgb[0] - ex[0]) ** 2 + (rgb[1] - ex[1]) ** 2 + (rgb[2] - ex[2]) ** 2) ** 0.5 < 24.0
+                for ex in palette
+            ):
+                continue
+            palette.append(rgb)
+            if len(palette) >= int(max_colors):
+                break
+
+        return palette
+
+    def _harmonize_typology_output(self, image, base_rgb, palette_rgb=None, preserve_ratio=0.34):
+        """
+        Harmonize typology output with 2-3 analogous tones instead of collapsing to one flat color.
+        """
+        out = image.convertToFormat(QImage.Format_ARGB32)
+        base = tuple(max(0, min(255, int(v))) for v in base_rgb)
+
+        palette = [tuple(max(0, min(255, int(v))) for v in rgb) for rgb in (palette_rgb or []) if rgb]
+        if not palette:
+            palette = [base]
+
+        def _luma(rgb):
+            return (0.299 * rgb[0]) + (0.587 * rgb[1]) + (0.114 * rgb[2])
+
+        palette_sorted = sorted(palette, key=_luma, reverse=True)
+        hi_seed = palette_sorted[0]
+        lo_seed = palette_sorted[-1]
+        mid_seed = palette_sorted[1] if len(palette_sorted) > 2 else base
+
+        highlight = self._blend_rgb(base, hi_seed, 0.52)
+        mid = self._blend_rgb(base, mid_seed, 0.42)
+        shadow = self._blend_rgb(base, lo_seed, 0.56)
+
+        if (_luma(highlight) - _luma(mid)) < 16.0:
+            highlight = self._blend_rgb(mid, (255, 255, 255), 0.18)
+        if (_luma(mid) - _luma(shadow)) < 16.0:
+            shadow = self._blend_rgb(mid, (0, 0, 0), 0.22)
+        if (_luma(highlight) - _luma(shadow)) < 32.0:
+            highlight = self._blend_rgb(highlight, (255, 255, 255), 0.12)
+            shadow = self._blend_rgb(shadow, (0, 0, 0), 0.12)
+
+        patina = palette_sorted[2] if len(palette_sorted) > 2 else self._blend_rgb(mid, highlight, 0.34)
+        preserve = max(0.10, min(0.62, float(preserve_ratio)))
+
+        for y in range(out.height()):
+            for x in range(out.width()):
+                px = out.pixelColor(x, y)
+                if px.alpha() < 8:
+                    continue
+
+                lum = (0.299 * px.red() + 0.587 * px.green() + 0.114 * px.blue()) / 255.0
+                # Suppress noisy micro-variation while keeping visible tone separation.
+                lum = round(max(0.0, min(1.0, lum)) * 5.0) / 5.0
+
+                if lum <= 0.25:
+                    tone = shadow
+                elif lum <= 0.50:
+                    t = (lum - 0.25) / 0.25
+                    tone = self._blend_rgb(shadow, mid, t)
+                elif lum <= 0.78:
+                    t = (lum - 0.50) / 0.28
+                    tone = self._blend_rgb(mid, highlight, t)
+                else:
+                    tone = highlight
+
+                sat = max(px.red(), px.green(), px.blue()) - min(px.red(), px.green(), px.blue())
+                patina_mix = max(0.0, min(0.22, (sat - 12.0) / 180.0))
+                tone = self._blend_rgb(tone, patina, patina_mix)
+
+                nr = int((tone[0] * (1.0 - preserve)) + (px.red() * preserve))
+                ng = int((tone[1] * (1.0 - preserve)) + (px.green() * preserve))
+                nb = int((tone[2] * (1.0 - preserve)) + (px.blue() * preserve))
+                px.setRed(max(0, min(255, nr)))
+                px.setGreen(max(0, min(255, ng)))
+                px.setBlue(max(0, min(255, nb)))
+                px.setAlpha(255)
+                out.setPixelColor(x, y, px)
+
+        return out
 
     def _qimage_to_base64_png(self, image):
         """Encode QImage to base64 PNG string."""
@@ -600,13 +753,20 @@ class HuggingFaceGenerator:
             texture_noise = self._estimate_texture_noise(generated, mask_img)
 
             if style_key == STYLE_TYPOLOGY:
-                out = self._harmonize_colored_output(
-                    out,
-                    self._estimate_reference_rgb(image_path, mask_img, forced_hex=color),
-                    flatten=True,
-                    preserve_ratio=0.42,
+                typology_base = self._estimate_reference_rgb(image_path, mask_img, forced_hex=color)
+                typology_palette = self._extract_reference_palette(
+                    image_path,
+                    mask_img,
+                    forced_hex=color,
+                    max_colors=4,
                 )
-                out = self._apply_reference_tone_map(out, image_path, mask_img, strength=0.34)
+                out = self._harmonize_typology_output(
+                    out,
+                    typology_base,
+                    palette_rgb=typology_palette,
+                    preserve_ratio=0.36,
+                )
+                out = self._apply_reference_tone_map(out, image_path, mask_img, strength=0.28)
             elif style_key == STYLE_COLORED:
                 flatten_threshold = 24.0 + (8.0 * float(prompt_influence))
                 flatten = texture_noise >= flatten_threshold
@@ -661,7 +821,7 @@ class HuggingFaceGenerator:
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
                 if style_key == STYLE_TYPOLOGY:
-                    overlay_style = STYLE_TYPOLOGY
+                    overlay_style = STYLE_LINE
                 elif style_key == STYLE_MEASURED:
                     overlay_style = STYLE_MEASURED
                 else:

@@ -2,7 +2,7 @@
 name=ArchaeoGlyph
 qgisMinimumVersion=3.0
 description=Archaeological Symbol Generator - Generate factual, map-ready symbols from artifact images
-version=0.1.1
+version=0.1.0
 author=lzpxilfe (balguljang2)
 email=balguljang2@gmail.com
 
