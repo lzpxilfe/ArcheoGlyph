@@ -224,7 +224,7 @@ class ArcheoGlyphDialog(QDialog):
         self.iface = iface
         self.settings = QSettings()
         self.plugin_dir = os.path.dirname(os.path.dirname(__file__))
-        self.plugin_version = str(self.settings.value("ArcheoGlyph/code_version", PLUGIN_VERSION)).strip() or PLUGIN_VERSION
+        self.plugin_version = PLUGIN_VERSION
         self.current_color = QColor("#8B4513")  # Default brown for artifacts
         self.generation_thread = None
         
@@ -236,7 +236,7 @@ class ArcheoGlyphDialog(QDialog):
         
     def setup_ui(self):
         """Initialize the user interface."""
-        self.setWindowTitle(f"ArcheoGlyph v{self.plugin_version} - Symbol Generator")
+        self.setWindowTitle(f"ArchaeoGlyph v{self.plugin_version} - Symbol Generator")
         self.setMinimumSize(600, 500)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
@@ -918,7 +918,7 @@ class ArcheoGlyphDialog(QDialog):
         manager = SymbolManager()
         success = manager.save_to_library(
             self.preview_label.generated_image,
-            name="ArcheoGlyph Symbol"
+            name="ArchaeoGlyph Symbol"
         )
         
         if success:

@@ -67,14 +67,14 @@ class SettingsDialog(QDialog):
         
     def setup_ui(self):
         """Initialize the settings UI."""
-        self.setWindowTitle("ArcheoGlyph Settings & Help")
+        self.setWindowTitle("ArchaeoGlyph Settings & Help")
         self.setMinimumSize(650, 600)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
         layout = QVBoxLayout(self)
         
         # Header
-        header = QLabel("<h2>ArcheoGlyph Settings</h2>")
+        header = QLabel("<h2>ArchaeoGlyph Settings</h2>")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
         
@@ -195,7 +195,8 @@ class SettingsDialog(QDialog):
             f"Specify the Model ID to use (e.g., '{HF_DEFAULT_MODEL_ID}' or "
             "'Qwen/Qwen-Image'). If a model returns 403/404/503, the plugin "
             "automatically tries modern fallback models.\n"
-            "Use 'Apply Latest Recommended Models' to refresh HF/SAM/Gemini recommendations without Python console checks."
+            "Use 'Check Latest Models' to preview recommendations, then "
+            "'Apply Latest Recommended Models' to apply without Python console checks."
         )
         model_help.setWordWrap(True)
         model_help.setStyleSheet("color: #666; font-size: 11px;")
@@ -207,8 +208,16 @@ class SettingsDialog(QDialog):
         model_layout.addWidget(self.hf_model_input)
 
         model_actions = QHBoxLayout()
+        self.check_models_btn = QPushButton("Check Latest Models")
+        self.check_models_btn.clicked.connect(
+            lambda: self.refresh_latest_model_recommendations(manual=True, apply_changes=False)
+        )
+        model_actions.addWidget(self.check_models_btn)
+
         self.refresh_models_btn = QPushButton("Apply Latest Recommended Models")
-        self.refresh_models_btn.clicked.connect(lambda: self.refresh_latest_model_recommendations(manual=True))
+        self.refresh_models_btn.clicked.connect(
+            lambda: self.refresh_latest_model_recommendations(manual=True, apply_changes=True)
+        )
         model_actions.addWidget(self.refresh_models_btn)
 
         self.auto_refresh_models_check = QCheckBox("Auto-refresh model recommendations weekly")
@@ -385,7 +394,7 @@ class SettingsDialog(QDialog):
         
         apikey_desc = QLabel(
             "<b>What is an API key?</b><br>"
-            "An API key is like a password that allows ArcheoGlyph to use Google's AI service.<br><br>"
+            "An API key is like a password that allows ArchaeoGlyph to use Google's AI service.<br><br>"
             "<b>How to get one (FREE!):</b><br>"
             "1. Click the button below to open Google AI Studio<br>"
             "2. Sign in with your Google account<br>"
@@ -617,7 +626,7 @@ class SettingsDialog(QDialog):
         no_setup_layout = QVBoxLayout(no_setup)
         no_setup_layout.addWidget(QLabel(
             "<ol>"
-            "<li>Open ArcheoGlyph from the toolbar</li>"
+            "<li>Open ArchaeoGlyph from the toolbar</li>"
             "<li>Select <b>'Use Template'</b> mode</li>"
             "<li>Choose artifact type (Pottery, Stone Tools, etc.)</li>"
             "<li>Pick your color</li>"
@@ -675,10 +684,10 @@ class SettingsDialog(QDialog):
         help_text = QTextBrowser()
         help_text.setOpenExternalLinks(True)
         help_text.setHtml("""
-        <h2>ArcheoGlyph Help</h2>
+        <h2>ArchaeoGlyph Help</h2>
 
-        <h3>What is ArcheoGlyph?</h3>
-        <p>ArcheoGlyph helps archaeologists create accurate, standardized symbols for GIS maps. 
+        <h3>What is ArchaeoGlyph?</h3>
+        <p>ArchaeoGlyph helps archaeologists create accurate, standardized symbols for GIS maps. 
         Upload an artifact photo or select a template, and the plugin generates a precise, 
         recognizable symbol perfect for archaeological documentation.</p>
 
@@ -830,7 +839,7 @@ class SettingsDialog(QDialog):
         refresh_interval = timedelta(days=7)
 
         if last_checked is None or (now_utc - last_checked) >= refresh_interval:
-            self.refresh_latest_model_recommendations(manual=False)
+            self.refresh_latest_model_recommendations(manual=False, apply_changes=True)
             return
 
         self.model_refresh_status.setText(
@@ -838,13 +847,15 @@ class SettingsDialog(QDialog):
         )
         self.model_refresh_status.setStyleSheet("color: #2f6f44; font-size: 11px;")
 
-    def refresh_latest_model_recommendations(self, manual=False):
+    def refresh_latest_model_recommendations(self, manual=False, apply_changes=True):
         """Resolve and apply latest practical HF/SAM recommendations asynchronously."""
         running = getattr(self, "model_refresh_thread", None)
         if running is not None and running.isRunning():
             return
 
         self.refresh_models_btn.setEnabled(False)
+        if hasattr(self, "check_models_btn"):
+            self.check_models_btn.setEnabled(False)
         self.model_refresh_status.setText("Checking latest model recommendations...")
         self.model_refresh_status.setStyleSheet("color: orange; font-size: 11px;")
 
@@ -868,26 +879,12 @@ class SettingsDialog(QDialog):
             sam_candidates=sam_candidates,
         )
         self.model_refresh_thread.finished.connect(
-            lambda result: self._handle_latest_model_refresh_result(result, manual)
+            lambda result: self._handle_latest_model_refresh_result(result, manual, apply_changes)
         )
         self.model_refresh_thread.start()
 
-    def _handle_latest_model_refresh_result(self, result, manual):
-        """Apply latest-model recommendations from background resolver."""
-        self.refresh_models_btn.setEnabled(True)
-
-        if not isinstance(result, dict):
-            result = {"status": "error", "message": "Invalid model refresh result payload."}
-
-        now_utc = datetime.now(timezone.utc)
-        self.settings.setValue("ArcheoGlyph/model_refresh_last_checked_utc", self._format_utc(now_utc))
-
-        status = str(result.get("status", "")).strip().lower()
-        message = str(result.get("message", "")).strip()
-        recommended_hf = str(result.get("hf_model", "")).strip()
-        recommended_sam = str(result.get("sam_model_type", "")).strip()
-        recommended_gemini = str(result.get("gemini_model", "")).strip()
-
+    def _apply_model_recommendations(self, recommended_hf, recommended_sam, recommended_gemini):
+        """Apply resolved recommendations to UI/settings and return change summary lines."""
         changed = []
 
         if recommended_hf:
@@ -895,7 +892,8 @@ class SettingsDialog(QDialog):
             if normalized and normalized != self._normalize_hf_model_id(self.hf_model_input.text()):
                 self.hf_model_input.setText(normalized)
                 changed.append(f"HF model -> {normalized}")
-            self.settings.setValue("ArcheoGlyph/hf_model_id", normalized)
+            if normalized:
+                self.settings.setValue("ArcheoGlyph/hf_model_id", normalized)
 
         if recommended_sam:
             idx = self.sam_model_type_combo.findData(recommended_sam)
@@ -909,28 +907,128 @@ class SettingsDialog(QDialog):
                     changed.append(f"SAM model -> {recommended_sam}")
                 self.settings.setValue("ArcheoGlyph/sam_model_type", recommended_sam)
 
+        if recommended_gemini:
+            previous_gemini = str(self.settings.value("ArcheoGlyph/gemini_model_id", "") or "").strip()
+            if recommended_gemini != previous_gemini:
+                changed.append(f"Gemini preferred -> {recommended_gemini}")
+            self.settings.setValue("ArcheoGlyph/gemini_model_id", recommended_gemini)
+
+        return changed
+
+    def _preview_model_recommendations(self, recommended_hf, recommended_sam, recommended_gemini):
+        """Return preview-only change lines without applying anything."""
+        pending = []
+
+        if recommended_hf:
+            normalized = self._normalize_hf_model_id(recommended_hf)
+            current_hf = self._normalize_hf_model_id(self.hf_model_input.text())
+            if normalized and normalized != current_hf:
+                pending.append(f"HF model: {current_hf or '(empty)'} -> {normalized}")
+
+        if recommended_sam:
+            current_sam = str(self.sam_model_type_combo.currentData() or "").strip()
+            if current_sam != recommended_sam:
+                pending.append(f"SAM model: {current_sam or '(empty)'} -> {recommended_sam}")
+
+        if recommended_gemini:
+            previous_gemini = str(self.settings.value("ArcheoGlyph/gemini_model_id", "") or "").strip()
+            if previous_gemini != recommended_gemini:
+                pending.append(
+                    f"Gemini preferred: {previous_gemini or '(empty)'} -> {recommended_gemini}"
+                )
+
+        return pending
+
+    def _handle_latest_model_refresh_result(self, result, manual, apply_changes):
+        """Handle latest-model recommendations from background resolver."""
+        self.refresh_models_btn.setEnabled(True)
+        if hasattr(self, "check_models_btn"):
+            self.check_models_btn.setEnabled(True)
+        self.model_refresh_thread = None
+
+        if not isinstance(result, dict):
+            result = {"status": "error", "message": "Invalid model refresh result payload."}
+
+        status = str(result.get("status", "")).strip().lower()
+        message = str(result.get("message", "")).strip()
+        recommended_hf = str(result.get("hf_model", "")).strip()
+        recommended_sam = str(result.get("sam_model_type", "")).strip()
+        recommended_gemini = str(result.get("gemini_model", "")).strip()
+
         if self.auto_refresh_models_check.isChecked():
             self.settings.setValue("ArcheoGlyph/auto_update_models", "true")
         else:
             self.settings.setValue("ArcheoGlyph/auto_update_models", "false")
 
         if status == "ok":
+            now_utc = datetime.now(timezone.utc)
+            self.settings.setValue("ArcheoGlyph/model_refresh_last_checked_utc", self._format_utc(now_utc))
+
             summary = []
-            if changed:
-                summary.extend(changed)
+            if apply_changes:
+                changed = self._apply_model_recommendations(
+                    recommended_hf=recommended_hf,
+                    recommended_sam=recommended_sam,
+                    recommended_gemini=recommended_gemini,
+                )
+                if changed:
+                    summary.extend(changed)
+                else:
+                    summary.append("No setting changes were needed (already up to date).")
+                if recommended_gemini:
+                    summary.append(f"Gemini best available: {recommended_gemini}")
+                title = "Latest Models Applied"
             else:
-                summary.append("No setting changes were needed (already up to date).")
-            if recommended_gemini:
-                summary.append(f"Gemini best available: {recommended_gemini}")
+                preview = self._preview_model_recommendations(
+                    recommended_hf=recommended_hf,
+                    recommended_sam=recommended_sam,
+                    recommended_gemini=recommended_gemini,
+                )
+                if preview:
+                    summary.append("Preview only (not applied):")
+                    summary.extend(preview)
+                else:
+                    summary.append("Preview only: current settings are already up to date.")
+                title = "Latest Models Preview"
+
             self.model_refresh_status.setText(" | ".join(summary))
             self.model_refresh_status.setStyleSheet("color: #2f6f44; font-size: 11px;")
 
             if manual:
-                QMessageBox.information(
-                    self,
-                    "Latest Models Applied",
-                    "\n".join(summary)
-                )
+                if not apply_changes:
+                    msg = QMessageBox(self)
+                    msg.setIcon(QMessageBox.Information)
+                    msg.setWindowTitle(title)
+                    msg.setText("\n".join(summary))
+                    apply_now_btn = msg.addButton("Apply Now", QMessageBox.AcceptRole)
+                    msg.addButton(QMessageBox.Close)
+                    msg.exec_()
+
+                    if msg.clickedButton() == apply_now_btn:
+                        applied_lines = self._apply_model_recommendations(
+                            recommended_hf=recommended_hf,
+                            recommended_sam=recommended_sam,
+                            recommended_gemini=recommended_gemini,
+                        )
+                        applied_summary = []
+                        if applied_lines:
+                            applied_summary.extend(applied_lines)
+                        else:
+                            applied_summary.append(
+                                "No setting changes were needed (already up to date)."
+                            )
+                        if recommended_gemini:
+                            applied_summary.append(f"Gemini best available: {recommended_gemini}")
+
+                        self.model_refresh_status.setText(" | ".join(applied_summary))
+                        self.model_refresh_status.setStyleSheet("color: #2f6f44; font-size: 11px;")
+                        QMessageBox.information(
+                            self,
+                            "Latest Models Applied",
+                            "\n".join(applied_summary),
+                        )
+                else:
+                    QMessageBox.information(self, title, "\n".join(summary))
         else:
             fallback_msg = message or "Latest model refresh failed."
             self.model_refresh_status.setText(fallback_msg)
@@ -1212,7 +1310,7 @@ class SettingsDialog(QDialog):
 
         mask_backend = self.settings.value('ArcheoGlyph/mask_backend', 'auto')
         sam_checkpoint = self.settings.value('ArcheoGlyph/sam_checkpoint_path', '')
-        sam_model_type = self.settings.value('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-small')
+        sam_model_type = self.settings.value('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-large')
         hf_overlay_linework = str(
             self.settings.value('ArcheoGlyph/hf_overlay_linework', 'false')
         ).strip().lower() in ("1", "true", "yes", "on")
@@ -1238,7 +1336,10 @@ class SettingsDialog(QDialog):
                 if os.path.exists(path):
                     self.sam_checkpoint_input.setText(path)
                     break
-        sam_model_type = str(sam_model_type).strip() or "hf:facebook/sam2.1-hiera-small"
+        sam_model_type = str(sam_model_type).strip() or "hf:facebook/sam2.1-hiera-large"
+        if sam_model_type.lower() == "hf:facebook/sam3-hiera-large":
+            sam_model_type = "hf:facebook/sam2.1-hiera-large"
+            self.settings.setValue('ArcheoGlyph/sam_model_type', sam_model_type)
         type_idx = self.sam_model_type_combo.findData(sam_model_type)
         if type_idx < 0:
             type_idx = self.sam_model_type_combo.findText(sam_model_type)
@@ -1488,14 +1589,15 @@ class SettingsDialog(QDialog):
         
     def _handle_process_output(self):
         """Handle process output."""
-        data = self.process.readAllStandardOutput()
-        self.process.readAllStandardError()
-        
-        if data:
-            msg = bytes(data).decode('utf-8').strip()
+        stdout = bytes(self.process.readAllStandardOutput()).decode('utf-8', errors='replace').strip()
+        stderr = bytes(self.process.readAllStandardError()).decode('utf-8', errors='replace').strip()
+        msg = stdout or stderr
+
+        if msg:
+            last_line = msg.splitlines()[-1] if "\n" in msg else msg
             # Show last line in status if it's not too long
-            if len(msg) < 50:
-                self.install_status.setText(f"Installing: {msg}")
+            if len(last_line) < 50:
+                self.install_status.setText(f"Installing: {last_line}")
             else:
                 self.install_status.setText("Installing...")
                 
@@ -1540,9 +1642,10 @@ class SettingsDialog(QDialog):
             
             msg.exec_()
             
-            if msg.clickedButton().text() == "Copy Command":
+            clicked_button = msg.clickedButton()
+            if clicked_button is not None and clicked_button.text() == "Copy Command":
                 clipboard = QApplication.clipboard()
-                cmd = f'"{sys.executable}" -m pip install --user google-generativeai'
+                cmd = f'"{self._get_python_executable()}" -m pip install --user google-generativeai'
                 clipboard.setText(cmd)
                 QMessageBox.information(self, "Copied", "Command copied to clipboard!\nPaste it in your terminal.")
             
@@ -1718,6 +1821,9 @@ class LatestModelRefreshThread(QThread):
                 payload = json.loads(resp.read().decode("utf-8", errors="replace"))
                 gated = payload.get("gated", None)
                 ungated = gated in (None, False, "false", "False", "")
+                tags = payload.get("tags", []) or []
+                if not isinstance(tags, list):
+                    tags = []
                 return {
                     "ok": True,
                     "model_id": model_id,
@@ -1725,6 +1831,8 @@ class LatestModelRefreshThread(QThread):
                     "ungated": bool(ungated),
                     "private": bool(payload.get("private", False)),
                     "downloads": int(payload.get("downloads", 0) or 0),
+                    "pipeline_tag": str(payload.get("pipeline_tag", "") or "").strip().lower(),
+                    "tags": [str(t).strip().lower() for t in tags if str(t).strip()],
                 }
         except urllib.error.HTTPError as exc:
             return {"ok": False, "model_id": model_id, "status": exc.code}
@@ -1744,10 +1852,22 @@ class LatestModelRefreshThread(QThread):
         if not records:
             return "", []
 
+        def _prefers_reference_image_flow(meta):
+            pipeline_tag = str(meta.get("pipeline_tag", "") or "").strip().lower()
+            if pipeline_tag == "image-to-image":
+                return True
+            tags = list(meta.get("tags", []) or [])
+            return (
+                "image-to-image" in tags or
+                "img2img" in tags or
+                "inpainting" in tags
+            )
+
         ranked = sorted(
             records,
             key=lambda m: (
                 1 if m.get("ungated") else 0,
+                1 if _prefers_reference_image_flow(m) else 0,
                 self._parse_last_modified(m.get("last_modified")),
                 int(m.get("downloads", 0)),
             ),
@@ -1768,17 +1888,17 @@ class LatestModelRefreshThread(QThread):
         if not sam_records:
             return "", []
 
-        # Prefer latest-listed ungated candidate. If none ungated, fallback to first reachable.
-        record_by_id = {rec["model_id"]: rec for rec in sam_records}
-        for model_id in self.sam_candidates:
-            rec = record_by_id.get(model_id)
-            if rec and rec.get("ungated"):
-                return f"hf:{model_id}", sam_records
-        for model_id in self.sam_candidates:
-            rec = record_by_id.get(model_id)
-            if rec:
-                return f"hf:{model_id}", sam_records
-        return "", sam_records
+        ranked = sorted(
+            sam_records,
+            key=lambda m: (
+                1 if m.get("ungated") else 0,
+                self._parse_last_modified(m.get("last_modified")),
+                int(m.get("downloads", 0)),
+            ),
+            reverse=True,
+        )
+        best = ranked[0]
+        return f"hf:{best.get('model_id', '')}", sam_records
 
     def _select_best_gemini(self):
         if not self.gemini_api_key:
@@ -1801,7 +1921,13 @@ class LatestModelRefreshThread(QThread):
                 low = name.lower()
                 if "gemini" not in low:
                     continue
-                if "deep-research" in low or "experimental" in low:
+                if (
+                    "deep-research" in low or
+                    "experimental" in low or
+                    "tts" in low or
+                    "computer-use" in low or
+                    "audio" in low
+                ):
                     continue
                 available.append(name)
 
@@ -1818,7 +1944,7 @@ class LatestModelRefreshThread(QThread):
                     minor = int(m.group(2) or 0)
                 score = (major * 1000) + (minor * 100)
                 if "image" in low:
-                    score += 80
+                    score += 120
                 if "pro" in low:
                     score += 50
                 if "flash" in low:
@@ -1905,7 +2031,7 @@ class GeminiTestThread(QThread):
             models_to_try = []
             
             # Exclusion list (same as generator)
-            excluded_keywords = ['deep-research', 'experimental']
+            excluded_keywords = ['deep-research', 'experimental', 'tts', 'computer-use', 'audio']
             
             def is_excluded(name):
                 return any(keyword in name.lower() for keyword in excluded_keywords)

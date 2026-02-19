@@ -1,17 +1,23 @@
 [general]
-name=ArcheoGlyph
+name=ArchaeoGlyph
 qgisMinimumVersion=3.0
 description=Archaeological Symbol Generator - Generate factual, map-ready symbols from artifact images
-version=0.1.0
-author=Jinseo Hwang
-email=your.email@example.com
+version=0.1.1
+author=lzpxilfe (balguljang2)
+email=balguljang2@gmail.com
 
-about=ArcheoGlyph helps archaeologists create factual, standardized symbols for GIS maps. Upload artifact or feature images and generate map-ready symbols using Auto Trace, AI (Hugging Face, Google Gemini, or local Stable Diffusion), or built-in templates. Features include style controls (Colored/Typology/Line/Measured), optional SAM segmentation, target layer selection, color adjustment, proportional sizing, and direct QGIS symbol library integration.
+about=ArchaeoGlyph helps archaeologists create factual, standardized symbols for GIS maps. Upload artifact or feature images and generate map-ready symbols using Auto Trace, AI (Hugging Face, Google Gemini, or local Stable Diffusion), or built-in templates. Features include style controls (Colored/Typology/Line/Measured), optional SAM segmentation, target layer selection, color adjustment, proportional sizing, and direct QGIS symbol library integration.
 
 tracker=https://github.com/lzpxilfe/ArcheoGlyph/issues
-repository=https://github.com/lzpxilfe/ArcheoGlyph
+repository=https://github.com/lzpxilfe/ArcheoGlyph.git
 
 changelog=
+    0.1.1 - Branding/metadata/docs refresh
+        * Display naming unified to ArchaeoGlyph
+        * Author metadata updated
+        * README rewritten for current feature set
+        * Added citation, star request, and Ko-fi support section
+        * Stable default HF model updated to FLUX.2-dev
     0.1.0 - Stable baseline
         * English-first UI and naming
         * Styles: Colored, Typology, Line, Measured
@@ -31,7 +37,7 @@ changelog=
 
 tags=archaeology, symbols, icons, artifacts, AI, image generation, GIS, mapping
 
-homepage=https://github.com/lzpxilfe/ArcheoGlyph
+homepage=https://github.com/lzpxilfe/ArcheoGlyph.git
 category=Sketching
 icon=resources/icon.svg
 experimental=False

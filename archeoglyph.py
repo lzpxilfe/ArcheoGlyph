@@ -39,9 +39,9 @@ class ArcheoGlyph:
             QCoreApplication.installTranslator(self.translator)
 
         self.actions = []
-        self.menu = self.tr('&ArcheoGlyph')
-        self.toolbar = self.iface.addToolBar('ArcheoGlyph')
-        self.toolbar.setObjectName('ArcheoGlyph')
+        self.menu = self.tr('&ArchaeoGlyph')
+        self.toolbar = self.iface.addToolBar('ArchaeoGlyph')
+        self.toolbar.setObjectName('ArchaeoGlyph')
         
         self.dialog = None
         self._migrate_settings()
@@ -55,7 +55,7 @@ class ArcheoGlyph:
         if settings.value('ArcheoGlyph/auto_update_models', None) is None:
             settings.setValue('ArcheoGlyph/auto_update_models', 'true')
         if not str(settings.value('ArcheoGlyph/sam_model_type', '')).strip():
-            settings.setValue('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-small')
+            settings.setValue('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-large')
         saved_version = str(settings.value('ArcheoGlyph/code_version', '')).strip()
         if saved_version == PLUGIN_VERSION:
             return
@@ -71,9 +71,13 @@ class ArcheoGlyph:
         if mask_backend not in ("auto", "opencv", "sam"):
             mask_backend = "auto"
             settings.setValue('ArcheoGlyph/mask_backend', mask_backend)
-        sam_model_type = str(settings.value('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-small')).strip().lower()
+        sam_model_type = str(settings.value('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-large')).strip().lower()
         if not sam_model_type:
-            sam_model_type = "hf:facebook/sam2.1-hiera-small"
+            sam_model_type = "hf:facebook/sam2.1-hiera-large"
+            settings.setValue('ArcheoGlyph/sam_model_type', sam_model_type)
+        elif sam_model_type == "hf:facebook/sam3-hiera-large":
+            # SAM3 public model availability can fluctuate; keep a stable default.
+            sam_model_type = "hf:facebook/sam2.1-hiera-large"
             settings.setValue('ArcheoGlyph/sam_model_type', sam_model_type)
         uses_hf_sam = sam_model_type.startswith("hf:")
         sam_checkpoint = str(settings.value('ArcheoGlyph/sam_checkpoint_path', '')).strip()
@@ -126,7 +130,7 @@ class ArcheoGlyph:
         
         self.add_action(
             icon_path,
-            text=self.tr('ArcheoGlyph Symbol Generator'),
+            text=self.tr('ArchaeoGlyph Symbol Generator'),
             callback=self.run,
             parent=self.iface.mainWindow()
         )
@@ -134,7 +138,7 @@ class ArcheoGlyph:
     def unload(self):
         """Remove the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
-            self.iface.removePluginMenu(self.tr('&ArcheoGlyph'), action)
+            self.iface.removePluginMenu(self.tr('&ArchaeoGlyph'), action)
             self.iface.removeToolBarIcon(action)
         del self.toolbar
 

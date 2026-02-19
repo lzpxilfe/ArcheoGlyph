@@ -3,17 +3,17 @@
 ArcheoGlyph shared defaults.
 """
 
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.1.1"
 
 DEFAULT_LIBRARY_SYMBOL_SIZE_MM = 10.0
 DEFAULT_MIN_SYMBOL_SIZE_MM = 10.0
 DEFAULT_MAX_SYMBOL_SIZE_MM = 24.0
 DEFAULT_GRADUATED_CLASSES = 5
 
-HF_DEFAULT_MODEL_ID = "black-forest-labs/FLUX.1-Kontext-dev"
+HF_DEFAULT_MODEL_ID = "black-forest-labs/FLUX.2-dev"
 HF_FALLBACK_MODEL_IDS = (
     HF_DEFAULT_MODEL_ID,
-    "black-forest-labs/FLUX.2-dev",
+    "black-forest-labs/FLUX.1-Kontext-dev",
     "Qwen/Qwen-Image-Edit-2511",
     "Qwen/Qwen-Image-Edit-2509",
     "Qwen/Qwen-Image-Edit",

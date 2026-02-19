@@ -280,10 +280,28 @@ class GeminiGenerator:
             'gemini-2.5-flash',
             'gemini-2.0-flash',
         ]
+
+        # Respect auto-refreshed preferred model from settings when available.
+        preferred_model = str(
+            self.settings.value('ArcheoGlyph/gemini_model_id', '')
+        ).strip()
+        if preferred_model.startswith('models/'):
+            preferred_model = preferred_model.replace('models/', '', 1)
+        if preferred_model:
+            start_models = [preferred_model] + start_models
+
+        normalized_start_models = []
+        for model_name in start_models:
+            normalized = str(model_name or "").strip()
+            if normalized.startswith('models/'):
+                normalized = normalized.replace('models/', '', 1)
+            if normalized and normalized not in normalized_start_models:
+                normalized_start_models.append(normalized)
+        start_models = normalized_start_models
         
         # Explicitly exclude models known to be unstable or quota-restricted for general use
         # "deep-research" caused 429 errors.
-        excluded_keywords = ['deep-research', 'experimental']
+        excluded_keywords = ['deep-research', 'experimental', 'tts', 'computer-use', 'audio']
 
         models_to_try = []
         try:
@@ -299,7 +317,9 @@ class GeminiGenerator:
             for m_pref in start_models:
                 # Direct match
                 if m_pref in available_map and not is_excluded(m_pref):
-                    models_to_try.append(available_map[m_pref])
+                    model_name = available_map[m_pref]
+                    if model_name not in models_to_try:
+                        models_to_try.append(model_name)
                     continue
                     
                 # Prefix match (e.g. 'gemini-2.5-flash' matches 'gemini-2.5-flash-preview-09-2025')
@@ -310,32 +330,49 @@ class GeminiGenerator:
                     # simplistic: sort and pick last (often highest version number)
                     matches.sort()
                     best_match = matches[-1]
-                    models_to_try.append(available_map[best_match])
+                    model_name = available_map[best_match]
+                    if model_name not in models_to_try:
+                        models_to_try.append(model_name)
             
             # 2. If none of the specific pro models found, fall back to any 'pro' model
             if not models_to_try:
                 for name, full_name in available_map.items():
-                    if 'pro' in name.lower() and not is_excluded(name) and full_name not in models_to_try:
+                    low = name.lower()
+                    if 'gemini' not in low:
+                        continue
+                    if 'pro' in low and not is_excluded(name) and full_name not in models_to_try:
                         models_to_try.append(full_name)
             
             # 3. If still nothing, try any 'flash' model
             if not models_to_try:
                 for name, full_name in available_map.items():
-                    if 'flash' in name.lower() and not is_excluded(name) and full_name not in models_to_try:
+                    low = name.lower()
+                    if 'gemini' not in low:
+                        continue
+                    if 'flash' in low and not is_excluded(name) and full_name not in models_to_try:
                         models_to_try.append(full_name)
                         
             # 4. Last resort: whatever is available (filtered)
             if not models_to_try:
-                models_to_try = [m for m in available_models if not is_excluded(m)]
+                models_to_try = [
+                    m for m in available_models
+                    if ('gemini' in m.lower() and not is_excluded(m))
+                ]
                 
         except Exception:
              # Offline fallback or API error list
-            models_to_try = [
+            models_to_try = []
+            if preferred_model:
+                models_to_try.append(f'models/{preferred_model}')
+            fallback_models = [
                 'models/gemini-3-pro-preview',
                 'models/gemini-3-flash-preview',
                 'models/gemini-2.5-flash',
                 'models/gemini-2.0-flash',
             ]
+            for fm in fallback_models:
+                if fm not in models_to_try:
+                    models_to_try.append(fm)
         
         last_error = None
         last_svg_issue = None

@@ -1,85 +1,115 @@
-# ArcheoGlyph
+# ArchaeoGlyph
 
 Archaeological Symbol Generator for QGIS.
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.1-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.0+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
-## Overview
-ArcheoGlyph generates factual, map-ready symbols from archaeological artifact and feature images.
-It supports deterministic tracing and AI-assisted generation, then applies output directly to QGIS workflows.
+ArchaeoGlyph generates factual, map-ready symbols from archaeological artifact and feature images, then applies them directly to QGIS layers or the symbol library.
 
-## Key Features
-- English-first UI for international use
-- Styles: `Colored`, `Typology`, `Line`, `Measured`
-- Auto Trace with contour + internal feature-line extraction
-- Optional SAM backend for segmentation (`OpenCV` fallback included)
-- Hugging Face reference-first image generation with modern model fallback
-- Google Gemini factual-mode generation with safety checks and deterministic fallback
-- Expanded template catalog: 58 built-in archaeological templates
-- Save to QGIS symbol library or apply directly to active layers
+Note:
+- Display name is `ArchaeoGlyph`.
+- Plugin folder/repository path remains `ArcheoGlyph` for compatibility.
+
+## Core Features
+
+- `Auto Trace` factual contour + internal line extraction (offline)
+- AI generation:
+  - Hugging Face (reference-first, model fallback)
+  - Google Gemini (factual guardrails + deterministic fallback)
+  - Local Stable Diffusion (Automatic1111)
+- Styles:
+  - `Colored`
+  - `Typology`
+  - `Line`
+  - `Measured`
+- Optional SAM segmentation backend with OpenCV fallback
+- Built-in archaeological template catalog (artifacts, structures, remains, features, survey)
+- Style parameter controls (`Factuality`, `Symbolic Looseness`, `Exaggeration`)
+- Save symbol to QGIS style library or apply directly to point layers
+- Graduated symbol sizing (field + class controls)
+- Latest-model management in Settings:
+  - `Check Latest Models` (preview)
+  - `Apply Latest Recommended Models`
 
 ## Version
-Current plugin code version: `0.1.0`
 
-### 0.1.0 includes
-- Migration guard for old settings (legacy HF model IDs are auto-upgraded)
-- Stable default HF model: `Qwen/Qwen-Image-Edit-2509`
-- English style/template naming
-- SAM beginner quick setup controls in settings
-- Improved template coverage across artifacts, structures, remains, features, and survey symbols
+Current plugin code version: `0.1.1`
+
+### 0.1.1 highlights
+
+- Branding unified to `ArchaeoGlyph` (display/UI/metadata)
+- Metadata author updated to `lzpxilfe (balguljang2)`
+- Latest-model UX improved (`Check` vs `Apply`)
+- Stable defaults and model-refresh behavior improvements
+- Low-quality round artifact extraction improvements in Auto Trace
 
 ## Installation
-1. Copy `ArcheoGlyph` folder to the QGIS plugins directory:
+
+1. Copy the `ArcheoGlyph` plugin folder into:
    - Windows: `%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\`
    - Linux: `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/`
    - macOS: `~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/`
-2. Restarㅋㅋt QGIS.
-3. Enable: `Plugins > Manage and Install Plugins > ArcheoGlyph`.
+2. Restart QGIS.
+3. Enable from `Plugins > Manage and Install Plugins > ArchaeoGlyph`.
 
 ## Quick Start
-1. Open ArcheoGlyph from the toolbar.
-2. Drop an input image (artifact/feature) or select `Use Template`.
-3. Choose generation mode and style (`Colored`, `Typology`, `Line`, `Measured`).
+
+1. Open `ArchaeoGlyph` from toolbar/menu.
+2. Drop an input image or choose `Use Template`.
+3. Pick generation mode + style.
 4. Click `Generate`.
 5. Click `Save to Library` or `Apply to Layer`.
 
-## AI Configuration
+## AI Setup
 
 ### Hugging Face
-1. Create a token at: https://huggingface.co/settings/tokens
-2. Add the token in plugin settings.
-3. Recommended models:
-   - `Qwen/Qwen-Image-Edit-2509`
-   - `black-forest-labs/FLUX.2-dev`
-   - `black-forest-labs/FLUX.1-Kontext-dev`
+
+1. Create token: https://huggingface.co/settings/tokens
+2. Enter token in plugin Settings.
+3. Use `Check Latest Models` then `Apply Latest Recommended Models`.
 
 ### Google Gemini
-1. Create an API key at: https://makersuite.google.com/app/apikey
+
+1. Create key: https://makersuite.google.com/app/apikey
 2. Install dependency:
-   ```bash
-   pip install google-generativeai
-   ```
-3. Add key in plugin settings.
 
-### Optional SAM for Auto Trace
-Use `Settings > Hugging Face > Advanced`:
-1. Click `Install SAM Package`
-2. Click `Download ViT-B Checkpoint`
-3. Click `Auto-Find Downloaded File`
-4. Set backend to `SAM (Optional)` and save settings
+```bash
+pip install google-generativeai
+```
 
-## Documentation
-- `docs/ai_setup_guide.md`
-- `docs/local_model_setup.md`
+3. Enter key in plugin Settings.
 
-## License
-MIT License. See `LICENSE`.
+### Local Stable Diffusion (Automatic1111)
 
-## Contributing
-Issues and pull requests are welcome:
-- Repository: https://github.com/lzpxilfe/ArcheoGlyph
+1. Start WebUI with API enabled.
+2. Set server URL in Settings (`http://127.0.0.1:7860` by default).
+
+## Repository
+
+- GitHub: https://github.com/lzpxilfe/ArcheoGlyph.git
 - Issues: https://github.com/lzpxilfe/ArcheoGlyph/issues
 
-If ArcheoGlyph helps your work, please star the repository.
+## Citation & Star
+
+이 플러그인이 유용했다면 GitHub Star ⭐를 눌러주세요! 개발자에게 큰 힘이 됩니다.  
+If you find this repository useful, please consider giving it a star ⭐ and citing it in your work:
+
+```bibtex
+@software{hwang2026archaeoglyph,
+  author = {lzpxilfe (balguljang2)},
+  title = {ArchaeoGlyph: Archaeological Symbol Generator for QGIS},
+  year = {2026},
+  url = {https://github.com/lzpxilfe/ArcheoGlyph.git}
+}
+```
+
+## Support (Ko-fi)
+
+If ArchaeoGlyph helps your research or workflow, you can support development here:  
+https://ko-fi.com/lzpxilfe
+
+## License
+
+MIT License.

@@ -66,16 +66,31 @@ class LocalGenerator:
     def __init__(self):
         """Initialize the local generator."""
         self.settings = QSettings()
-        self.backend = "automatic1111"
+        stored_backend = str(self.settings.value('ArcheoGlyph/sd_backend', 'automatic1111')).strip().lower()
+        if stored_backend not in self.BACKENDS:
+            stored_backend = 'automatic1111'
+        self.backend = stored_backend
+
+        self.server_url = str(
+            self.settings.value('ArcheoGlyph/sd_server', 'http://127.0.0.1:7860')
+        ).strip() or 'http://127.0.0.1:7860'
+
+        # Persist normalized values only.
         self.settings.setValue('ArcheoGlyph/sd_backend', self.backend)
-        self.server_url = self.settings.value('ArcheoGlyph/sd_server', 'http://127.0.0.1:7860')
+        self.settings.setValue('ArcheoGlyph/sd_server', self.server_url)
         
     def set_server(self, url, backend='automatic1111'):
         """Save server settings."""
-        self.server_url = url
-        self.backend = backend
-        self.settings.setValue('ArcheoGlyph/sd_server', url)
-        self.settings.setValue('ArcheoGlyph/sd_backend', backend)
+        normalized_backend = str(backend or 'automatic1111').strip().lower()
+        if normalized_backend not in self.BACKENDS:
+            normalized_backend = 'automatic1111'
+        self.backend = normalized_backend
+
+        normalized_url = str(url or '').strip() or 'http://127.0.0.1:7860'
+        self.server_url = normalized_url
+
+        self.settings.setValue('ArcheoGlyph/sd_server', normalized_url)
+        self.settings.setValue('ArcheoGlyph/sd_backend', normalized_backend)
         
     def test_connection(self):
         """Test connection to the local SD server."""
@@ -150,20 +165,40 @@ class LocalGenerator:
             "sampler_name": "DPM++ 2M Karras"
         }
         
-        response = requests.post(
-            f"{self.server_url}/sdapi/v1/img2img",
-            json=payload,
-            timeout=120
-        )
-        
-        if response.status_code == 200:
+        api_url = f"{self.server_url}/sdapi/v1/img2img"
+        try:
+            response = requests.post(
+                api_url,
+                json=payload,
+                timeout=120
+            )
+        except requests.RequestException as exc:
+            raise ConnectionError(f"Automatic1111 request failed at {api_url}: {exc}")
+
+        if response.status_code != 200:
+            detail = (response.text or "").strip()
+            if len(detail) > 220:
+                detail = detail[:220] + "..."
+            raise RuntimeError(
+                f"Automatic1111 returned HTTP {response.status_code}"
+                + (f": {detail}" if detail else "")
+            )
+
+        try:
             result = response.json()
-            if 'images' in result and len(result['images']) > 0:
-                image_base64 = result['images'][0]
-                image_bytes = base64.b64decode(image_base64)
-                return self._bytes_to_image(image_bytes)
-                
-        return None
+        except Exception:
+            raise RuntimeError("Automatic1111 returned non-JSON response.")
+
+        images = result.get('images', [])
+        if not images:
+            raise RuntimeError("Automatic1111 response contained no generated images.")
+
+        image_base64 = images[0]
+        try:
+            image_bytes = base64.b64decode(image_base64)
+        except Exception:
+            raise RuntimeError("Automatic1111 returned invalid base64 image payload.")
+        return self._bytes_to_image(image_bytes)
 
     def _normalize_style(self, style):
         """Map style labels to canonical keys."""

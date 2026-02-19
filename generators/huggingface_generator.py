@@ -859,9 +859,10 @@ class HuggingFaceGenerator:
                 )
             elif style_key == STYLE_TYPOLOGY:
                 use_contour_seed = (
-                    factuality_v >= 70 and
-                    symbolic_v <= 50 and
-                    float(prompt_influence) < 0.32
+                    factuality_v >= 92 and
+                    symbolic_v <= 18 and
+                    exaggeration_v <= 14 and
+                    float(prompt_influence) < 0.08
                 )
             else:
                 use_contour_seed = (
