@@ -268,6 +268,14 @@ class ArcheoGlyphDialog(QDialog):
         tip_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px;")
         tip_label.setWordWrap(True)
         input_layout.addWidget(tip_label)
+
+        self.image_quality_hint_label = QLabel("")
+        self.image_quality_hint_label.setStyleSheet(
+            "color: #8a4b00; font-size: 10px; padding: 2px;"
+        )
+        self.image_quality_hint_label.setWordWrap(True)
+        self.image_quality_hint_label.setVisible(False)
+        input_layout.addWidget(self.image_quality_hint_label)
         
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self.clear_input)
@@ -357,6 +365,40 @@ class ArcheoGlyphDialog(QDialog):
             "Produces a bilaterally symmetrical symbol by mirroring the contour."
         )
         basic_layout.addWidget(self.symmetry_check)
+
+        upscale_default = self.settings.value(
+            "ArcheoGlyph/autotrace_force_upscale",
+            True,
+            type=bool,
+        )
+        self.autotrace_upscale_check = QCheckBox("Low-res detail boost (upscale)")
+        self.autotrace_upscale_check.setChecked(bool(upscale_default))
+        self.autotrace_upscale_check.setToolTip(
+            "Auto Trace only. Aggressively upscales low-resolution images before contour analysis."
+        )
+        self.autotrace_upscale_check.toggled.connect(self._on_autotrace_upscale_toggled)
+        basic_layout.addWidget(self.autotrace_upscale_check)
+
+        detail_mode_default = str(
+            self.settings.value("ArcheoGlyph/autotrace_detail_mode", "precise")
+        ).strip().lower()
+        if detail_mode_default not in ("fast", "precise"):
+            detail_mode_default = "precise"
+
+        detail_mode_row = QHBoxLayout()
+        detail_mode_row.addWidget(QLabel("Auto Trace quality:"))
+        self.autotrace_detail_mode_combo = QComboBox()
+        self.autotrace_detail_mode_combo.addItem("Fast (speed priority)", "fast")
+        self.autotrace_detail_mode_combo.addItem("Precise (detail priority)", "precise")
+        detail_idx = self.autotrace_detail_mode_combo.findData(detail_mode_default)
+        if detail_idx < 0:
+            detail_idx = 1
+        self.autotrace_detail_mode_combo.setCurrentIndex(detail_idx)
+        self.autotrace_detail_mode_combo.currentIndexChanged.connect(
+            self._on_autotrace_detail_mode_changed
+        )
+        detail_mode_row.addWidget(self.autotrace_detail_mode_combo, 1)
+        basic_layout.addLayout(detail_mode_row)
         basic_layout.addStretch()
         style_tabs.addTab(basic_tab, "Basic")
 
@@ -639,17 +681,22 @@ class ArcheoGlyphDialog(QDialog):
     def on_image_loaded(self, file_path):
         """Handle when an image is loaded."""
         self.generate_btn.setEnabled(True)
+        self._update_input_quality_notice(file_path)
         
     def clear_input(self):
         """Clear the input image."""
         self.image_drop.clear_image()
+        self._update_input_quality_notice(None)
         
     def on_mode_changed(self, button):
         """Handle generation mode change."""
         is_template = button == self.template_radio
+        is_autotrace = button == self.autotrace_radio
         self.template_group.setVisible(is_template)
         self.style_group.setVisible(not is_template)
         self._set_mode_info_with_controls(show_controls=False)
+        self.autotrace_upscale_check.setEnabled(is_autotrace)
+        self.autotrace_detail_mode_combo.setEnabled(is_autotrace)
 
         # Show prompt input for HF mode (and maybe others in future)
         self.prompt_group.setVisible(
@@ -681,6 +728,73 @@ class ArcheoGlyphDialog(QDialog):
                 border-radius: 4px;
             }}
         """)
+
+    def _on_autotrace_upscale_toggled(self, checked):
+        """Persist Auto Trace low-resolution upscale preference."""
+        self.settings.setValue("ArcheoGlyph/autotrace_force_upscale", bool(checked))
+
+    def _on_autotrace_detail_mode_changed(self, _index):
+        """Persist Auto Trace detail mode preference."""
+        mode = str(self.autotrace_detail_mode_combo.currentData() or "precise").strip().lower()
+        if mode not in ("fast", "precise"):
+            mode = "precise"
+        self.settings.setValue("ArcheoGlyph/autotrace_detail_mode", mode)
+
+    def _update_input_quality_notice(self, file_path):
+        """Show warning text when source image quality is likely too low."""
+        if not file_path or not os.path.exists(file_path):
+            self.image_quality_hint_label.setVisible(False)
+            self.image_quality_hint_label.setText("")
+            return
+
+        def _s_int(key, default):
+            try:
+                return int(self.settings.value(key, default))
+            except Exception:
+                return int(default)
+
+        weak_kb = max(1, _s_int("ArcheoGlyph/image_warn_min_kb", 180))
+        weak_short_px = max(128, _s_int("ArcheoGlyph/image_warn_min_short_px", 700))
+        recommended_kb = max(weak_kb, _s_int("ArcheoGlyph/image_warn_recommended_kb", 300))
+        recommended_short_px = max(
+            weak_short_px,
+            _s_int("ArcheoGlyph/image_warn_recommended_short_px", 900),
+        )
+
+        try:
+            size_kb = int(round(float(os.path.getsize(file_path)) / 1024.0))
+        except Exception:
+            size_kb = 0
+
+        px = QPixmap(file_path)
+        if px.isNull():
+            self.image_quality_hint_label.setVisible(False)
+            self.image_quality_hint_label.setText("")
+            return
+
+        width = int(px.width())
+        height = int(px.height())
+        short_side = min(width, height)
+
+        low_detail = (size_kb < weak_kb) or (short_side < weak_short_px)
+        borderline = (size_kb < recommended_kb) or (short_side < recommended_short_px)
+
+        if not (low_detail or borderline):
+            self.image_quality_hint_label.setVisible(False)
+            self.image_quality_hint_label.setText("")
+            return
+
+        if low_detail:
+            level = "Low-detail input detected"
+        else:
+            level = "Input quality is borderline"
+
+        self.image_quality_hint_label.setText(
+            f"<b>{level}</b> ({size_kb} KB, {width}x{height}). "
+            f"Bronze mirror motifs can be missed. Recommended: >= {recommended_kb} KB and short side >= {recommended_short_px}px. "
+            "Try tighter crop + Low-res detail boost (upscale)."
+        )
+        self.image_quality_hint_label.setVisible(True)
         
     def pick_color(self):
         """Open color picker dialog."""
@@ -735,11 +849,18 @@ class ArcheoGlyphDialog(QDialog):
                 from ..generators.contour_generator import ContourGenerator
                 self._current_generator = ContourGenerator()
                 target_func = self._current_generator.generate
+                detail_mode = str(
+                    self.autotrace_detail_mode_combo.currentData() or "precise"
+                ).strip().lower()
+                if detail_mode not in ("fast", "precise"):
+                    detail_mode = "precise"
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
                     'color': selected_color,
                     'symmetry': self.symmetry_check.isChecked(),
+                    'force_lowres_upscale': self.autotrace_upscale_check.isChecked(),
+                    'detail_mode': detail_mode,
                     STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
                     STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
                     STYLE_CONTROL_EXAGGERATION: controls[STYLE_CONTROL_EXAGGERATION],
@@ -971,6 +1092,18 @@ class ArcheoGlyphDialog(QDialog):
         
         dialog = SettingsDialog(self)
         dialog.exec_()
+        detail_mode = str(
+            self.settings.value("ArcheoGlyph/autotrace_detail_mode", "precise")
+        ).strip().lower()
+        if detail_mode not in ("fast", "precise"):
+            detail_mode = "precise"
+        detail_idx = self.autotrace_detail_mode_combo.findData(detail_mode)
+        if detail_idx >= 0:
+            self.autotrace_detail_mode_combo.setCurrentIndex(detail_idx)
+        self.autotrace_upscale_check.setChecked(
+            self.settings.value("ArcheoGlyph/autotrace_force_upscale", True, type=bool)
+        )
+        self._update_input_quality_notice(self.image_drop.image_path)
 
     def _update_style_param_labels(self):
         """Update labels for style parameter sliders."""

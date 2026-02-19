@@ -312,6 +312,55 @@ class SettingsDialog(QDialog):
         advanced_layout.addWidget(self.hf_overlay_linework_check)
 
         layout.addWidget(advanced_group)
+
+        quality_group = QGroupBox("Auto Trace Quality Assist")
+        quality_layout = QVBoxLayout(quality_group)
+        quality_layout.addWidget(QLabel(
+            "Control Auto Trace speed/detail profile and low-quality warning thresholds "
+            "shown in the main generator window."
+        ))
+
+        detail_mode_row = QHBoxLayout()
+        detail_mode_row.addWidget(QLabel("Auto Trace detail mode:"))
+        self.autotrace_detail_mode_combo = QComboBox()
+        self.autotrace_detail_mode_combo.addItem("Fast (speed priority)", "fast")
+        self.autotrace_detail_mode_combo.addItem("Precise (detail priority)", "precise")
+        detail_mode_row.addWidget(self.autotrace_detail_mode_combo, 1)
+        quality_layout.addLayout(detail_mode_row)
+
+        weak_row = QHBoxLayout()
+        weak_row.addWidget(QLabel("Warning threshold (minimum):"))
+        self.image_warn_min_kb_spin = QSpinBox()
+        self.image_warn_min_kb_spin.setRange(50, 5000)
+        self.image_warn_min_kb_spin.setSuffix(" KB")
+        weak_row.addWidget(self.image_warn_min_kb_spin)
+        self.image_warn_min_short_px_spin = QSpinBox()
+        self.image_warn_min_short_px_spin.setRange(256, 4096)
+        self.image_warn_min_short_px_spin.setSuffix(" px")
+        weak_row.addWidget(self.image_warn_min_short_px_spin)
+        quality_layout.addLayout(weak_row)
+
+        rec_row = QHBoxLayout()
+        rec_row.addWidget(QLabel("Recommended threshold:"))
+        self.image_warn_recommended_kb_spin = QSpinBox()
+        self.image_warn_recommended_kb_spin.setRange(50, 5000)
+        self.image_warn_recommended_kb_spin.setSuffix(" KB")
+        rec_row.addWidget(self.image_warn_recommended_kb_spin)
+        self.image_warn_recommended_short_px_spin = QSpinBox()
+        self.image_warn_recommended_short_px_spin.setRange(256, 4096)
+        self.image_warn_recommended_short_px_spin.setSuffix(" px")
+        rec_row.addWidget(self.image_warn_recommended_short_px_spin)
+        quality_layout.addLayout(rec_row)
+
+        quality_help = QLabel(
+            "For bronze mirrors, typical practical floor is around 180KB / 700px short side; "
+            "recommended starts around 300KB / 900px short side."
+        )
+        quality_help.setWordWrap(True)
+        quality_help.setStyleSheet("color: #666; font-size: 11px;")
+        quality_layout.addWidget(quality_help)
+
+        layout.addWidget(quality_group)
         
         # Connection Test
         test_btn = QPushButton("Test Hugging Face Connection")
@@ -1318,6 +1367,27 @@ class SettingsDialog(QDialog):
             self.settings.value('ArcheoGlyph/auto_update_models', 'true'),
             default=True,
         )
+        autotrace_detail_mode = str(
+            self.settings.value('ArcheoGlyph/autotrace_detail_mode', 'precise')
+        ).strip().lower()
+        if autotrace_detail_mode not in ("fast", "precise"):
+            autotrace_detail_mode = "precise"
+        image_warn_min_kb = self._parse_int_setting(
+            self.settings.value('ArcheoGlyph/image_warn_min_kb', 180),
+            default=180,
+        )
+        image_warn_min_short_px = self._parse_int_setting(
+            self.settings.value('ArcheoGlyph/image_warn_min_short_px', 700),
+            default=700,
+        )
+        image_warn_recommended_kb = self._parse_int_setting(
+            self.settings.value('ArcheoGlyph/image_warn_recommended_kb', 300),
+            default=300,
+        )
+        image_warn_recommended_short_px = self._parse_int_setting(
+            self.settings.value('ArcheoGlyph/image_warn_recommended_short_px', 900),
+            default=900,
+        )
             
         sd_url = self.settings.value('ArcheoGlyph/sd_server', 'http://127.0.0.1:7860')
         
@@ -1326,6 +1396,26 @@ class SettingsDialog(QDialog):
         self.hf_model_input.setText(hf_model)
         self.auto_refresh_models_check.setChecked(auto_update_models)
         self.sd_url_input.setText(sd_url)
+        mode_idx = self.autotrace_detail_mode_combo.findData(autotrace_detail_mode)
+        if mode_idx < 0:
+            mode_idx = self.autotrace_detail_mode_combo.findData("precise")
+        if mode_idx >= 0:
+            self.autotrace_detail_mode_combo.setCurrentIndex(mode_idx)
+
+        image_warn_min_kb = max(50, min(5000, int(image_warn_min_kb)))
+        image_warn_min_short_px = max(256, min(4096, int(image_warn_min_short_px)))
+        image_warn_recommended_kb = max(
+            image_warn_min_kb,
+            min(5000, int(image_warn_recommended_kb)),
+        )
+        image_warn_recommended_short_px = max(
+            image_warn_min_short_px,
+            min(4096, int(image_warn_recommended_short_px)),
+        )
+        self.image_warn_min_kb_spin.setValue(image_warn_min_kb)
+        self.image_warn_min_short_px_spin.setValue(image_warn_min_short_px)
+        self.image_warn_recommended_kb_spin.setValue(image_warn_recommended_kb)
+        self.image_warn_recommended_short_px_spin.setValue(image_warn_recommended_short_px)
 
         idx = self.mask_backend_combo.findData(str(mask_backend).strip().lower())
         if idx >= 0:
@@ -1431,6 +1521,23 @@ class SettingsDialog(QDialog):
             'ArcheoGlyph/auto_update_models',
             'true' if self.auto_refresh_models_check.isChecked() else 'false'
         )
+        detail_mode = str(self.autotrace_detail_mode_combo.currentData() or "precise").strip().lower()
+        if detail_mode not in ("fast", "precise"):
+            detail_mode = "precise"
+        warn_min_kb = int(self.image_warn_min_kb_spin.value())
+        warn_min_short_px = int(self.image_warn_min_short_px_spin.value())
+        warn_rec_kb = max(warn_min_kb, int(self.image_warn_recommended_kb_spin.value()))
+        warn_rec_short_px = max(
+            warn_min_short_px,
+            int(self.image_warn_recommended_short_px_spin.value()),
+        )
+        self.image_warn_recommended_kb_spin.setValue(warn_rec_kb)
+        self.image_warn_recommended_short_px_spin.setValue(warn_rec_short_px)
+        self.settings.setValue('ArcheoGlyph/autotrace_detail_mode', detail_mode)
+        self.settings.setValue('ArcheoGlyph/image_warn_min_kb', warn_min_kb)
+        self.settings.setValue('ArcheoGlyph/image_warn_min_short_px', warn_min_short_px)
+        self.settings.setValue('ArcheoGlyph/image_warn_recommended_kb', warn_rec_kb)
+        self.settings.setValue('ArcheoGlyph/image_warn_recommended_short_px', warn_rec_short_px)
         self.settings.setValue('ArcheoGlyph/sd_server', self.sd_url_input.text())
         self._refresh_sam_status()
         
@@ -1440,6 +1547,13 @@ class SettingsDialog(QDialog):
             "Your settings have been saved!\n\n"
             "If you installed a new package, please restart QGIS."
         )
+
+    def _parse_int_setting(self, value, default=0):
+        """Parse integer settings safely with fallback."""
+        try:
+            return int(str(value).strip())
+        except Exception:
+            return int(default)
 
     def test_huggingface_connection(self):
         """Test Hugging Face connection asynchronously."""

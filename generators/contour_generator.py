@@ -48,6 +48,8 @@ class ContourGenerator:
         style=None,
         color=None,
         symmetry=False,
+        force_lowres_upscale=False,
+        detail_mode=None,
         factuality=None,
         symbolic_looseness=None,
         exaggeration=None,
@@ -59,6 +61,8 @@ class ContourGenerator:
         :param style: style name
         :param color: optional fixed color (hex)
         :param symmetry: optional mirror symmetry
+        :param force_lowres_upscale: force stronger analysis upscaling for low-res inputs
+        :param detail_mode: "fast" or "precise"
         :param factuality: 0..100, higher keeps measured/documentary detail
         :param symbolic_looseness: 0..100, higher simplifies toward symbolic output
         :param exaggeration: 0..100, higher strengthens stylization emphasis
@@ -74,7 +78,18 @@ class ContourGenerator:
         if img is None:
             raise ValueError("Failed to load image.")
 
-        processing_img, _analysis_scale = self._adaptive_prescale(img)
+        detail_mode_key = str(
+            detail_mode or self.settings.value("ArcheoGlyph/autotrace_detail_mode", "precise")
+        ).strip().lower()
+        if detail_mode_key not in ("fast", "precise"):
+            detail_mode_key = "precise"
+        detail_fast = detail_mode_key == "fast"
+
+        processing_img, _analysis_scale = self._adaptive_prescale(
+            img,
+            force_lowres_upscale=bool(force_lowres_upscale),
+            detail_fast=detail_fast,
+        )
 
         if len(processing_img.shape) == 4:
             processing_bgr = cv2.cvtColor(processing_img, cv2.COLOR_BGRA2BGR)
@@ -84,10 +99,16 @@ class ContourGenerator:
         target_mask = self._get_mask(processing_bgr)
         processing_bgr, target_mask = self._auto_upright(processing_bgr, target_mask)
         edge_density = self._estimate_masked_edge_density(processing_bgr, target_mask)
-        low_quality_input = (
-            min(processing_bgr.shape[0], processing_bgr.shape[1]) < 460
-            or edge_density < 0.024
-        )
+        if detail_fast:
+            low_quality_input = (
+                min(processing_bgr.shape[0], processing_bgr.shape[1]) < 520
+                or edge_density < 0.028
+            )
+        else:
+            low_quality_input = (
+                min(processing_bgr.shape[0], processing_bgr.shape[1]) < 560
+                or edge_density < 0.031
+            )
         detail_bgr = self._prepare_detail_source(
             processing_bgr,
             target_mask,
@@ -145,6 +166,13 @@ class ContourGenerator:
                 main_contour = hull
                 contour_area = float(cv2.contourArea(main_contour))
                 contour_perimeter = float(cv2.arcLength(main_contour, True))
+        fast_round_structural = bool(
+            is_roundish and
+            is_publication and
+            low_quality_input and
+            factuality_v >= 0.72 and
+            symbolic_v <= 0.48
+        )
 
         if is_typology:
             base_epsilon = 0.0026
@@ -203,54 +231,75 @@ class ContourGenerator:
             target_mask,
             max_lines=terminal_target,
         )
-        texture_lines = self._extract_internal_lines(detail_bgr, target_mask, main_contour)
+        texture_lines = [] if fast_round_structural else self._extract_internal_lines_multisource(
+            detail_bgr=detail_bgr,
+            base_bgr=processing_bgr,
+            target_mask=target_mask,
+            main_contour=main_contour,
+            low_quality=low_quality_input,
+            is_roundish=is_roundish,
+            detail_mode=detail_mode_key,
+        )
         round_motif_limit = int(round(self._clamp(
             (2.0 + (8.0 * factuality_v) - (3.0 * symbolic_v) - (2.0 * exaggeration_v)),
             0.0,
             10.0,
         )))
         round_motif_select_limit = round_motif_limit
+        if is_roundish and low_quality_input:
+            round_motif_limit = max(round_motif_limit, 14)
+            round_motif_select_limit = max(round_motif_select_limit, 12)
+        if detail_fast:
+            round_motif_limit = min(round_motif_limit, 9)
+            round_motif_select_limit = min(round_motif_select_limit, 8)
         if is_roundish and is_publication:
             # Round measured drawings (e.g. bronze mirrors) need richer motif capture.
             round_motif_select_limit = max(
                 round_motif_limit,
                 max(7, min(11, texture_count + 4)),
             )
-        round_motif_lines = self._select_round_inner_motif_lines(
-            texture_lines + self._extract_round_motif_lines(
+        if fast_round_structural:
+            round_motif_lines = []
+            round_relief_lines = []
+            round_relief_region_lines = []
+            round_polar_motif_lines = []
+            round_center_motif_lines = []
+        else:
+            round_motif_lines = self._select_round_inner_motif_lines(
+                texture_lines + self._extract_round_motif_lines(
+                    detail_bgr,
+                    target_mask,
+                    main_contour,
+                    max_lines=max(18, round_motif_select_limit * 3),
+                ),
+                target_mask,
+                max_lines=round_motif_select_limit,
+                prefer_outer=(is_roundish and is_publication and (not low_quality_input)),
+            ) if is_roundish else []
+            round_relief_lines = self._extract_round_relief_lines(
                 detail_bgr,
                 target_mask,
                 main_contour,
-                max_lines=max(18, round_motif_select_limit * 3),
-            ),
-            target_mask,
-            max_lines=round_motif_select_limit,
-            prefer_outer=(is_roundish and is_publication and (not low_quality_input)),
-        ) if is_roundish else []
-        round_relief_lines = self._extract_round_relief_lines(
-            detail_bgr,
-            target_mask,
-            main_contour,
-            max_lines=max(10, round_motif_select_limit * 3),
-        ) if (is_roundish and is_publication) else []
-        round_relief_region_lines = self._extract_round_relief_region_lines(
-            detail_bgr,
-            target_mask,
-            main_contour,
-            max_lines=max(8, round_motif_select_limit * 2),
-        ) if (is_roundish and is_publication) else []
-        round_polar_motif_lines = self._extract_round_polar_motif_lines(
-            detail_bgr,
-            target_mask,
-            main_contour,
-            max_lines=max(8, round_motif_select_limit * 2),
-        ) if (is_roundish and is_publication) else []
-        round_center_motif_lines = self._extract_round_center_motif_lines(
-            detail_bgr,
-            target_mask,
-            main_contour,
-            max_lines=max(6, round_motif_select_limit),
-        ) if (is_roundish and is_publication) else []
+                max_lines=max(10, round_motif_select_limit * 3),
+            ) if (is_roundish and is_publication) else []
+            round_relief_region_lines = self._extract_round_relief_region_lines(
+                detail_bgr,
+                target_mask,
+                main_contour,
+                max_lines=max(8, round_motif_select_limit * 2),
+            ) if (is_roundish and is_publication) else []
+            round_polar_motif_lines = self._extract_round_polar_motif_lines(
+                detail_bgr,
+                target_mask,
+                main_contour,
+                max_lines=max(8, round_motif_select_limit * 2),
+            ) if (is_roundish and is_publication) else []
+            round_center_motif_lines = self._extract_round_center_motif_lines(
+                detail_bgr,
+                target_mask,
+                main_contour,
+                max_lines=max(6, round_motif_select_limit),
+            ) if (is_roundish and is_publication) else []
 
         if is_typology:
             if is_roundish:
@@ -263,150 +312,19 @@ class ContourGenerator:
                 internal_lines = profile_lines[:profile_count] + spine_lines[:1] + terminal_lines[:terminal_count]
         elif is_publication:
             if is_roundish:
-                # For round artifacts, prefer motif lines over forced center spine.
-                internal_lines = []
-                motif_target = max(7, min(11, round_motif_select_limit + 1))
-                prefer_region = len(round_relief_region_lines) >= 4
-                motif_lines = []
-                candidate_pool = []
-                if prefer_region:
-                    candidate_pool = list(round_polar_motif_lines)
-                    candidate_pool += list(round_relief_region_lines)
-                    candidate_pool += list(round_center_motif_lines)
-                    candidate_pool += list(round_motif_lines[:max(2, motif_target // 4)])
-                else:
-                    candidate_pool = (
-                        list(round_polar_motif_lines)
-                        + list(round_center_motif_lines)
-                        + list(round_motif_lines)
-                        + list(round_relief_lines)
-                        + list(round_relief_region_lines)
-                    )
-                if candidate_pool:
-                    motif_lines = self._select_round_inner_motif_lines(
-                        candidate_pool,
-                        target_mask,
-                        max_lines=max(round_motif_select_limit + 2, 8),
-                        prefer_outer=True,
-                    )
-                if len(motif_lines) < 2 and candidate_pool:
-                    motif_lines = candidate_pool
-                if motif_lines:
-                    internal_lines += motif_lines[:max(4, motif_target // 2)]
-                # Always backfill with region/relief candidates to meet motif density target.
-                if round_polar_motif_lines:
-                    internal_lines = self._merge_distinct_lines(
-                        internal_lines,
-                        round_polar_motif_lines,
-                        min_center_sep=2.8,
-                        max_lines=motif_target,
-                        min_arc_len=6.0,
-                    )
-                if round_relief_region_lines:
-                    internal_lines = self._merge_distinct_lines(
-                        internal_lines,
-                        round_relief_region_lines,
-                        min_center_sep=3.2,
-                        max_lines=motif_target,
-                        min_arc_len=8.0,
-                    )
-                if (not prefer_region) and round_relief_lines:
-                    internal_lines = self._merge_distinct_lines(
-                        internal_lines,
-                        round_relief_lines,
-                        min_center_sep=3.2,
-                        max_lines=motif_target,
-                        min_arc_len=8.0,
-                    )
-                if round_motif_lines:
-                    internal_lines = self._merge_distinct_lines(
-                        internal_lines,
-                        round_motif_lines,
-                        min_center_sep=3.0,
-                        max_lines=motif_target,
-                        min_arc_len=7.0,
-                    )
-                internal_lines = self._regularize_round_publication_lines(
-                    internal_lines,
-                    target_mask,
-                    max_lines=motif_target,
-                )
-                internal_lines = self._suppress_round_ring_lines(
-                    internal_lines,
-                    target_mask,
-                    max_ring_lines=0,
-                )
-                internal_lines = self._augment_round_rotational_symmetry(
-                    internal_lines,
-                    target_mask,
-                    desired_lines=max(5, motif_target - 1),
-                )
-                ys_round, xs_round = np.where(target_mask > 0)
-                if len(xs_round) > 50:
-                    cx_round = float(np.mean(xs_round))
-                    cy_round = float(np.mean(ys_round))
-                    angular_cov = self._round_line_angular_coverage(internal_lines, cx_round, cy_round, bins=12)
-                    ring_ratio = self._round_ring_line_ratio(internal_lines, target_mask)
-                else:
-                    angular_cov = 1.0
-                    ring_ratio = 0.0
-                if len(internal_lines) < 4 or angular_cov < 0.34 or ring_ratio > 0.58:
-                    angular_markers = self._estimate_round_angular_motif_markers(
-                        detail_bgr,
-                        target_mask,
-                        max_lines=max(8, motif_target),
-                    )
-                    internal_lines = self._merge_distinct_lines(
-                        internal_lines,
-                        angular_markers,
-                        min_center_sep=2.8,
-                        max_lines=motif_target,
-                        min_arc_len=6.0,
-                    )
-                    internal_lines = self._merge_distinct_lines(
-                        internal_lines,
-                        round_polar_motif_lines,
-                        min_center_sep=2.8,
-                        max_lines=motif_target,
-                        min_arc_len=6.0,
-                    )
-                    internal_lines = self._regularize_round_publication_lines(
-                        internal_lines,
-                        target_mask,
+                if fast_round_structural:
+                    motif_target = max(6, min(9, round_motif_select_limit + 1))
+                    internal_lines = self._build_round_structural_lines(
+                        target_mask=target_mask,
+                        main_contour=main_contour,
+                        round_lines=round_lines,
                         max_lines=motif_target,
                     )
-                    internal_lines = self._suppress_round_ring_lines(
-                        internal_lines,
-                        target_mask,
-                        max_ring_lines=1,
-                    )
-                if low_quality_input and len(internal_lines) < max(4, motif_target // 2):
-                    low_quality_lines = self._extract_round_low_quality_lines(
-                        detail_bgr,
-                        target_mask,
-                        main_contour,
-                        max_lines=max(8, motif_target + 2),
-                    )
-                    internal_lines = self._merge_distinct_lines(
-                        internal_lines,
-                        low_quality_lines,
-                        min_center_sep=2.6,
-                        max_lines=motif_target,
-                        min_arc_len=6.0,
-                    )
-                    internal_lines = self._regularize_round_publication_lines(
-                        internal_lines,
-                        target_mask,
-                        max_lines=motif_target,
-                    )
-                center_coverage = self._round_line_center_coverage(internal_lines, target_mask)
-                inner_line_count = self._round_line_inner_count(internal_lines, target_mask, ratio=0.50)
-                if low_quality_input and (center_coverage < 0.42 or inner_line_count < 3):
                     center_fallback = self._extract_round_center_fallback_lines(
                         detail_bgr,
                         target_mask,
                         main_contour,
-                        max_lines=max(8, motif_target),
+                        max_lines=max(4, motif_target - 2),
                     )
                     internal_lines = self._merge_distinct_lines(
                         internal_lines,
@@ -415,6 +333,77 @@ class ContourGenerator:
                         max_lines=motif_target,
                         min_arc_len=5.0,
                     )
+                    internal_lines = self._prefer_round_inner_lines(
+                        internal_lines,
+                        target_mask,
+                        max_lines=motif_target,
+                        inner_ratio=0.58,
+                        min_inner=4,
+                    )
+                else:
+                    # For round artifacts, prefer motif lines over forced center spine.
+                    internal_lines = []
+                    motif_target = max(7, min(11, round_motif_select_limit + 1))
+                    prefer_region = len(round_relief_region_lines) >= 4
+                    motif_lines = []
+                    candidate_pool = []
+                    if prefer_region:
+                        candidate_pool = list(round_polar_motif_lines)
+                        candidate_pool += list(round_relief_region_lines)
+                        candidate_pool += list(round_center_motif_lines)
+                        candidate_pool += list(round_motif_lines[:max(2, motif_target // 4)])
+                    else:
+                        candidate_pool = (
+                            list(round_polar_motif_lines)
+                            + list(round_center_motif_lines)
+                            + list(round_motif_lines)
+                            + list(round_relief_lines)
+                            + list(round_relief_region_lines)
+                        )
+                    if candidate_pool:
+                        motif_lines = self._select_round_inner_motif_lines(
+                            candidate_pool,
+                            target_mask,
+                            max_lines=max(round_motif_select_limit + 2, 8),
+                            prefer_outer=True,
+                        )
+                    if len(motif_lines) < 2 and candidate_pool:
+                        motif_lines = candidate_pool
+                    if motif_lines:
+                        internal_lines += motif_lines[:max(4, motif_target // 2)]
+                    # Always backfill with region/relief candidates to meet motif density target.
+                    if round_polar_motif_lines:
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            round_polar_motif_lines,
+                            min_center_sep=2.8,
+                            max_lines=motif_target,
+                            min_arc_len=6.0,
+                        )
+                    if round_relief_region_lines:
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            round_relief_region_lines,
+                            min_center_sep=3.2,
+                            max_lines=motif_target,
+                            min_arc_len=8.0,
+                        )
+                    if (not prefer_region) and round_relief_lines:
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            round_relief_lines,
+                            min_center_sep=3.2,
+                            max_lines=motif_target,
+                            min_arc_len=8.0,
+                        )
+                    if round_motif_lines:
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            round_motif_lines,
+                            min_center_sep=3.0,
+                            max_lines=motif_target,
+                            min_arc_len=7.0,
+                        )
                     internal_lines = self._regularize_round_publication_lines(
                         internal_lines,
                         target_mask,
@@ -425,21 +414,123 @@ class ContourGenerator:
                         target_mask,
                         max_ring_lines=0,
                     )
-                if low_quality_input:
-                    internal_lines = self._prefer_round_inner_lines(
-                        list(internal_lines) + list(round_center_motif_lines) + list(round_polar_motif_lines),
+                    internal_lines = self._augment_round_rotational_symmetry(
+                        internal_lines,
                         target_mask,
-                        max_lines=motif_target,
-                        inner_ratio=0.56,
-                        min_inner=4,
+                        desired_lines=max(5, motif_target - 1),
                     )
-                if round_lines and len(internal_lines) < 5:
-                    anchor = round_lines[1] if len(round_lines) > 1 else round_lines[0]
-                    internal_lines = [anchor] + internal_lines
-                    internal_lines = internal_lines[:max(4, motif_target)]
-                # Keep one circular band only as fallback when motif capture is weak.
-                if len(internal_lines) < 2 and round_lines:
-                    internal_lines += round_lines[:1]
+                    ys_round, xs_round = np.where(target_mask > 0)
+                    if len(xs_round) > 50:
+                        cx_round = float(np.mean(xs_round))
+                        cy_round = float(np.mean(ys_round))
+                        angular_cov = self._round_line_angular_coverage(internal_lines, cx_round, cy_round, bins=12)
+                        ring_ratio = self._round_ring_line_ratio(internal_lines, target_mask)
+                    else:
+                        angular_cov = 1.0
+                        ring_ratio = 0.0
+                    if len(internal_lines) < 4 or angular_cov < 0.34 or ring_ratio > 0.58:
+                        angular_markers = self._estimate_round_angular_motif_markers(
+                            detail_bgr,
+                            target_mask,
+                            max_lines=max(8, motif_target),
+                        )
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            angular_markers,
+                            min_center_sep=2.8,
+                            max_lines=motif_target,
+                            min_arc_len=6.0,
+                        )
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            round_polar_motif_lines,
+                            min_center_sep=2.8,
+                            max_lines=motif_target,
+                            min_arc_len=6.0,
+                        )
+                        internal_lines = self._regularize_round_publication_lines(
+                            internal_lines,
+                            target_mask,
+                            max_lines=motif_target,
+                        )
+                        internal_lines = self._suppress_round_ring_lines(
+                            internal_lines,
+                            target_mask,
+                            max_ring_lines=1,
+                        )
+                    if low_quality_input and len(internal_lines) < max(4, motif_target // 2):
+                        low_quality_lines = self._extract_round_low_quality_lines(
+                            detail_bgr,
+                            target_mask,
+                            main_contour,
+                            max_lines=max(8, motif_target + 2),
+                        )
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            low_quality_lines,
+                            min_center_sep=2.6,
+                            max_lines=motif_target,
+                            min_arc_len=6.0,
+                        )
+                        internal_lines = self._regularize_round_publication_lines(
+                            internal_lines,
+                            target_mask,
+                            max_lines=motif_target,
+                        )
+                    center_coverage = self._round_line_center_coverage(internal_lines, target_mask)
+                    inner_line_count = self._round_line_inner_count(internal_lines, target_mask, ratio=0.50)
+                    if low_quality_input and (center_coverage < 0.42 or inner_line_count < 3):
+                        center_fallback = self._extract_round_center_fallback_lines(
+                            detail_bgr,
+                            target_mask,
+                            main_contour,
+                            max_lines=max(8, motif_target),
+                        )
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            center_fallback,
+                            min_center_sep=2.2,
+                            max_lines=motif_target,
+                            min_arc_len=5.0,
+                        )
+                        internal_lines = self._regularize_round_publication_lines(
+                            internal_lines,
+                            target_mask,
+                            max_lines=motif_target,
+                        )
+                        internal_lines = self._suppress_round_ring_lines(
+                            internal_lines,
+                            target_mask,
+                            max_ring_lines=0,
+                        )
+                    if low_quality_input:
+                        unwrap_lines = self._extract_round_unwrap_lines(
+                            detail_bgr,
+                            target_mask,
+                            main_contour,
+                            max_lines=max(8, motif_target + 2),
+                        )
+                        internal_lines = self._merge_distinct_lines(
+                            internal_lines,
+                            unwrap_lines,
+                            min_center_sep=2.2,
+                            max_lines=motif_target,
+                            min_arc_len=5.0,
+                        )
+                        internal_lines = self._prefer_round_inner_lines(
+                            list(internal_lines) + list(round_center_motif_lines) + list(round_polar_motif_lines),
+                            target_mask,
+                            max_lines=motif_target,
+                            inner_ratio=0.56,
+                            min_inner=4,
+                        )
+                    if round_lines and len(internal_lines) < 5:
+                        anchor = round_lines[1] if len(round_lines) > 1 else round_lines[0]
+                        internal_lines = [anchor] + internal_lines
+                        internal_lines = internal_lines[:max(4, motif_target)]
+                    # Keep one circular band only as fallback when motif capture is weak.
+                    if len(internal_lines) < 2 and round_lines:
+                        internal_lines += round_lines[:1]
             else:
                 # Publication mode keeps factual texture hints plus structural cues.
                 publication_profile = max(0, min(2, profile_count))
@@ -577,11 +668,13 @@ class ContourGenerator:
         """Clamp numeric value into [lower, upper]."""
         return max(lower, min(upper, value))
 
-    def _adaptive_prescale(self, img):
+    def _adaptive_prescale(self, img, force_lowres_upscale=False, detail_fast=False):
         """
         Resize input image for contour analysis.
         - Downscale very large inputs for speed/stability.
         - Upscale low-resolution inputs to recover edge/motif geometry.
+        - When force_lowres_upscale is enabled, upscale more aggressively.
+        - detail_fast mode uses slightly lower scale targets to preserve speed.
         Returns (resized_img, scale_factor).
         """
         if img is None:
@@ -597,11 +690,32 @@ class ContourGenerator:
         # Bound huge inputs.
         if max_side > 1600.0:
             scale = 1600.0 / max_side
-        # Low-resolution catalog/screenshot inputs need analysis upscaling.
-        elif max_side < 720.0:
-            scale = min(3.0, 960.0 / max_side)
-        elif min_side < 420.0:
-            scale = min(2.2, 640.0 / min_side)
+        elif bool(force_lowres_upscale):
+            # Explicit user opt-in for stronger low-res recovery.
+            if detail_fast:
+                if max_side < 1320.0:
+                    scale = min(3.2, 1360.0 / max_side)
+                if min_side < 920.0:
+                    scale = max(scale, min(3.0, 940.0 / min_side))
+                if min_side < 360.0:
+                    scale = max(scale, min(3.4, 760.0 / min_side))
+            else:
+                if max_side < 1440.0:
+                    scale = min(4.0, 1600.0 / max_side)
+                if min_side < 1024.0:
+                    scale = max(scale, min(3.6, 1200.0 / min_side))
+                if min_side < 360.0:
+                    scale = max(scale, min(4.2, 900.0 / min_side))
+        # Default low-resolution catalog/screenshot handling.
+        elif detail_fast:
+            if max_side < 780.0:
+                scale = min(2.8, 980.0 / max_side)
+            elif min_side < 500.0:
+                scale = min(2.3, 690.0 / min_side)
+        elif max_side < 840.0:
+            scale = min(3.2, 1080.0 / max_side)
+        elif min_side < 520.0:
+            scale = min(2.6, 760.0 / min_side)
 
         if abs(scale - 1.0) < 0.05:
             return img, 1.0
@@ -657,6 +771,19 @@ class ContourGenerator:
 
             blur = cv2.GaussianBlur(enhanced, (0, 0), 1.05)
             sharp = cv2.addWeighted(enhanced, 1.42, blur, -0.42, 0)
+            gray_sharp = cv2.cvtColor(sharp, cv2.COLOR_BGR2GRAY)
+            hp = cv2.addWeighted(
+                gray_sharp,
+                1.58,
+                cv2.GaussianBlur(gray_sharp, (0, 0), 1.15),
+                -0.58,
+                0,
+            )
+            edge_map = self._adaptive_canny(hp, mask=mask, low_floor=16, high_cap=176)
+            if edge_map is not None:
+                edge_map = cv2.dilate(edge_map, np.ones((2, 2), np.uint8), iterations=1)
+                edge_rgb = cv2.cvtColor(edge_map, cv2.COLOR_GRAY2BGR)
+                sharp = cv2.addWeighted(sharp, 0.86, edge_rgb, 0.24, 0)
 
             if mask is None:
                 return sharp
@@ -666,6 +793,230 @@ class ContourGenerator:
             return out
         except Exception:
             return bgr_img
+
+    def _extract_internal_lines_multisource(
+        self,
+        detail_bgr,
+        base_bgr,
+        target_mask,
+        main_contour,
+        low_quality=False,
+        is_roundish=False,
+        detail_mode="precise",
+    ):
+        """
+        Extract internal lines from multiple enhanced views and merge.
+        Designed to recover motif strokes from low-resolution or shaded inputs.
+        """
+        mode = str(detail_mode or "precise").strip().lower()
+        fast_mode = mode == "fast"
+        base_lines = self._extract_internal_lines(detail_bgr, target_mask, main_contour)
+        if not low_quality:
+            cap = 14 if fast_mode else 22
+            return self._dedupe_lines(base_lines, min_points=4, max_lines=cap)
+
+        merged = list(base_lines) if base_lines else []
+        variants = self._low_quality_variants(detail_bgr, base_bgr, target_mask)
+        if fast_mode:
+            variants = variants[:1]
+            per_variant_cap = 6
+        else:
+            per_variant_cap = 12 if is_roundish else 8
+        for variant in variants:
+            extra = self._extract_internal_lines(variant, target_mask, main_contour)
+            if extra:
+                merged.extend(extra[:per_variant_cap])
+
+        if is_roundish:
+            relaxed = self._extract_round_low_quality_lines(
+                detail_bgr,
+                target_mask,
+                main_contour,
+                max_lines=10 if fast_mode else 18,
+            )
+            if relaxed:
+                merged.extend(relaxed)
+
+            if not fast_mode:
+                annular = self._extract_annular_relief_lines(
+                    detail_bgr,
+                    target_mask,
+                    main_contour,
+                    max_lines=14,
+                )
+                if annular:
+                    merged.extend(annular)
+
+        if fast_mode:
+            max_keep = 16 if is_roundish else 14
+        else:
+            max_keep = 30 if is_roundish else 22
+        return self._dedupe_lines(merged, min_points=4, max_lines=max_keep)
+
+    def _low_quality_variants(self, detail_bgr, base_bgr, mask):
+        """Build additional enhanced views for low-quality line extraction."""
+        variants = []
+        for src in (detail_bgr, base_bgr):
+            if src is None:
+                continue
+            try:
+                gray = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+                clahe = cv2.createCLAHE(clipLimit=2.6, tileGridSize=(8, 8))
+                eq = clahe.apply(gray)
+
+                hp = cv2.addWeighted(
+                    eq,
+                    1.70,
+                    cv2.GaussianBlur(eq, (0, 0), 1.25),
+                    -0.70,
+                    0,
+                )
+                edges = self._adaptive_canny(hp, mask=mask, low_floor=14, high_cap=170)
+                if edges is not None:
+                    edges = cv2.morphologyEx(
+                        edges,
+                        cv2.MORPH_CLOSE,
+                        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+                        iterations=1,
+                    )
+                    edge_rgb = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+                    variants.append(cv2.addWeighted(src, 0.82, edge_rgb, 0.28, 0))
+
+                variants.append(cv2.cvtColor(hp, cv2.COLOR_GRAY2BGR))
+            except Exception:
+                continue
+        return variants[:4]
+
+    def _extract_annular_relief_lines(self, bgr_img, target_mask, main_contour, max_lines=14):
+        """
+        Extract ring/annular motif strokes from round relief artifacts (e.g., mirrors).
+        This targets concentric decoration zones that are often lost in low-res inputs.
+        """
+        try:
+            if bgr_img is None or target_mask is None or main_contour is None:
+                return []
+            h, w = target_mask.shape[:2]
+            if h < 24 or w < 24:
+                return []
+
+            (cx, cy), radius = cv2.minEnclosingCircle(main_contour)
+            if radius < 22.0:
+                return []
+
+            gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+            g_f = gray.astype(np.float32) + 1.0
+            illum = cv2.GaussianBlur(g_f, (0, 0), max(6.0, float(radius) * 0.16))
+            flat = np.clip((g_f / np.maximum(illum, 1.0)) * 144.0, 0, 255).astype(np.uint8)
+
+            yy, xx = np.ogrid[:h, :w]
+            dist = np.sqrt((xx - float(cx)) ** 2 + (yy - float(cy)) ** 2)
+            annulus = np.zeros((h, w), dtype=np.uint8)
+            annulus[(dist >= (0.24 * radius)) & (dist <= (0.93 * radius))] = 255
+            annulus = cv2.bitwise_and(annulus, target_mask)
+            if int(np.count_nonzero(annulus)) < 120:
+                return []
+
+            edges_a = self._adaptive_canny(flat, mask=annulus, low_floor=14, high_cap=170)
+            sobel_x = cv2.Sobel(flat, cv2.CV_32F, 1, 0, ksize=3)
+            sobel_y = cv2.Sobel(flat, cv2.CV_32F, 0, 1, ksize=3)
+            mag = cv2.magnitude(sobel_x, sobel_y)
+            mag = np.clip(mag, 0, 255).astype(np.uint8)
+            _, edges_b = cv2.threshold(mag, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+            edges = cv2.bitwise_or(edges_a, edges_b)
+            edges = cv2.bitwise_and(edges, annulus)
+            edges = cv2.morphologyEx(
+                edges,
+                cv2.MORPH_CLOSE,
+                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+                iterations=1,
+            )
+
+            contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            if not contours:
+                return []
+
+            candidates = []
+            max_collect = max(2, int(max_lines) * 2)
+            min_arc = max(14.0, float(radius) * 0.12)
+            radial_band_limit = float(radius) * 0.18
+
+            for cnt in sorted(contours, key=lambda c: cv2.arcLength(c, False), reverse=True):
+                if len(candidates) >= max_collect:
+                    break
+                if cnt is None or len(cnt) < 10:
+                    continue
+                arc_len = float(cv2.arcLength(cnt, False))
+                if arc_len < min_arc:
+                    continue
+
+                pts = cnt.reshape(-1, 2).astype(np.float32)
+                radial = np.sqrt((pts[:, 0] - float(cx)) ** 2 + (pts[:, 1] - float(cy)) ** 2)
+                if float(np.ptp(radial)) > radial_band_limit:
+                    continue
+
+                eps = max(0.8, 0.008 * arc_len)
+                simp = cv2.approxPolyDP(pts.reshape(-1, 1, 2), eps, False)
+                if simp is None or len(simp) < 4:
+                    continue
+                line = [[int(round(p[0][0])), int(round(p[0][1]))] for p in simp]
+                candidates.append(line)
+
+            return self._dedupe_lines(candidates, min_points=4, max_lines=max_lines)
+        except Exception:
+            return []
+
+    def _dedupe_lines(self, lines, min_points=4, max_lines=20):
+        """Deduplicate and simplify candidate lines while keeping strongest strokes."""
+        try:
+            if not lines:
+                return []
+            ranked = []
+            signatures = set()
+
+            for line in lines:
+                if line is None or len(line) < int(min_points):
+                    continue
+                arr = np.asarray(line, dtype=np.float32).reshape(-1, 2)
+                if arr.shape[0] < int(min_points):
+                    continue
+
+                dif = np.diff(arr, axis=0)
+                seg = np.sqrt((dif[:, 0] * dif[:, 0]) + (dif[:, 1] * dif[:, 1]))
+                length = float(np.sum(seg))
+                if length < 8.0:
+                    continue
+
+                poly = arr.reshape(-1, 1, 2)
+                eps = max(0.6, 0.012 * length)
+                simp = cv2.approxPolyDP(poly, eps, False)
+                if simp is not None and len(simp) >= int(min_points):
+                    arr = simp.reshape(-1, 2)
+
+                start = arr[0]
+                end = arr[-1]
+                center = np.mean(arr, axis=0)
+                sig = (
+                    int(round(start[0] / 3.0)),
+                    int(round(start[1] / 3.0)),
+                    int(round(end[0] / 3.0)),
+                    int(round(end[1] / 3.0)),
+                    int(round(center[0] / 4.0)),
+                    int(round(center[1] / 4.0)),
+                    int(round(length / 6.0)),
+                )
+                if sig in signatures:
+                    continue
+                signatures.add(sig)
+                ranked.append((length, [[int(round(p[0])), int(round(p[1]))] for p in arr]))
+
+            ranked.sort(key=lambda item: item[0], reverse=True)
+            keep = max(1, int(max_lines))
+            return [item[1] for item in ranked[:keep]]
+        except Exception:
+            if not lines:
+                return []
+            return lines[: max(1, int(max_lines))]
 
     def _adaptive_canny(self, gray_img, mask=None, low_floor=12, high_cap=180):
         """Run Canny with adaptive thresholds from masked luminance distribution."""
@@ -698,6 +1049,9 @@ class ContourGenerator:
             h, w = target_mask.shape[:2]
             if h < 20 or w < 20:
                 return []
+            (cx, cy), radius = cv2.minEnclosingCircle(main_contour)
+            if radius < 18.0:
+                return []
 
             gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
             gray = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -713,9 +1067,6 @@ class ContourGenerator:
             edges = cv2.bitwise_or(edges_eq, edges_flat)
             edges = cv2.bitwise_and(edges, target_mask)
 
-            (cx, cy), radius = cv2.minEnclosingCircle(main_contour)
-            if radius < 18.0:
-                return []
             yy, xx = np.indices((h, w))
             dist = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
             annulus = ((dist >= (radius * 0.20)) & (dist <= (radius * 0.86))).astype(np.uint8) * 255
@@ -812,6 +1163,79 @@ class ContourGenerator:
             return int(count)
         except Exception:
             return 0
+
+    def _build_round_structural_lines(self, target_mask, main_contour, round_lines=None, max_lines=8):
+        """
+        Fast deterministic round-structure abstraction.
+        Prioritizes readable archaeological structure over noisy motif chasing.
+        """
+        try:
+            target = max(1, int(max_lines))
+            out = []
+            out = self._merge_distinct_lines(
+                out,
+                list(round_lines or [])[:2],
+                min_center_sep=3.6,
+                max_lines=target,
+                min_arc_len=8.0,
+            )
+
+            if target_mask is None or main_contour is None:
+                return out[:target]
+
+            (cx, cy), radius = cv2.minEnclosingCircle(main_contour)
+            if radius < 10.0:
+                return out[:target]
+
+            ring_a = self._circle_polyline(cx, cy, radius * 0.62, steps=54)
+            ring_b = self._circle_polyline(cx, cy, radius * 0.44, steps=48)
+            knob = self._circle_polyline(cx, cy, radius * 0.14, steps=36)
+            diamond = self._diamond_polyline(cx, cy, radius * 0.40)
+
+            out = self._merge_distinct_lines(out, [ring_a, ring_b, diamond, knob], min_center_sep=2.0, max_lines=target, min_arc_len=6.0)
+
+            stubs = []
+            for deg in (36.0, 126.0, 216.0, 306.0):
+                theta = np.deg2rad(deg)
+                r0 = radius * 0.24
+                r1 = radius * 0.52
+                p0 = [int(round(cx + r0 * np.cos(theta))), int(round(cy + r0 * np.sin(theta)))]
+                p1 = [int(round(cx + r1 * np.cos(theta))), int(round(cy + r1 * np.sin(theta)))]
+                stubs.append([p0, p1])
+            out = self._merge_distinct_lines(out, stubs, min_center_sep=2.2, max_lines=target, min_arc_len=4.0)
+            return out[:target]
+        except Exception:
+            return list(round_lines or [])[:max(1, int(max_lines))]
+
+    def _circle_polyline(self, cx, cy, radius, steps=48):
+        """Create circular polyline points."""
+        try:
+            r = float(max(1.0, radius))
+            n = int(max(12, steps))
+            pts = []
+            for i in range(n + 1):
+                t = (2.0 * np.pi * float(i)) / float(n)
+                x = int(round(float(cx) + (r * np.cos(t))))
+                y = int(round(float(cy) + (r * np.sin(t))))
+                pts.append([x, y])
+            return pts
+        except Exception:
+            return []
+
+    def _diamond_polyline(self, cx, cy, radius):
+        """Create diamond-shaped frame polyline points."""
+        try:
+            r = float(max(1.0, radius))
+            pts = [
+                [int(round(cx)), int(round(cy - r))],
+                [int(round(cx + r)), int(round(cy))],
+                [int(round(cx)), int(round(cy + r))],
+                [int(round(cx - r)), int(round(cy))],
+                [int(round(cx)), int(round(cy - r))],
+            ]
+            return pts
+        except Exception:
+            return []
 
     def _prefer_round_inner_lines(self, lines, target_mask, max_lines=10, inner_ratio=0.56, min_inner=3):
         """Prioritize center/middle motif lines over outer-ring fragments."""
@@ -966,6 +1390,121 @@ class ContourGenerator:
             candidates.sort(key=lambda item: item[0], reverse=True)
             out = [line for _, line in candidates[:max(1, int(max_lines))]]
             return out
+        except Exception:
+            return []
+
+    def _extract_round_unwrap_lines(self, bgr_img, target_mask, main_contour, max_lines=12):
+        """
+        Polar-unwrapped motif extraction for circular artifacts.
+        Uses radial geometry only (no semantic class assumptions).
+        """
+        try:
+            if bgr_img is None or target_mask is None or main_contour is None:
+                return []
+
+            h, w = target_mask.shape[:2]
+            if h < 24 or w < 24:
+                return []
+
+            (cx, cy), radius = cv2.minEnclosingCircle(main_contour)
+            if radius < 20.0:
+                return []
+
+            gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+            gray = cv2.GaussianBlur(gray, (5, 5), 0.0)
+
+            g_f = gray.astype(np.float32) + 1.0
+            illum = cv2.GaussianBlur(g_f, (0, 0), max(10.0, float(radius) * 0.10))
+            illum = np.maximum(illum, 1.0)
+            flat = np.clip((g_f / illum) * 146.0, 0, 255).astype(np.uint8)
+
+            angle_bins = int(max(420, min(1280, round(radius * 8.0))))
+            radial_bins = int(max(120, min(420, round(radius * 0.95))))
+            max_radius_used = float(radius * 0.94)
+
+            polar = cv2.warpPolar(
+                flat,
+                (radial_bins, angle_bins),
+                (float(cx), float(cy)),
+                max_radius_used,
+                cv2.WARP_POLAR_LINEAR + cv2.WARP_FILL_OUTLIERS,
+            )
+            if polar is None or polar.size == 0:
+                return []
+
+            polar_bg = cv2.GaussianBlur(polar, (0, 0), 4.6)
+            polar_hp = cv2.subtract(polar, polar_bg)
+            polar_hp = cv2.normalize(polar_hp, None, 0, 255, cv2.NORM_MINMAX)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            polar_eq = clahe.apply(polar_hp)
+
+            edges = self._adaptive_canny(polar_eq, mask=None, low_floor=8, high_cap=142)
+            if edges is None:
+                return []
+
+            rr = np.tile(np.arange(radial_bins, dtype=np.float32), (angle_bins, 1))
+            valid_band = (
+                (rr >= (radial_bins * 0.16))
+                & (rr <= (radial_bins * 0.86))
+            )
+            edges[~valid_band] = 0
+
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+            contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            if not contours:
+                return []
+
+            candidates = []
+            for contour in contours:
+                arc_len = float(cv2.arcLength(contour, False))
+                if arc_len < 16.0:
+                    continue
+
+                x, y, bw, bh = cv2.boundingRect(contour)
+                if bw < 3 or bh < 3:
+                    continue
+
+                # Suppress long near-constant-radius ring fragments.
+                if bh > (angle_bins * 0.22) and bw < max(3, int(radial_bins * 0.035)):
+                    continue
+
+                pts = contour.reshape(-1, 2)
+                if pts.shape[0] < 4:
+                    continue
+
+                step = max(1, int(len(pts) / 120))
+                line = []
+                for p in pts[::step]:
+                    rho = (float(p[0]) / max(1.0, float(radial_bins - 1))) * max_radius_used
+                    theta = (float(p[1]) / max(1.0, float(angle_bins - 1))) * (2.0 * np.pi)
+                    px = int(round(cx + (rho * np.cos(theta))))
+                    py = int(round(cy + (rho * np.sin(theta))))
+                    if px < 0 or py < 0 or px >= w or py >= h:
+                        continue
+                    if target_mask[py, px] <= 0:
+                        continue
+                    line.append([px, py])
+
+                if len(line) < 4:
+                    continue
+
+                arr = np.asarray(line, dtype=np.float32)
+                rs = np.sqrt((arr[:, 0] - cx) ** 2 + (arr[:, 1] - cy) ** 2)
+                r_mean = float(np.mean(rs))
+                r_std = float(np.std(rs))
+                if r_mean < (radius * 0.10) or r_mean > (radius * 0.88):
+                    continue
+                if r_std < 0.9 and arc_len > (radius * 0.22):
+                    continue
+
+                inner_bias = max(0.0, 1.0 - (r_mean / max(1.0, radius)))
+                score = arc_len * (1.0 + min(1.0, r_std / 4.5)) + (inner_bias * 7.0)
+                candidates.append((score, line))
+
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            return [line for _, line in candidates[:max(1, int(max_lines))]]
         except Exception:
             return []
 
