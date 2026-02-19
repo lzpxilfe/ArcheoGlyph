@@ -531,6 +531,36 @@ class ContourGenerator:
                     # Keep one circular band only as fallback when motif capture is weak.
                     if len(internal_lines) < 2 and round_lines:
                         internal_lines += round_lines[:1]
+                    signature_need = (
+                        (not detail_fast)
+                        and low_quality_input
+                        and (
+                            len(internal_lines) < max(5, motif_target - 1)
+                            or self._round_line_center_coverage(internal_lines, target_mask) < 0.36
+                        )
+                    )
+                    if signature_need:
+                        mirror_signature = self._extract_round_mirror_signature_lines(
+                            detail_bgr,
+                            target_mask,
+                            main_contour,
+                            max_lines=max(8, motif_target + 1),
+                        )
+                        if mirror_signature:
+                            internal_lines = self._merge_distinct_lines(
+                                mirror_signature,
+                                internal_lines,
+                                min_center_sep=2.2,
+                                max_lines=max(8, motif_target + 1),
+                                min_arc_len=4.0,
+                            )
+                            internal_lines = self._prefer_round_inner_lines(
+                                internal_lines,
+                                target_mask,
+                                max_lines=max(8, motif_target + 1),
+                                inner_ratio=0.58,
+                                min_inner=4,
+                            )
             else:
                 # Publication mode keeps factual texture hints plus structural cues.
                 publication_profile = max(0, min(2, profile_count))
@@ -1505,6 +1535,190 @@ class ContourGenerator:
 
             candidates.sort(key=lambda item: item[0], reverse=True)
             return [line for _, line in candidates[:max(1, int(max_lines))]]
+        except Exception:
+            return []
+
+    def _circle_polyline(self, cx, cy, radius, steps=52):
+        """Return closed polyline points approximating a circle."""
+        r = max(2.0, float(radius))
+        n = int(max(20, min(120, int(steps))))
+        pts = []
+        for i in range(n):
+            t = (2.0 * np.pi * float(i)) / float(n)
+            x = int(round(float(cx) + (r * np.cos(t))))
+            y = int(round(float(cy) + (r * np.sin(t))))
+            pts.append([x, y])
+        if pts and pts[0] != pts[-1]:
+            pts.append(pts[0])
+        return pts
+
+    def _arc_polyline(self, cx, cy, radius, start_deg, end_deg, steps=16):
+        """Return open arc polyline points (degrees)."""
+        r = max(2.0, float(radius))
+        n = int(max(6, min(96, int(steps))))
+        a0 = np.deg2rad(float(start_deg))
+        a1 = np.deg2rad(float(end_deg))
+        pts = []
+        for i in range(n):
+            t = a0 + ((a1 - a0) * (float(i) / float(max(1, n - 1))))
+            x = int(round(float(cx) + (r * np.cos(t))))
+            y = int(round(float(cy) + (r * np.sin(t))))
+            pts.append([x, y])
+        return pts
+
+    def _extract_round_mirror_signature_lines(self, bgr_img, mask, main_contour, max_lines=10):
+        """
+        Mirror-specific structural fallback for low-resolution round artifacts.
+        Builds stable geometry (boss + diamond frame + ring arcs) when motif extraction fails.
+        """
+        try:
+            limit = int(max(0, int(max_lines)))
+            if limit <= 0:
+                return []
+            if bgr_img is None or mask is None or main_contour is None:
+                return []
+
+            h, w = mask.shape[:2]
+            if h < 30 or w < 30:
+                return []
+
+            ys, xs = np.where(mask > 0)
+            if len(xs) < 100:
+                return []
+            cx = float(np.mean(xs))
+            cy = float(np.mean(ys))
+            r_ref = max(14.0, 0.5 * float(max(np.max(xs) - np.min(xs), np.max(ys) - np.min(ys))))
+            if r_ref < 16.0:
+                return []
+
+            gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+            gray = cv2.GaussianBlur(gray, (5, 5), 0.0)
+            clahe = cv2.createCLAHE(clipLimit=2.3, tileGridSize=(8, 8))
+            eq = clahe.apply(gray)
+
+            g_f = eq.astype(np.float32) + 1.0
+            illum = cv2.GaussianBlur(g_f, (0, 0), max(8.0, 0.10 * r_ref))
+            illum = np.maximum(illum, 1.0)
+            flat = np.clip((g_f / illum) * 145.0, 0, 255).astype(np.uint8)
+
+            gx = cv2.Sobel(flat, cv2.CV_32F, 1, 0, ksize=3)
+            gy = cv2.Sobel(flat, cv2.CV_32F, 0, 1, ksize=3)
+            grad = cv2.magnitude(gx, gy)
+
+            yy, xx = np.indices((h, w))
+            rr = np.sqrt(((xx.astype(np.float32) - cx) ** 2) + ((yy.astype(np.float32) - cy) ** 2))
+
+            r_min = max(6, int(round(0.16 * r_ref)))
+            r_max = max(r_min + 2, int(round(0.94 * r_ref)))
+            radii = []
+            scores = []
+            fg = (mask > 0)
+
+            for r in range(r_min, r_max + 1, 2):
+                band = ((rr >= (float(r) - 1.6)) & (rr <= (float(r) + 1.6)) & fg)
+                count = int(np.count_nonzero(band))
+                if count < 120:
+                    continue
+                vals = grad[band]
+                mean_v = float(np.mean(vals))
+                std_v = float(np.std(vals))
+                radial_ratio = float(r) / max(1.0, float(r_ref))
+                prior = 1.0
+                if radial_ratio < 0.14 or radial_ratio > 0.97:
+                    prior = 0.50
+                scores.append((mean_v + (0.38 * std_v)) * prior)
+                radii.append(float(r))
+
+            if len(radii) < 5:
+                return []
+
+            arr = np.asarray(scores, dtype=np.float32)
+            kernel = np.asarray([1.0, 2.0, 3.0, 2.0, 1.0], dtype=np.float32)
+            kernel = kernel / float(np.sum(kernel))
+            smoothed = np.convolve(arr, kernel, mode="same")
+
+            peak_items = []
+            for i in range(1, len(smoothed) - 1):
+                if smoothed[i] <= smoothed[i - 1] or smoothed[i] < smoothed[i + 1]:
+                    continue
+                r_val = float(radii[i])
+                ratio = r_val / max(1.0, r_ref)
+                keep = 1.0 - min(1.0, abs(ratio - 0.58))
+                peak_items.append((float(smoothed[i]) * (0.68 + (0.45 * keep)), r_val))
+
+            peak_items.sort(key=lambda item: item[0], reverse=True)
+            picked_r = []
+            min_sep = max(5.0, 0.075 * r_ref)
+            for _, r_val in peak_items:
+                if any(abs(r_val - p) < min_sep for p in picked_r):
+                    continue
+                picked_r.append(r_val)
+                if len(picked_r) >= 4:
+                    break
+            if not picked_r:
+                return []
+
+            picked_r.sort()
+            lines = []
+
+            boss_r = self._estimate_round_boss_radius(gray, mask, cx, cy, r_ref)
+            if boss_r <= 0.0:
+                boss_r = max(4.0, 0.16 * r_ref)
+            lines.append(self._circle_polyline(cx, cy, boss_r, steps=42))
+
+            target_ratio = 0.34
+            diamond_r = min(picked_r, key=lambda rv: abs((rv / max(1.0, r_ref)) - target_ratio))
+            diamond_r = float(np.clip(diamond_r, 0.24 * r_ref, 0.46 * r_ref))
+            d0 = int(round(diamond_r))
+            d1 = int(round(max(6.0, diamond_r * 0.78)))
+            diamond_outer = [
+                [int(round(cx)), int(round(cy - d0))],
+                [int(round(cx + d0)), int(round(cy))],
+                [int(round(cx)), int(round(cy + d0))],
+                [int(round(cx - d0)), int(round(cy))],
+                [int(round(cx)), int(round(cy - d0))],
+            ]
+            diamond_inner = [
+                [int(round(cx)), int(round(cy - d1))],
+                [int(round(cx + d1)), int(round(cy))],
+                [int(round(cx)), int(round(cy + d1))],
+                [int(round(cx - d1)), int(round(cy))],
+                [int(round(cx)), int(round(cy - d1))],
+            ]
+            lines.append(diamond_outer)
+            lines.append(diamond_inner)
+
+            if len(picked_r) >= 3:
+                ring_r = [picked_r[1], picked_r[2], picked_r[-1]]
+            else:
+                ring_r = picked_r[-2:] if len(picked_r) > 1 else picked_r[:]
+            ring_r = ring_r[:3]
+
+            arc_templates = [(20.0, 92.0), (140.0, 212.0), (260.0, 332.0)]
+            for idx, rv in enumerate(ring_r):
+                arc_steps = int(max(10, min(22, round((rv / max(1.0, r_ref)) * 20.0))))
+                rotate = float((idx % 2) * 10.0)
+                for a0, a1 in arc_templates:
+                    lines.append(
+                        self._arc_polyline(
+                            cx,
+                            cy,
+                            rv,
+                            a0 + rotate,
+                            a1 + rotate,
+                            steps=arc_steps,
+                        )
+                    )
+
+            arm = float(max(boss_r + 2.0, min(diamond_r * 0.82, 0.40 * r_ref)))
+            for ang_deg in (45.0, 135.0, 225.0, 315.0):
+                a = np.deg2rad(ang_deg)
+                p0 = [int(round(cx + (boss_r * np.cos(a)))), int(round(cy + (boss_r * np.sin(a))))]
+                p1 = [int(round(cx + (arm * np.cos(a)))), int(round(cy + (arm * np.sin(a))))]
+                lines.append([p0, p1])
+
+            cleaned = self._dedupe_lines(lines, min_points=2, max_lines=max(4, limit))
+            return cleaned[:max(1, limit)]
         except Exception:
             return []
 
