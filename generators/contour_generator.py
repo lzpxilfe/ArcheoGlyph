@@ -532,11 +532,11 @@ class ContourGenerator:
                     if len(internal_lines) < 2 and round_lines:
                         internal_lines += round_lines[:1]
                     signature_need = (
-                        (not detail_fast)
-                        and low_quality_input
-                        and (
-                            len(internal_lines) < max(5, motif_target - 1)
-                            or self._round_line_center_coverage(internal_lines, target_mask) < 0.36
+                        low_quality_input
+                        and self._needs_round_mirror_rescue(
+                            internal_lines,
+                            target_mask,
+                            strict=(not detail_fast),
                         )
                     )
                     if signature_need:
@@ -547,12 +547,31 @@ class ContourGenerator:
                             max_lines=max(8, motif_target + 1),
                         )
                         if mirror_signature:
+                            seed_lines = []
+                            if round_center_motif_lines:
+                                seed_lines += round_center_motif_lines[:2]
+                            if round_polar_motif_lines:
+                                seed_lines += round_polar_motif_lines[:2]
+                            if round_motif_lines:
+                                seed_lines += round_motif_lines[:2]
+                            if internal_lines:
+                                seed_lines += internal_lines[:2]
                             internal_lines = self._merge_distinct_lines(
                                 mirror_signature,
-                                internal_lines,
-                                min_center_sep=2.2,
+                                seed_lines,
+                                min_center_sep=2.0,
                                 max_lines=max(8, motif_target + 1),
-                                min_arc_len=4.0,
+                                min_arc_len=3.0,
+                            )
+                            internal_lines = self._regularize_round_publication_lines(
+                                internal_lines,
+                                target_mask,
+                                max_lines=max(8, motif_target + 1),
+                            )
+                            internal_lines = self._suppress_round_ring_lines(
+                                internal_lines,
+                                target_mask,
+                                max_ring_lines=1,
                             )
                             internal_lines = self._prefer_round_inner_lines(
                                 internal_lines,
@@ -2019,6 +2038,42 @@ class ContourGenerator:
         if valid_count <= 0:
             return 0.0
         return float(ring_count) / float(valid_count)
+
+    def _needs_round_mirror_rescue(self, lines, mask, strict=True):
+        """
+        Decide whether low-quality round artifact output is too weak/noisy and
+        should be replaced by mirror-structured fallback geometry.
+        """
+        if not lines:
+            return True
+
+        ys, xs = np.where(mask > 0)
+        if len(xs) < 40:
+            return len(lines) < 4
+
+        cx = float(np.mean(xs))
+        cy = float(np.mean(ys))
+        center_cov = self._round_line_center_coverage(lines, mask)
+        inner_count = self._round_line_inner_count(lines, mask, ratio=0.52)
+        angular_cov = self._round_line_angular_coverage(lines, cx, cy, bins=14)
+        ring_ratio = self._round_ring_line_ratio(lines, mask)
+
+        if strict:
+            return (
+                len(lines) < 6
+                or center_cov < 0.44
+                or inner_count < 4
+                or angular_cov < 0.40
+                or ring_ratio > 0.54
+            )
+
+        return (
+            len(lines) < 5
+            or center_cov < 0.34
+            or inner_count < 3
+            or angular_cov < 0.32
+            or ring_ratio > 0.66
+        )
 
     def _suppress_round_ring_lines(self, lines, mask, max_ring_lines=1):
         """
