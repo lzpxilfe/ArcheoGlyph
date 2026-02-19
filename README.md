@@ -93,7 +93,6 @@ pip install google-generativeai
 
 ## Citation & Star
 
-이 플러그인이 유용했다면 GitHub Star ⭐를 눌러주세요! 개발자에게 큰 힘이 됩니다.  
 If you find this repository useful, please consider giving it a star ⭐ and citing it in your work:
 
 ```bibtex
