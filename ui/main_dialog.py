@@ -10,7 +10,7 @@ from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QSpinBox, QGroupBox, QRadioButton, QButtonGroup,
     QFileDialog, QColorDialog, QProgressBar, QMessageBox,
-    QFrame, QWidget, QScrollArea, QCheckBox,
+    QFrame, QWidget, QScrollArea, QCheckBox, QSizePolicy,
     QLineEdit, QTabWidget, QSlider
 )
 from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
@@ -62,8 +62,8 @@ class ImageDropArea(QLabel):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(200, 200)
-        self.setMaximumSize(300, 300)
+        self.setFixedSize(200, 200)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.setStyleSheet("""
             QLabel {
                 border: 2px dashed #888;
@@ -79,6 +79,7 @@ class ImageDropArea(QLabel):
         """)
         self.setText("Drop Image Here\nor Click to Browse")
         self.image_path = None
+        self._source_pixmap = None
         self.color_picking_mode = False
         
     def set_picking_mode(self, active):
@@ -150,17 +151,37 @@ class ImageDropArea(QLabel):
         """Load and display the image."""
         self.image_path = file_path
         pixmap = QPixmap(file_path)
-        scaled = pixmap.scaled(
-            self.size() - QSize(20, 20),
+        if pixmap.isNull():
+            return
+        self._source_pixmap = pixmap
+        self._render_image()
+        self.imageDropped.emit(file_path)
+
+    def _render_image(self):
+        """Render source image to current label size safely."""
+        if self._source_pixmap is None:
+            return
+        target = self.contentsRect().size() - QSize(14, 14)
+        target_w = max(24, target.width())
+        target_h = max(24, target.height())
+        scaled = self._source_pixmap.scaled(
+            QSize(target_w, target_h),
             Qt.KeepAspectRatio,
             Qt.SmoothTransformation
         )
         self.setPixmap(scaled)
-        self.imageDropped.emit(file_path)
-        
+        self.setText("")
+
+    def resizeEvent(self, event):
+        """Keep pixmap fitted when geometry changes."""
+        super().resizeEvent(event)
+        if self._source_pixmap is not None:
+            self._render_image()
+                
     def clear_image(self):
         """Clear the loaded image."""
         self.image_path = None
+        self._source_pixmap = None
         self.clear()
         self.setText("Drop Image Here\nor Click to Browse")
 
@@ -237,7 +258,7 @@ class ArcheoGlyphDialog(QDialog):
     def setup_ui(self):
         """Initialize the user interface."""
         self.setWindowTitle(f"ArchaeoGlyph v{self.plugin_version} - Symbol Generator")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(680, 560)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
         # Main layout
@@ -246,12 +267,14 @@ class ArcheoGlyphDialog(QDialog):
         main_layout.setContentsMargins(15, 15, 15, 15)
         
         # Left panel - Image input and preview
-        left_panel = QVBoxLayout()
+        left_panel_container = QWidget()
+        left_panel = QVBoxLayout(left_panel_container)
         left_panel.setSpacing(10)
         
         # Image drop area
         input_group = QGroupBox("Input Image")
         input_layout = QVBoxLayout(input_group)
+        input_layout.setSpacing(6)
         self.image_drop = ImageDropArea()
         self.image_drop.imageDropped.connect(self.on_image_loaded)
         self.image_drop.colorPicked.connect(self.set_current_color)
@@ -274,6 +297,7 @@ class ArcheoGlyphDialog(QDialog):
             "color: #8a4b00; font-size: 10px; padding: 2px;"
         )
         self.image_quality_hint_label.setWordWrap(True)
+        self.image_quality_hint_label.setMaximumHeight(58)
         self.image_quality_hint_label.setVisible(False)
         input_layout.addWidget(self.image_quality_hint_label)
         
@@ -290,7 +314,14 @@ class ArcheoGlyphDialog(QDialog):
         left_panel.addWidget(preview_group)
         
         left_panel.addStretch()
-        main_layout.addLayout(left_panel)
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        left_scroll.setWidget(left_panel_container)
+        left_scroll.setMinimumWidth(235)
+        left_scroll.setMaximumWidth(280)
+        main_layout.addWidget(left_scroll)
         
         # Right panel - Settings (Main container)
         right_panel = QVBoxLayout()
@@ -791,8 +822,8 @@ class ArcheoGlyphDialog(QDialog):
 
         self.image_quality_hint_label.setText(
             f"<b>{level}</b> ({size_kb} KB, {width}x{height}). "
-            f"Bronze mirror motifs can be missed. Recommended: >= {recommended_kb} KB and short side >= {recommended_short_px}px. "
-            "Try tighter crop + Low-res detail boost (upscale)."
+            f"Recommended: >= {recommended_kb} KB, short side >= {recommended_short_px}px. "
+            "Try tighter crop + upscale."
         )
         self.image_quality_hint_label.setVisible(True)
         
