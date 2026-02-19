@@ -1368,10 +1368,10 @@ class SettingsDialog(QDialog):
             default=True,
         )
         autotrace_detail_mode = str(
-            self.settings.value('ArcheoGlyph/autotrace_detail_mode', 'precise')
+            self.settings.value('ArcheoGlyph/autotrace_detail_mode', 'fast')
         ).strip().lower()
         if autotrace_detail_mode not in ("fast", "precise"):
-            autotrace_detail_mode = "precise"
+            autotrace_detail_mode = "fast"
         image_warn_min_kb = self._parse_int_setting(
             self.settings.value('ArcheoGlyph/image_warn_min_kb', 180),
             default=180,
@@ -1521,9 +1521,9 @@ class SettingsDialog(QDialog):
             'ArcheoGlyph/auto_update_models',
             'true' if self.auto_refresh_models_check.isChecked() else 'false'
         )
-        detail_mode = str(self.autotrace_detail_mode_combo.currentData() or "precise").strip().lower()
+        detail_mode = str(self.autotrace_detail_mode_combo.currentData() or "fast").strip().lower()
         if detail_mode not in ("fast", "precise"):
-            detail_mode = "precise"
+            detail_mode = "fast"
         warn_min_kb = int(self.image_warn_min_kb_spin.value())
         warn_min_short_px = int(self.image_warn_min_short_px_spin.value())
         warn_rec_kb = max(warn_min_kb, int(self.image_warn_recommended_kb_spin.value()))

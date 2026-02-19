@@ -411,10 +411,10 @@ class ArcheoGlyphDialog(QDialog):
         basic_layout.addWidget(self.autotrace_upscale_check)
 
         detail_mode_default = str(
-            self.settings.value("ArcheoGlyph/autotrace_detail_mode", "precise")
+            self.settings.value("ArcheoGlyph/autotrace_detail_mode", "fast")
         ).strip().lower()
         if detail_mode_default not in ("fast", "precise"):
-            detail_mode_default = "precise"
+            detail_mode_default = "fast"
 
         detail_mode_row = QHBoxLayout()
         detail_mode_row.addWidget(QLabel("Auto Trace quality:"))
@@ -430,6 +430,27 @@ class ArcheoGlyphDialog(QDialog):
         )
         detail_mode_row.addWidget(self.autotrace_detail_mode_combo, 1)
         basic_layout.addLayout(detail_mode_row)
+
+        round_strategy_default = str(
+            self.settings.value("ArcheoGlyph/round_strategy", "image_first")
+        ).strip().lower()
+        if round_strategy_default not in ("image_first", "hybrid", "structure_first"):
+            round_strategy_default = "image_first"
+        round_strategy_row = QHBoxLayout()
+        round_strategy_row.addWidget(QLabel("Round artifact mode:"))
+        self.round_strategy_combo = QComboBox()
+        self.round_strategy_combo.addItem("Image-first (recommended)", "image_first")
+        self.round_strategy_combo.addItem("Hybrid (rescue on failure)", "hybrid")
+        self.round_strategy_combo.addItem("Structure-first (stable)", "structure_first")
+        round_strategy_idx = self.round_strategy_combo.findData(round_strategy_default)
+        if round_strategy_idx < 0:
+            round_strategy_idx = 0
+        self.round_strategy_combo.setCurrentIndex(round_strategy_idx)
+        self.round_strategy_combo.currentIndexChanged.connect(
+            self._on_round_strategy_changed
+        )
+        round_strategy_row.addWidget(self.round_strategy_combo, 1)
+        basic_layout.addLayout(round_strategy_row)
         basic_layout.addStretch()
         style_tabs.addTab(basic_tab, "Basic")
 
@@ -728,6 +749,7 @@ class ArcheoGlyphDialog(QDialog):
         self._set_mode_info_with_controls(show_controls=False)
         self.autotrace_upscale_check.setEnabled(is_autotrace)
         self.autotrace_detail_mode_combo.setEnabled(is_autotrace)
+        self.round_strategy_combo.setEnabled(is_autotrace)
 
         # Show prompt input for HF mode (and maybe others in future)
         self.prompt_group.setVisible(
@@ -766,10 +788,17 @@ class ArcheoGlyphDialog(QDialog):
 
     def _on_autotrace_detail_mode_changed(self, _index):
         """Persist Auto Trace detail mode preference."""
-        mode = str(self.autotrace_detail_mode_combo.currentData() or "precise").strip().lower()
+        mode = str(self.autotrace_detail_mode_combo.currentData() or "fast").strip().lower()
         if mode not in ("fast", "precise"):
-            mode = "precise"
+            mode = "fast"
         self.settings.setValue("ArcheoGlyph/autotrace_detail_mode", mode)
+
+    def _on_round_strategy_changed(self, _index):
+        """Persist strategy for round artifact extraction."""
+        strategy = str(self.round_strategy_combo.currentData() or "image_first").strip().lower()
+        if strategy not in ("image_first", "hybrid", "structure_first"):
+            strategy = "image_first"
+        self.settings.setValue("ArcheoGlyph/round_strategy", strategy)
 
     def _update_input_quality_notice(self, file_path):
         """Show warning text when source image quality is likely too low."""
@@ -881,10 +910,15 @@ class ArcheoGlyphDialog(QDialog):
                 self._current_generator = ContourGenerator()
                 target_func = self._current_generator.generate
                 detail_mode = str(
-                    self.autotrace_detail_mode_combo.currentData() or "precise"
+                    self.autotrace_detail_mode_combo.currentData() or "fast"
                 ).strip().lower()
                 if detail_mode not in ("fast", "precise"):
-                    detail_mode = "precise"
+                    detail_mode = "fast"
+                round_strategy = str(
+                    self.round_strategy_combo.currentData() or "image_first"
+                ).strip().lower()
+                if round_strategy not in ("image_first", "hybrid", "structure_first"):
+                    round_strategy = "image_first"
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'style': self.style_combo.currentText(),
@@ -892,6 +926,7 @@ class ArcheoGlyphDialog(QDialog):
                     'symmetry': self.symmetry_check.isChecked(),
                     'force_lowres_upscale': self.autotrace_upscale_check.isChecked(),
                     'detail_mode': detail_mode,
+                    'round_strategy': round_strategy,
                     STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
                     STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
                     STYLE_CONTROL_EXAGGERATION: controls[STYLE_CONTROL_EXAGGERATION],
@@ -1124,16 +1159,24 @@ class ArcheoGlyphDialog(QDialog):
         dialog = SettingsDialog(self)
         dialog.exec_()
         detail_mode = str(
-            self.settings.value("ArcheoGlyph/autotrace_detail_mode", "precise")
+            self.settings.value("ArcheoGlyph/autotrace_detail_mode", "fast")
         ).strip().lower()
         if detail_mode not in ("fast", "precise"):
-            detail_mode = "precise"
+            detail_mode = "fast"
         detail_idx = self.autotrace_detail_mode_combo.findData(detail_mode)
         if detail_idx >= 0:
             self.autotrace_detail_mode_combo.setCurrentIndex(detail_idx)
         self.autotrace_upscale_check.setChecked(
             self.settings.value("ArcheoGlyph/autotrace_force_upscale", True, type=bool)
         )
+        round_strategy = str(
+            self.settings.value("ArcheoGlyph/round_strategy", "image_first")
+        ).strip().lower()
+        if round_strategy not in ("image_first", "hybrid", "structure_first"):
+            round_strategy = "image_first"
+        round_strategy_idx = self.round_strategy_combo.findData(round_strategy)
+        if round_strategy_idx >= 0:
+            self.round_strategy_combo.setCurrentIndex(round_strategy_idx)
         self._update_input_quality_notice(self.image_drop.image_path)
 
     def _update_style_param_labels(self):

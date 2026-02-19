@@ -50,6 +50,7 @@ class ContourGenerator:
         symmetry=False,
         force_lowres_upscale=False,
         detail_mode=None,
+        round_strategy=None,
         factuality=None,
         symbolic_looseness=None,
         exaggeration=None,
@@ -63,6 +64,7 @@ class ContourGenerator:
         :param symmetry: optional mirror symmetry
         :param force_lowres_upscale: force stronger analysis upscaling for low-res inputs
         :param detail_mode: "fast" or "precise"
+        :param round_strategy: "image_first" | "hybrid" | "structure_first"
         :param factuality: 0..100, higher keeps measured/documentary detail
         :param symbolic_looseness: 0..100, higher simplifies toward symbolic output
         :param exaggeration: 0..100, higher strengthens stylization emphasis
@@ -79,11 +81,19 @@ class ContourGenerator:
             raise ValueError("Failed to load image.")
 
         detail_mode_key = str(
-            detail_mode or self.settings.value("ArcheoGlyph/autotrace_detail_mode", "precise")
+            detail_mode or self.settings.value("ArcheoGlyph/autotrace_detail_mode", "fast")
         ).strip().lower()
         if detail_mode_key not in ("fast", "precise"):
-            detail_mode_key = "precise"
+            detail_mode_key = "fast"
         detail_fast = detail_mode_key == "fast"
+        round_strategy_key = str(
+            round_strategy or self.settings.value("ArcheoGlyph/round_strategy", "image_first")
+        ).strip().lower()
+        if round_strategy_key not in ("image_first", "hybrid", "structure_first"):
+            round_strategy_key = "image_first"
+        # Image-first mode prioritizes responsiveness.
+        if round_strategy_key == "image_first":
+            detail_fast = True
 
         processing_img, _analysis_scale = self._adaptive_prescale(
             img,
@@ -173,6 +183,8 @@ class ContourGenerator:
             factuality_v >= 0.72 and
             symbolic_v <= 0.48
         )
+        if is_roundish and round_strategy_key == "image_first":
+            fast_round_structural = True
 
         if is_typology:
             base_epsilon = 0.0026
@@ -531,14 +543,28 @@ class ContourGenerator:
                     # Keep one circular band only as fallback when motif capture is weak.
                     if len(internal_lines) < 2 and round_lines:
                         internal_lines += round_lines[:1]
-                    signature_need = (
-                        low_quality_input
-                        and self._needs_round_mirror_rescue(
-                            internal_lines,
-                            target_mask,
-                            strict=(not detail_fast),
+                    if round_strategy_key == "structure_first":
+                        signature_need = True
+                    elif round_strategy_key == "hybrid":
+                        signature_need = (
+                            low_quality_input
+                            and self._needs_round_mirror_rescue(
+                                internal_lines,
+                                target_mask,
+                                strict=(not detail_fast),
+                            )
                         )
-                    )
+                    else:
+                        # Image-first: only rescue when extraction is clearly broken.
+                        signature_need = (
+                            low_quality_input
+                            and self._needs_round_mirror_rescue(
+                                internal_lines,
+                                target_mask,
+                                strict=True,
+                            )
+                            and len(internal_lines) < max(4, motif_target - 2)
+                        )
                     if signature_need:
                         mirror_signature = self._extract_round_mirror_signature_lines(
                             detail_bgr,
@@ -547,32 +573,41 @@ class ContourGenerator:
                             max_lines=max(8, motif_target + 1),
                         )
                         if mirror_signature:
-                            seed_lines = []
-                            if round_center_motif_lines:
-                                seed_lines += round_center_motif_lines[:2]
-                            if round_polar_motif_lines:
-                                seed_lines += round_polar_motif_lines[:2]
-                            if round_motif_lines:
-                                seed_lines += round_motif_lines[:2]
-                            if internal_lines:
-                                seed_lines += internal_lines[:2]
-                            internal_lines = self._merge_distinct_lines(
-                                mirror_signature,
-                                seed_lines,
-                                min_center_sep=2.0,
-                                max_lines=max(8, motif_target + 1),
-                                min_arc_len=3.0,
-                            )
-                            internal_lines = self._regularize_round_publication_lines(
-                                internal_lines,
-                                target_mask,
-                                max_lines=max(8, motif_target + 1),
-                            )
-                            internal_lines = self._suppress_round_ring_lines(
-                                internal_lines,
-                                target_mask,
-                                max_ring_lines=1,
-                            )
+                            if round_strategy_key == "image_first":
+                                internal_lines = self._merge_distinct_lines(
+                                    internal_lines,
+                                    mirror_signature,
+                                    min_center_sep=2.4,
+                                    max_lines=max(8, motif_target + 1),
+                                    min_arc_len=4.0,
+                                )
+                            else:
+                                seed_lines = []
+                                if round_center_motif_lines:
+                                    seed_lines += round_center_motif_lines[:2]
+                                if round_polar_motif_lines:
+                                    seed_lines += round_polar_motif_lines[:2]
+                                if round_motif_lines:
+                                    seed_lines += round_motif_lines[:2]
+                                if internal_lines:
+                                    seed_lines += internal_lines[:2]
+                                internal_lines = self._merge_distinct_lines(
+                                    mirror_signature,
+                                    seed_lines,
+                                    min_center_sep=2.0,
+                                    max_lines=max(8, motif_target + 1),
+                                    min_arc_len=3.0,
+                                )
+                                internal_lines = self._regularize_round_publication_lines(
+                                    internal_lines,
+                                    target_mask,
+                                    max_lines=max(8, motif_target + 1),
+                                )
+                                internal_lines = self._suppress_round_ring_lines(
+                                    internal_lines,
+                                    target_mask,
+                                    max_ring_lines=1,
+                                )
                             internal_lines = self._prefer_round_inner_lines(
                                 internal_lines,
                                 target_mask,
@@ -696,12 +731,24 @@ class ContourGenerator:
                         f'stroke-width="{detail_width:.2f}"{detail_dash} stroke-linecap="round" stroke-linejoin="round"/>'
                     )
         else:
+            # Colored style: avoid flat single-color mass; keep subtle layered tones.
+            fill_color = self._muted_hex(final_color, keep=0.72)
             outline_color = self._darken_hex(final_color, 0.58)
             detail_color = self._darken_hex(final_color, 0.42)
+            accent_color = self._lighten_hex(final_color, 0.14)
+            fill_opacity = 0.62 if is_roundish else 0.72
             svg_output.append(
-                f'<path d="{path_data}" fill="{final_color}" fill-opacity="1.0" stroke="{outline_color}" '
+                f'<path d="{path_data}" fill="{fill_color}" fill-opacity="{fill_opacity:.2f}" stroke="{outline_color}" '
                 'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
             )
+            accent_lines = (round_lines[:1] if is_roundish else profile_lines[:1])
+            for line in accent_lines:
+                line_path = self._polyline_to_path(line)
+                if line_path:
+                    svg_output.append(
+                        f'<path d="{line_path}" fill="none" stroke="{accent_color}" stroke-opacity="0.36" '
+                        'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                    )
             for line in internal_lines:
                 line_path = self._polyline_to_path(line)
                 if line_path:
