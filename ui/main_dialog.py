@@ -21,7 +21,7 @@ from ..defaults import (
     DEFAULT_MIN_SYMBOL_SIZE_MM,
     PLUGIN_VERSION,
 )
-from ..generators.style_utils import STYLE_OPTIONS
+from ..generators.style_utils import STYLE_LEGEND, STYLE_OPTIONS
 from ..generators.style_control_utils import (
     STYLE_CONTROL_DEFAULTS,
     STYLE_CONTROL_MAX,
@@ -387,7 +387,24 @@ class ArcheoGlyphDialog(QDialog):
 
         self.style_combo = QComboBox()
         self.style_combo.addItems(STYLE_OPTIONS)
+        self.style_combo.setToolTip(
+            "Simple Symbol uses a two-tone fill with bold outlines for readable distribution maps."
+        )
         basic_layout.addWidget(self.style_combo)
+
+        self.legend_quick_btn = QPushButton("Simple Symbol Quick Setup")
+        self.legend_quick_btn.setToolTip(
+            "Applies a stable preset to turn photos into simple map symbols."
+        )
+        self.legend_quick_btn.clicked.connect(self._apply_legend_quick_setup)
+        basic_layout.addWidget(self.legend_quick_btn)
+
+        self.fast_quick_btn = QPushButton("Fast Convert Setup")
+        self.fast_quick_btn.setToolTip(
+            "Applies speed-priority settings for quick conversion."
+        )
+        self.fast_quick_btn.clicked.connect(self._apply_fast_convert_setup)
+        basic_layout.addWidget(self.fast_quick_btn)
 
         # Symmetry checkbox
         self.symmetry_check = QCheckBox("Mirror symmetry")
@@ -799,6 +816,59 @@ class ArcheoGlyphDialog(QDialog):
         if strategy not in ("image_first", "hybrid", "structure_first"):
             strategy = "image_first"
         self.settings.setValue("ArcheoGlyph/round_strategy", strategy)
+
+    def _apply_legend_quick_setup(self):
+        """Apply a practical legend-like preset without requiring special terminology."""
+        style_idx = self.style_combo.findText(STYLE_LEGEND)
+        if style_idx >= 0:
+            self.style_combo.setCurrentIndex(style_idx)
+
+        # Stable, readable simple-symbol defaults.
+        self.factuality_slider.setValue(84)
+        self.symbolic_looseness_slider.setValue(22)
+        self.exaggeration_slider.setValue(16)
+
+        detail_idx = self.autotrace_detail_mode_combo.findData("precise")
+        if detail_idx >= 0:
+            self.autotrace_detail_mode_combo.setCurrentIndex(detail_idx)
+
+        round_idx = self.round_strategy_combo.findData("structure_first")
+        if round_idx >= 0:
+            self.round_strategy_combo.setCurrentIndex(round_idx)
+
+        self._persist_style_parameters()
+        self._set_mode_info_with_controls(
+            show_controls=True,
+            base_text=(
+                "Simple symbol preset applied: stable silhouette, bold outline, minimal structure lines."
+            ),
+        )
+
+    def _apply_fast_convert_setup(self):
+        """Apply a speed-priority preset for faster image-to-symbol conversion."""
+        detail_idx = self.autotrace_detail_mode_combo.findData("fast")
+        if detail_idx >= 0:
+            self.autotrace_detail_mode_combo.setCurrentIndex(detail_idx)
+
+        round_idx = self.round_strategy_combo.findData("image_first")
+        if round_idx >= 0:
+            self.round_strategy_combo.setCurrentIndex(round_idx)
+
+        # Disable expensive low-res recovery by default for speed.
+        self.autotrace_upscale_check.setChecked(False)
+
+        # Keep style readable while reducing heavy internal-detail extraction pressure.
+        self.factuality_slider.setValue(70)
+        self.symbolic_looseness_slider.setValue(30)
+        self.exaggeration_slider.setValue(14)
+
+        self._persist_style_parameters()
+        self._set_mode_info_with_controls(
+            show_controls=True,
+            base_text=(
+                "Fast preset applied: speed priority (Fast mode, image-first, upscale off)."
+            ),
+        )
 
     def _update_input_quality_notice(self, file_path):
         """Show warning text when source image quality is likely too low."""

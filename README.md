@@ -1,99 +1,148 @@
-# ArchaeoGlyph
+﻿# ArchaeoGlyph
 
 Archaeological Symbol Generator for QGIS.
 
-![Version](https://img.shields.io/badge/version-0.1.1-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.0+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
-ArchaeoGlyph generates factual, map-ready symbols from archaeological artifact and feature images, then applies them directly to QGIS layers or the symbol library.
+ArchaeoGlyph converts archaeological photos into factual, map-ready symbols and applies them directly to QGIS layers or the symbol library.
 
-Note:
-- Display name is `ArchaeoGlyph`.
-- Plugin folder/repository path remains `ArcheoGlyph` for compatibility.
+Notes:
+- Display/plugin name is `ArchaeoGlyph`.
+- Repository/folder path remains `ArcheoGlyph` for compatibility.
 
-## Core Features
+## What It Does
 
-- `Auto Trace` factual contour + internal line extraction (offline)
-- AI generation:
-  - Hugging Face (reference-first, model fallback)
-  - Google Gemini (factual guardrails + deterministic fallback)
-  - Local Stable Diffusion (Automatic1111)
-- Styles:
-  - `Colored`
-  - `Typology`
-  - `Line`
-  - `Measured`
-- Optional SAM segmentation backend with OpenCV fallback
-- Built-in archaeological template catalog (artifacts, structures, remains, features, survey)
-- Style parameter controls (`Factuality`, `Symbolic Looseness`, `Exaggeration`)
-- Save symbol to QGIS style library or apply directly to point layers
-- Graduated symbol sizing (field + class controls)
-- Latest-model management in Settings:
-  - `Check Latest Models` (preview)
-  - `Apply Latest Recommended Models`
+- Offline `Auto Trace` contour and structure extraction
+- AI generation backends:
+  - Hugging Face (reference-first + model fallback)
+  - Google Gemini (factual safeguards + deterministic fallback)
+  - Local Stable Diffusion via Automatic1111
+- Built-in archaeological templates (artifacts, structures, remains, features, survey)
+- Direct integration with QGIS symbol library and point-layer rendering
+- Graduated size rendering by numeric field (natural breaks, equal interval, quantile)
 
-## Version
+## Style System (Consolidated)
 
-Current plugin code version: `0.1.1`
+The UI now focuses on 3 styles:
 
-### 0.1.1 highlights
+1. `Simple Symbol`
+- Best for distribution maps and legends
+- Two-tone fill + bold outline + minimal structural lines
 
-- Branding unified to `ArchaeoGlyph` (display/UI/metadata)
-- Metadata author updated to `lzpxilfe (balguljang2)`
-- Latest-model UX improved (`Check` vs `Apply`)
-- Stable defaults and model-refresh behavior improvements
-- Low-quality round artifact extraction improvements in Auto Trace
+2. `Line`
+- Monochrome contour and major internal lines
+- Good for clear black/white iconography
+
+3. `Measured`
+- Monochrome report-oriented drawing style
+- Preserves more documentary line detail
+
+Compatibility note:
+- Legacy labels like `Colored` and `Typology` are normalized to `Simple Symbol` behavior in current workflows.
+
+## Quick Presets
+
+Two one-click presets are available in the main dialog:
+
+1. `Simple Symbol Quick Setup`
+- Applies stable, map-friendly symbol defaults
+
+2. `Fast Convert Setup`
+- Applies speed-priority settings:
+  - Auto Trace quality: `Fast`
+  - Round mode: `Image-first`
+  - Low-res detail boost: `Off`
+
+## Generation Modes
+
+1. `Auto Trace`
+- Fastest local path (no API key required)
+- Best for factual symbol extraction from input photos
+
+2. `AI (Hugging Face)`
+- Reference-first generation with robust model fallback
+
+3. `AI (Google Gemini)`
+- SVG-oriented factual generation with safety checks and fallback
+
+4. `AI (Local Stable Diffusion)`
+- Automatic1111 API workflow for local/offline control
+
+5. `Use Template`
+- Uses built-in template names and categories
+- If SVG files are missing, programmatic placeholders are generated
+
+## Template Coverage
+
+Programmatic fallback templates include:
+- Bronze weapon symbols (`Bronze Sword`, `Bronze Dagger-axe`, `Bronze Spear`)
+- Kofun variants (including `Enpun`, `Zenpokouen`, `Hotategai`, `Hofun`, `Yosumi`, etc.)
+- Paper-style map/report symbols (`North Arrow`, `Scale Bar`, `Harris Matrix Context`, `Stratigraphic Unit`)
+- Pottery section snippets (`Rim/Base/Body Sherd`)
+
+## Performance Tips
+
+If conversion feels slow:
+
+1. Click `Fast Convert Setup`
+2. Keep image crop tight around the object
+3. Prefer short side around 900-1200 px for routine work
+4. Keep `Low-res detail boost` off unless needed
+5. Use `Auto Trace` first, then AI only when necessary
 
 ## Installation
 
-1. Copy the `ArcheoGlyph` plugin folder into:
-   - Windows: `%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\`
-   - Linux: `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/`
-   - macOS: `~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/`
+1. Copy the `ArcheoGlyph` folder into your QGIS plugins directory:
+- Windows: `%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\`
+- Linux: `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/`
+- macOS: `~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/`
+
 2. Restart QGIS.
 3. Enable from `Plugins > Manage and Install Plugins > ArchaeoGlyph`.
 
 ## Quick Start
 
-1. Open `ArchaeoGlyph` from toolbar/menu.
-2. Drop an input image or choose `Use Template`.
-3. Pick generation mode + style.
-4. Click `Generate`.
-5. Click `Save to Library` or `Apply to Layer`.
+1. Open `ArchaeoGlyph` from the toolbar/menu.
+2. Drop an image (or switch to `Use Template`).
+3. Select style (`Simple Symbol` / `Line` / `Measured`).
+4. Optionally run `Simple Symbol Quick Setup` or `Fast Convert Setup`.
+5. Click `Generate`.
+6. Click `Save to Library` or `Apply to Layer`.
 
 ## AI Setup
 
 ### Hugging Face
 
-1. Create token: https://huggingface.co/settings/tokens
-2. Enter token in plugin Settings.
-3. Use `Check Latest Models` then `Apply Latest Recommended Models`.
+1. Create a token: https://huggingface.co/settings/tokens
+2. Enter token in plugin Settings
+3. Use:
+- `Check Latest Models` (preview)
+- `Apply Latest Recommended Models`
 
 ### Google Gemini
 
-1. Create key: https://makersuite.google.com/app/apikey
+1. Create API key: https://makersuite.google.com/app/apikey
 2. Install dependency:
 
 ```bash
 pip install google-generativeai
 ```
 
-3. Enter key in plugin Settings.
+3. Enter API key in plugin Settings
 
 ### Local Stable Diffusion (Automatic1111)
 
-1. Start WebUI with API enabled.
-2. Set server URL in Settings (`http://127.0.0.1:7860` by default).
+1. Start WebUI with API enabled
+2. Set server URL in Settings (default: `http://127.0.0.1:7860`)
 
 ## Repository
 
 - GitHub: https://github.com/lzpxilfe/ArcheoGlyph.git
 - Issues: https://github.com/lzpxilfe/ArcheoGlyph/issues
 
-## Citation & Star
-
-If you find this repository useful, please consider giving it a star ⭐ and citing it in your work:
+## Citation
 
 ```bibtex
 @software{hwang2026archaeoglyph,
@@ -104,10 +153,9 @@ If you find this repository useful, please consider giving it a star ⭐ and cit
 }
 ```
 
-## Support (Ko-fi)
+## Support
 
-If ArchaeoGlyph helps your research or workflow, you can support development here:  
-https://ko-fi.com/lzpxilfe
+- Ko-fi: https://ko-fi.com/lzpxilfe
 
 ## License
 

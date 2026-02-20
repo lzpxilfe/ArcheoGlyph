@@ -41,7 +41,8 @@ class LocalGenerator:
         STYLE_TYPOLOGY: (
             "archaeological typology symbol, standardized silhouette, "
             "bold contour, central axis cue, 1-3 structural bands, "
-            "muted flat palette, no texture, transparent background, centered"
+            "muted flat palette, avoid single flat fill color, no texture, "
+            "transparent background, centered"
         ),
         STYLE_LINE: (
             "minimalist line art icon, archaeological artifact, "

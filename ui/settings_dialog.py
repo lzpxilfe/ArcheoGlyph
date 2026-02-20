@@ -776,8 +776,7 @@ class SettingsDialog(QDialog):
         
         <h3>Symbol Styles</h3>
         <ul>
-            <li><b>Colored</b> - fact-based color symbol with clear readability</li>
-            <li><b>Typology</b> - catalog-like icon with bold contour and 1-3 structural lines</li>
+            <li><b>Simple Symbol</b> - map-friendly icon with bold contour, 2-tone fill, and minimal structure lines</li>
             <li><b>Line</b> - contour and major internal lines, monochrome</li>
             <li><b>Measured</b> - monochrome measured drawing style for reports</li>
         </ul>

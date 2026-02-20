@@ -14,7 +14,13 @@ except ImportError:
     np = None
 from qgis.PyQt.QtCore import QSettings
 
-from .style_utils import STYLE_LINE, STYLE_MEASURED, STYLE_TYPOLOGY, normalize_style
+from .style_utils import (
+    STYLE_LINE,
+    STYLE_MEASURED,
+    STYLE_TYPOLOGY,
+    is_legend_style,
+    normalize_style,
+)
 from .style_control_utils import (
     STYLE_CONTROL_EXAGGERATION,
     STYLE_CONTROL_FACTUALITY,
@@ -139,7 +145,8 @@ class ContourGenerator:
             )
 
         style_key = normalize_style(style)
-        is_typology = style_key == STYLE_TYPOLOGY
+        legend_mode = is_legend_style(style)
+        is_typology = style_key == STYLE_TYPOLOGY and (not legend_mode)
         is_publication = style_key == STYLE_MEASURED
         is_line_drawing = style_key == STYLE_LINE
         is_mono = is_line_drawing or is_publication
@@ -152,6 +159,11 @@ class ContourGenerator:
         factuality_v = controls[STYLE_CONTROL_FACTUALITY] / 100.0
         symbolic_v = controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS] / 100.0
         exaggeration_v = controls[STYLE_CONTROL_EXAGGERATION] / 100.0
+        if legend_mode:
+            # Simple-symbol output should stay stable, simple, and map-readable.
+            factuality_v = max(factuality_v, 0.78)
+            symbolic_v = min(symbolic_v, 0.30)
+            exaggeration_v = min(exaggeration_v, 0.22)
         if is_publication:
             # Measured style should remain documentation-first even when user sliders are high.
             symbolic_v = min(symbolic_v, 0.45)
@@ -160,6 +172,11 @@ class ContourGenerator:
         terminal_count = int(round(self._clamp((0.2 + (2.0 * symbolic_v) + (1.4 * exaggeration_v) - (0.9 * factuality_v)), 0.0, 4.0)))
         texture_count = int(round(self._clamp((2.0 + (13.0 * factuality_v) - (8.0 * symbolic_v) - (5.0 * exaggeration_v)), 0.0, 18.0)))
         line_detail_count = int(round(self._clamp((1.0 + (9.0 * factuality_v) - (6.0 * symbolic_v) - (4.0 * exaggeration_v)), 0.0, 12.0)))
+        if legend_mode:
+            profile_count = 1
+            terminal_count = 1
+            texture_count = 0
+            line_detail_count = 1
 
         main_contour = max(contours, key=cv2.contourArea)
         contour_area = float(cv2.contourArea(main_contour))
@@ -175,6 +192,9 @@ class ContourGenerator:
             aspect_balance >= 0.78 and
             bbox_fill_ratio <= 0.90
         )
+        if legend_mode and is_roundish:
+            profile_count = 0
+            terminal_count = 0
         if is_roundish:
             hull = cv2.convexHull(main_contour)
             hull_area = float(cv2.contourArea(hull))
@@ -200,7 +220,11 @@ class ContourGenerator:
         if is_roundish:
             base_epsilon *= 0.72
         epsilon_factor = base_epsilon + (0.0018 * symbolic_v) + (0.0012 * exaggeration_v) - (0.0009 * factuality_v)
-        epsilon_factor = self._clamp(epsilon_factor, 0.0008, 0.0052)
+        if legend_mode:
+            epsilon_factor += 0.0011
+            epsilon_factor = self._clamp(epsilon_factor, 0.0012, 0.0068)
+        else:
+            epsilon_factor = self._clamp(epsilon_factor, 0.0008, 0.0052)
         epsilon = epsilon_factor * cv2.arcLength(main_contour, True)
         approx = cv2.approxPolyDP(main_contour, epsilon, True)
 
@@ -250,7 +274,7 @@ class ContourGenerator:
             target_mask,
             max_lines=terminal_target,
         )
-        texture_lines = [] if fast_round_structural else self._extract_internal_lines_multisource(
+        texture_lines = [] if (fast_round_structural or legend_mode) else self._extract_internal_lines_multisource(
             detail_bgr=detail_bgr,
             base_bgr=processing_bgr,
             target_mask=target_mask,
@@ -320,7 +344,14 @@ class ContourGenerator:
                 max_lines=max(6, round_motif_select_limit),
             ) if (is_roundish and is_publication) else []
 
-        if is_typology:
+        if legend_mode:
+            if is_roundish:
+                internal_lines = round_motif_lines[:1] if round_motif_lines else round_lines[:1]
+            else:
+                internal_lines = profile_lines[:1] + spine_lines[:1]
+                if terminal_count > 0:
+                    internal_lines += terminal_lines[:1]
+        elif is_typology:
             if is_roundish:
                 internal_lines = round_lines[:1]
                 if round_motif_lines:
@@ -815,54 +846,98 @@ class ContourGenerator:
                         f'stroke-width="{detail_width:.2f}"{detail_dash} stroke-linecap="round" stroke-linejoin="round"/>'
                     )
         else:
-            # Colored style: avoid flat single-color mass; keep subtle layered tones.
-            fill_color = self._muted_hex(final_color, keep=0.72)
-            outline_color = self._darken_hex(final_color, 0.58)
-            detail_color = self._darken_hex(final_color, 0.42)
-            accent_color = self._lighten_hex(final_color, 0.14)
-            deep_fill_color = self._darken_hex(fill_color, 0.88)
-            glow_color = self._lighten_hex(fill_color, 0.22)
-            fill_opacity = 0.62 if is_roundish else 0.72
-            svg_output.append(
-                "<defs>"
-                f'<linearGradient id="agColoredBase" x1="18%" y1="12%" x2="82%" y2="92%">'
-                f'<stop offset="0%" stop-color="{glow_color}" stop-opacity="1"/>'
-                f'<stop offset="62%" stop-color="{fill_color}" stop-opacity="1"/>'
-                f'<stop offset="100%" stop-color="{deep_fill_color}" stop-opacity="1"/>'
-                "</linearGradient>"
-                f'<radialGradient id="agColoredGlow" cx="28%" cy="22%" r="58%">'
-                f'<stop offset="0%" stop-color="{accent_color}" stop-opacity="1"/>'
-                f'<stop offset="100%" stop-color="{fill_color}" stop-opacity="0"/>'
-                "</radialGradient>"
-                "</defs>"
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="url(#agColoredBase)" fill-opacity="{fill_opacity:.2f}" stroke="none" '
-                'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="url(#agColoredGlow)" fill-opacity="0.20" stroke="none" '
-                'stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
-                'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            accent_lines = (round_lines[:1] if is_roundish else profile_lines[:1])
-            for line in accent_lines:
-                line_path = self._polyline_to_path(line)
-                if line_path:
-                    svg_output.append(
-                        f'<path d="{line_path}" fill="none" stroke="{accent_color}" stroke-opacity="0.36" '
-                        'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
-                    )
-            for line in internal_lines:
-                line_path = self._polyline_to_path(line)
-                if line_path:
-                    svg_output.append(
-                        f'<path d="{line_path}" fill="none" stroke="{detail_color}" stroke-opacity="0.72" '
-                        'stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>'
-                    )
+            if legend_mode:
+                # Simple Symbol style: two-tone fill + bold outline + minimal structural linework.
+                fill_color = self._muted_hex(final_color, keep=0.78)
+                simple_light = self._lighten_hex(fill_color, 0.16)
+                simple_dark = self._darken_hex(fill_color, 0.84)
+                simple_glow = self._lighten_hex(fill_color, 0.26)
+                outline_color = self._darken_hex(fill_color, 0.56)
+                detail_color = self._darken_hex(fill_color, 0.70)
+                fill_opacity = 0.90 if is_roundish else 0.94
+
+                svg_output.append(
+                    "<defs>"
+                    f'<linearGradient id="agSimpleBase" x1="20%" y1="12%" x2="82%" y2="92%">'
+                    f'<stop offset="0%" stop-color="{simple_light}" stop-opacity="1"/>'
+                    f'<stop offset="62%" stop-color="{fill_color}" stop-opacity="1"/>'
+                    f'<stop offset="100%" stop-color="{simple_dark}" stop-opacity="1"/>'
+                    "</linearGradient>"
+                    f'<radialGradient id="agSimpleGlow" cx="28%" cy="22%" r="56%">'
+                    f'<stop offset="0%" stop-color="{simple_glow}" stop-opacity="1"/>'
+                    f'<stop offset="100%" stop-color="{fill_color}" stop-opacity="0"/>'
+                    "</radialGradient>"
+                    "</defs>"
+                )
+                svg_output.append(
+                    f'<path d="{path_data}" fill="url(#agSimpleBase)" fill-opacity="{fill_opacity:.2f}" stroke="none" '
+                    'stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+                svg_output.append(
+                    f'<path d="{path_data}" fill="url(#agSimpleGlow)" fill-opacity="0.20" stroke="none" '
+                    'stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+                svg_output.append(
+                    f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
+                    'stroke-width="2.60" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+
+                for line in internal_lines[:2]:
+                    line_path = self._polyline_to_path(line)
+                    if line_path:
+                        svg_output.append(
+                            f'<path d="{line_path}" fill="none" stroke="{detail_color}" stroke-opacity="0.86" '
+                            'stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>'
+                        )
+            else:
+                # Colored style: avoid flat single-color mass; keep subtle layered tones.
+                fill_color = self._muted_hex(final_color, keep=0.72)
+                outline_color = self._darken_hex(final_color, 0.58)
+                detail_color = self._darken_hex(final_color, 0.42)
+                accent_color = self._lighten_hex(final_color, 0.14)
+                deep_fill_color = self._darken_hex(fill_color, 0.88)
+                glow_color = self._lighten_hex(fill_color, 0.22)
+                fill_opacity = 0.62 if is_roundish else 0.72
+                svg_output.append(
+                    "<defs>"
+                    f'<linearGradient id="agColoredBase" x1="18%" y1="12%" x2="82%" y2="92%">'
+                    f'<stop offset="0%" stop-color="{glow_color}" stop-opacity="1"/>'
+                    f'<stop offset="62%" stop-color="{fill_color}" stop-opacity="1"/>'
+                    f'<stop offset="100%" stop-color="{deep_fill_color}" stop-opacity="1"/>'
+                    "</linearGradient>"
+                    f'<radialGradient id="agColoredGlow" cx="28%" cy="22%" r="58%">'
+                    f'<stop offset="0%" stop-color="{accent_color}" stop-opacity="1"/>'
+                    f'<stop offset="100%" stop-color="{fill_color}" stop-opacity="0"/>'
+                    "</radialGradient>"
+                    "</defs>"
+                )
+                svg_output.append(
+                    f'<path d="{path_data}" fill="url(#agColoredBase)" fill-opacity="{fill_opacity:.2f}" stroke="none" '
+                    'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+                svg_output.append(
+                    f'<path d="{path_data}" fill="url(#agColoredGlow)" fill-opacity="0.20" stroke="none" '
+                    'stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+                svg_output.append(
+                    f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
+                    'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+                accent_lines = (round_lines[:1] if is_roundish else profile_lines[:1])
+                for line in accent_lines:
+                    line_path = self._polyline_to_path(line)
+                    if line_path:
+                        svg_output.append(
+                            f'<path d="{line_path}" fill="none" stroke="{accent_color}" stroke-opacity="0.36" '
+                            'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
+                        )
+                for line in internal_lines:
+                    line_path = self._polyline_to_path(line)
+                    if line_path:
+                        svg_output.append(
+                            f'<path d="{line_path}" fill="none" stroke="{detail_color}" stroke-opacity="0.72" '
+                            'stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>'
+                        )
 
         svg_output.append("</svg>")
         return "".join(svg_output)

@@ -152,6 +152,36 @@ class TemplateGenerator:
             "default_color": "#8E8E8E",
             "category": "artifacts"
         },
+        "Bronze Sword": {
+            "file": "bronze_sword.svg",
+            "default_color": "#53A9A8",
+            "category": "artifacts"
+        },
+        "Bronze Dagger-axe": {
+            "file": "bronze_dagger_axe.svg",
+            "default_color": "#C66362",
+            "category": "artifacts"
+        },
+        "Bronze Spear": {
+            "file": "bronze_spear.svg",
+            "default_color": "#B09657",
+            "category": "artifacts"
+        },
+        "Pottery Rim Sherd (Section)": {
+            "file": "pottery_rim_sherd_section.svg",
+            "default_color": "#8B5A3C",
+            "category": "artifacts"
+        },
+        "Pottery Base Sherd (Section)": {
+            "file": "pottery_base_sherd_section.svg",
+            "default_color": "#8B5A3C",
+            "category": "artifacts"
+        },
+        "Pottery Body Sherd (Section)": {
+            "file": "pottery_body_sherd_section.svg",
+            "default_color": "#8B5A3C",
+            "category": "artifacts"
+        },
         "Projectile Point (Leaf-shaped)": {
             "file": "projectile_point_leaf.svg",
             "default_color": "#6E8FA3",
@@ -221,6 +251,76 @@ class TemplateGenerator:
         },
         "Keyhole Tomb (Makinokuchi)": {
             "file": "keyhole_tomb_makinokuchi.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Normal)": {
+            "file": "kofun_normal.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (With Shugo)": {
+            "file": "kofun_with_shugo.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (With Fukiishi)": {
+            "file": "kofun_with_fukiishi.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Tsumiishizuka)": {
+            "file": "kofun_tsumiishizuka.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Enpun)": {
+            "file": "kofun_enpun.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Zenpokouen)": {
+            "file": "kofun_zenpokouen.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Makimuku-en)": {
+            "file": "kofun_makimuku_en.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Hotategai)": {
+            "file": "kofun_hotategai.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Sohochuen)": {
+            "file": "kofun_sohochuen.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Hofun)": {
+            "file": "kofun_hofun.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Zenpokoho)": {
+            "file": "kofun_zenpokoho.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Makimuku-ho)": {
+            "file": "kofun_makimuku_ho.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Yosumi)": {
+            "file": "kofun_yosumi.svg",
+            "default_color": "#A88A5F",
+            "category": "structures"
+        },
+        "Kofun (Daijobo)": {
+            "file": "kofun_daijobo.svg",
             "default_color": "#A88A5F",
             "category": "structures"
         },
@@ -420,6 +520,26 @@ class TemplateGenerator:
             "default_color": "#92400E",
             "category": "survey"
         },
+        "North Arrow (Map Standard)": {
+            "file": "north_arrow_map_standard.svg",
+            "default_color": "#1F2937",
+            "category": "survey"
+        },
+        "Scale Bar (Map Standard)": {
+            "file": "scale_bar_map_standard.svg",
+            "default_color": "#1F2937",
+            "category": "survey"
+        },
+        "Harris Matrix Context": {
+            "file": "harris_matrix_context.svg",
+            "default_color": "#6B7280",
+            "category": "survey"
+        },
+        "Stratigraphic Unit": {
+            "file": "stratigraphic_unit.svg",
+            "default_color": "#4B5563",
+            "category": "survey"
+        },
     }
 
     # Backward compatibility for older naming variants
@@ -454,11 +574,32 @@ class TemplateGenerator:
         "Pequop side-notched point": "Projectile Point (Side-notched)",
         "Dead Cedar point": "Projectile Point (Corner-notched)",
         "Elko-eared point": "Projectile Point (Stemmed)",
+        "Normal": "Kofun (Normal)",
         "with Shugo": "Keyhole Tomb (With Moat)",
         "with moat": "Keyhole Tomb (With Moat)",
         "with Fukiishi": "Keyhole Tomb (With Fukiishi)",
         "Tsumishizuka": "Keyhole Tomb (Tsumishizuka)",
+        "Tsumiishizuka": "Kofun (Tsumiishizuka)",
         "Makinokuchi": "Keyhole Tomb (Makinokuchi)",
+        "Enpun": "Kofun (Enpun)",
+        "Zenpokouen": "Kofun (Zenpokouen)",
+        "Zenpokoen": "Kofun (Zenpokouen)",
+        "Makimuku-en": "Kofun (Makimuku-en)",
+        "Hotategai": "Kofun (Hotategai)",
+        "Sohochuen": "Kofun (Sohochuen)",
+        "Hofun": "Kofun (Hofun)",
+        "Zenpokoho": "Kofun (Zenpokoho)",
+        "Makimuku-ho": "Kofun (Makimuku-ho)",
+        "Yosumi": "Kofun (Yosumi)",
+        "Daijobo": "Kofun (Daijobo)",
+        "Rim Sherd": "Pottery Rim Sherd (Section)",
+        "Base Sherd": "Pottery Base Sherd (Section)",
+        "Body Sherd": "Pottery Body Sherd (Section)",
+        "North Arrow": "North Arrow (Map Standard)",
+        "Scale Bar": "Scale Bar (Map Standard)",
+        "Harris Context": "Harris Matrix Context",
+        "Harris Matrix": "Harris Matrix Context",
+        "Stratigraphic Unit Symbol": "Stratigraphic Unit",
     }
     
     def __init__(self, plugin_dir):
@@ -498,9 +639,20 @@ class TemplateGenerator:
         key = str(template_type or "").strip()
         if not key:
             return ""
+        key = re.sub(r"\s*\([A-Z]{2,6}\)\s*$", "", key).strip()
         if key in self.TEMPLATE_INFO:
             return key
-        return self.LEGACY_TEMPLATE_ALIASES.get(key, key)
+        if key in self.LEGACY_TEMPLATE_ALIASES:
+            return self.LEGACY_TEMPLATE_ALIASES[key]
+
+        key_fold = key.casefold()
+        for template_name in self.TEMPLATE_INFO:
+            if template_name.casefold() == key_fold:
+                return template_name
+        for alias_name, canonical_name in self.LEGACY_TEMPLATE_ALIASES.items():
+            if alias_name.casefold() == key_fold:
+                return canonical_name
+        return key
         
     def _load_and_colorize_svg(self, svg_path, color):
         """Load SVG file and replace colors using XML parsing."""
@@ -592,7 +744,51 @@ class TemplateGenerator:
         # Dispatch drawing by keyword
         key = str(template_type or "").strip().lower().replace("/", " ")
         
-        if "keyhole tomb" in key or "shugo" in key or "fukiishi" in key or "tsumishizuka" in key:
+        if (
+            "kofun" in key
+            or "enpun" in key
+            or "zenpokouen" in key
+            or "zenpokoen" in key
+            or "makimuku-en" in key
+            or "hotategai" in key
+            or "sohochuen" in key
+            or "hofun" in key
+            or "zenpokoho" in key
+            or "makimuku-ho" in key
+            or "yosumi" in key
+            or "daijobo" in key
+        ):
+            if "with shugo" in key:
+                self._draw_keyhole_tomb(painter, size, m, "moat", q_color)
+            elif "with fukiishi" in key:
+                self._draw_keyhole_tomb(painter, size, m, "fukiishi", q_color)
+            elif "tsumiishizuka" in key or "tsumishizuka" in key:
+                self._draw_keyhole_tomb(painter, size, m, "tsumishizuka", q_color)
+            elif "normal" in key:
+                self._draw_keyhole_tomb(painter, size, m, "normal", q_color)
+            elif "enpun" in key:
+                self._draw_kofun_shape(painter, size, m, "enpun", q_color)
+            elif "zenpokouen" in key or "zenpokoen" in key:
+                self._draw_kofun_shape(painter, size, m, "zenpokouen", q_color)
+            elif "makimuku-en" in key:
+                self._draw_kofun_shape(painter, size, m, "makimuku_en", q_color)
+            elif "hotategai" in key:
+                self._draw_kofun_shape(painter, size, m, "hotategai", q_color)
+            elif "sohochuen" in key:
+                self._draw_kofun_shape(painter, size, m, "sohochuen", q_color)
+            elif "zenpokoho" in key:
+                self._draw_kofun_shape(painter, size, m, "zenpokoho", q_color)
+            elif "makimuku-ho" in key:
+                self._draw_kofun_shape(painter, size, m, "makimuku_ho", q_color)
+            elif "yosumi" in key:
+                self._draw_kofun_shape(painter, size, m, "yosumi", q_color)
+            elif "daijobo" in key:
+                self._draw_kofun_shape(painter, size, m, "daijobo", q_color)
+            elif "hofun" in key:
+                self._draw_kofun_shape(painter, size, m, "hofun", q_color)
+            else:
+                self._draw_keyhole_tomb(painter, size, m, "normal", q_color)
+        elif "keyhole tomb" in key or "shugo" in key or "fukiishi" in key or "tsumishizuka" in key:
             if "moat" in key or "shugo" in key:
                 self._draw_keyhole_tomb(painter, size, m, "moat", q_color)
             elif "fukiishi" in key:
@@ -605,6 +801,12 @@ class TemplateGenerator:
                 self._draw_keyhole_tomb(painter, size, m, "stepped", q_color)
             else:
                 self._draw_keyhole_tomb(painter, size, m, "normal", q_color)
+        elif "bronze dagger-axe" in key:
+            self._draw_bronze_weapon_symbol(painter, size, m, "dagger_axe", q_color)
+        elif "bronze spear" in key:
+            self._draw_bronze_weapon_symbol(painter, size, m, "spear", q_color)
+        elif "bronze sword" in key:
+            self._draw_bronze_weapon_symbol(painter, size, m, "sword", q_color)
         elif "bronze dagger" in key or "bronze sword" in key:
             if "liaoning" in key:
                 self._draw_bronze_dagger_typology(painter, size, m, "liaoning", q_color)
@@ -639,6 +841,12 @@ class TemplateGenerator:
                 self._draw_projectile_point_typology(painter, size, m, "triangular")
             else:
                 self._draw_projectile_point_typology(painter, size, m, "leaf")
+        elif "rim sherd" in key:
+            self._draw_pottery_sherd_section(painter, size, m, "rim", q_color)
+        elif "base sherd" in key:
+            self._draw_pottery_sherd_section(painter, size, m, "base", q_color)
+        elif "body sherd" in key:
+            self._draw_pottery_sherd_section(painter, size, m, "body", q_color)
         elif "pottery" in key:
             self._draw_pottery(painter, size, m)
         elif "stone tool" in key or "arrowhead" in key or "scraper" in key:
@@ -699,6 +907,14 @@ class TemplateGenerator:
             self._draw_grid_corner(painter, size, m, q_color)
         elif "excavation" in key:
             self._draw_excavation(painter, size, m, q_color)
+        elif "north arrow" in key:
+            self._draw_north_arrow(painter, size, m, q_color)
+        elif "scale bar" in key:
+            self._draw_scale_bar(painter, size, m, q_color)
+        elif "harris matrix" in key or "harris context" in key:
+            self._draw_harris_matrix_context(painter, size, m, q_color)
+        elif "stratigraphic unit" in key:
+            self._draw_stratigraphic_unit(painter, size, m, q_color)
         elif "datum" in key:
             self._draw_datum_point(painter, size, m, q_color)
         elif "photo point" in key:
@@ -766,6 +982,49 @@ class TemplateGenerator:
         for i in range(6):
             y = int(m + 50 + (i * 24))
             painter.drawLine(int(cx - 46 + (i % 2) * 4), y, int(cx - 12), y + 8)
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    def _draw_pottery_sherd_section(self, painter, s, m, variant, color):
+        """Section-style ceramic sherd snippets used in typology figures."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        edge_pen = QPen(color.darker(145), 2.0)
+        hatch_pen = QPen(color.darker(165), 1.0)
+        painter.setPen(edge_pen)
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 95))
+
+        path = QPainterPath()
+        if variant == "rim":
+            path.moveTo(m + 22, m + 52)
+            path.quadTo(s * 0.42, m + 24, s * 0.70, m + 34)
+            path.quadTo(s - m - 18, m + 50, s - m - 42, m + 70)
+            path.lineTo(m + 52, s - m - 28)
+            path.quadTo(m + 30, s * 0.62, m + 22, m + 52)
+        elif variant == "base":
+            path.moveTo(m + 32, s - m - 68)
+            path.quadTo(s * 0.35, s - m - 24, s * 0.52, s - m - 16)
+            path.quadTo(s * 0.70, s - m - 24, s - m - 28, s - m - 66)
+            path.lineTo(s - m - 60, m + 42)
+            path.quadTo(s * 0.56, m + 30, m + 54, m + 44)
+            path.closeSubpath()
+        else:
+            path.moveTo(m + 28, m + 46)
+            path.quadTo(s * 0.36, m + 20, s * 0.62, m + 32)
+            path.quadTo(s - m - 20, m + 54, s - m - 30, s * 0.62)
+            path.quadTo(s * 0.70, s - m - 18, s * 0.45, s - m - 16)
+            path.quadTo(m + 34, s - m - 20, m + 24, s * 0.60)
+            path.closeSubpath()
+        painter.drawPath(path)
+
+        painter.setPen(hatch_pen)
+        painter.setBrush(Qt.NoBrush)
+        for i in range(7):
+            x = int(m + 36 + i * 26)
+            y1 = int(m + 60 + (i % 3) * 14)
+            y2 = int(s - m - 28 - (i % 2) * 10)
+            painter.drawLine(x - 9, y1, x + 8, y2)
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
@@ -862,6 +1121,58 @@ class TemplateGenerator:
         painter.setPen(ridge_pen)
         painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 8))
         painter.setPen(old_pen)
+
+    def _draw_bronze_weapon_symbol(self, painter, s, m, variant, color):
+        """Bronze weapon symbol variants (sword, dagger-axe, spear)."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        cx = s / 2.0
+        painter.setPen(QPen(color.darker(170), 2.2))
+        painter.setBrush(color)
+
+        path = QPainterPath()
+        if variant == "dagger_axe":
+            path.moveTo(cx, m + 8)
+            path.quadTo(cx + 28, s * 0.26, cx + 22, s * 0.48)
+            path.lineTo(cx + 30, s * 0.66)
+            path.quadTo(cx + 12, s - m - 26, cx + 4, s - m - 14)
+            path.lineTo(cx - 4, s - m - 14)
+            path.quadTo(cx - 12, s - m - 26, cx - 30, s * 0.66)
+            path.lineTo(cx - 22, s * 0.48)
+            path.quadTo(cx - 28, s * 0.26, cx, m + 8)
+            path.closeSubpath()
+        elif variant == "spear":
+            path.moveTo(cx, m + 6)
+            path.quadTo(cx + 14, s * 0.30, cx + 12, s * 0.66)
+            path.lineTo(cx + 9, s - m - 30)
+            path.lineTo(cx + 9, s - m - 18)
+            path.lineTo(cx - 9, s - m - 18)
+            path.lineTo(cx - 9, s - m - 30)
+            path.lineTo(cx - 12, s * 0.66)
+            path.quadTo(cx - 14, s * 0.30, cx, m + 6)
+            path.closeSubpath()
+        else:
+            path.moveTo(cx, m + 6)
+            path.quadTo(cx + 20, s * 0.26, cx + 18, s * 0.60)
+            path.lineTo(cx + 12, s * 0.75)
+            path.lineTo(cx + 12, s - m - 28)
+            path.lineTo(cx + 22, s - m - 28)
+            path.lineTo(cx + 22, s - m - 14)
+            path.lineTo(cx - 22, s - m - 14)
+            path.lineTo(cx - 22, s - m - 28)
+            path.lineTo(cx - 12, s - m - 28)
+            path.lineTo(cx - 12, s * 0.75)
+            path.lineTo(cx - 18, s * 0.60)
+            path.quadTo(cx - 20, s * 0.26, cx, m + 6)
+            path.closeSubpath()
+
+        painter.drawPath(path)
+        painter.setPen(QPen(color.darker(185), 1.3))
+        painter.setBrush(Qt.NoBrush)
+        ridge_bottom = int(s - m - 22 if variant == "sword" else s - m - 20)
+        painter.drawLine(int(cx), int(m + 14), int(cx), ridge_bottom)
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_bronze_dagger_typology(self, painter, s, m, variant, color):
         """Typological bronze dagger variants inspired by catalog symbol conventions."""
@@ -1027,6 +1338,102 @@ class TemplateGenerator:
     # ═══════════════════════════════════════════════════════
     #  Drawing methods — Structures
     # ═══════════════════════════════════════════════════════
+
+    def _draw_kofun_shape(self, painter, s, m, variant, color):
+        """Kofun plan-view variants for regional map symbols."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        painter.setPen(QPen(color.darker(160), 2.0))
+        painter.setBrush(color)
+
+        cx = s / 2.0
+        if variant == "zenpokouen":
+            self._draw_keyhole_tomb(painter, s, m, "normal", color)
+        elif variant == "makimuku_en":
+            self._draw_keyhole_tomb(painter, s, m, "normal", color)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color.darker(175), 1.2))
+            painter.drawLine(int(cx - 24), int(s * 0.55), int(cx + 24), int(s * 0.55))
+            painter.drawLine(int(cx - 30), int(s * 0.63), int(cx + 30), int(s * 0.63))
+        elif variant == "enpun":
+            r = s / 2.0 - m - 14
+            painter.drawEllipse(int(cx - r), int(cx - r), int(2 * r), int(2 * r))
+        elif variant == "hotategai":
+            top_r = 46.0
+            circle_y = m + 62
+            p = QPainterPath()
+            p.addEllipse(QRectF(cx - top_r, circle_y - top_r, top_r * 2, top_r * 2))
+            p.moveTo(cx - 30, circle_y + top_r - 6)
+            p.lineTo(cx - 44, s - m - 26)
+            p.lineTo(cx + 44, s - m - 26)
+            p.lineTo(cx + 30, circle_y + top_r - 6)
+            p.closeSubpath()
+            painter.drawPath(p)
+        elif variant == "sohochuen":
+            p = QPainterPath()
+            p.addEllipse(QRectF(cx - 38, m + 26, 76, 76))
+            p.addEllipse(QRectF(cx - 28, s * 0.49, 56, 92))
+            painter.drawPath(p)
+        elif variant == "hofun":
+            side = s - (2 * m) - 36
+            painter.drawRect(int(cx - side / 2), int(cx - side / 2), int(side), int(side))
+        elif variant == "zenpokoho":
+            p = QPainterPath()
+            p.addEllipse(QRectF(cx - 34, m + 24, 68, 68))
+            p.moveTo(cx - 32, s * 0.50)
+            p.lineTo(cx - 42, s - m - 20)
+            p.lineTo(cx + 42, s - m - 20)
+            p.lineTo(cx + 32, s * 0.50)
+            p.closeSubpath()
+            painter.drawPath(p)
+        elif variant == "makimuku_ho":
+            p = QPainterPath()
+            p.addEllipse(QRectF(cx - 34, m + 24, 68, 68))
+            p.moveTo(cx - 24, s * 0.50)
+            p.lineTo(cx - 44, s - m - 26)
+            p.lineTo(cx + 44, s - m - 26)
+            p.lineTo(cx + 24, s * 0.50)
+            p.closeSubpath()
+            painter.drawPath(p)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color.darker(178), 1.2))
+            painter.drawLine(int(cx - 30), int(s * 0.62), int(cx + 30), int(s * 0.62))
+        elif variant == "yosumi":
+            p = QPainterPath()
+            x1 = m + 34
+            y1 = m + 34
+            x2 = s - m - 34
+            y2 = s - m - 34
+            protrusion = 16
+            p.moveTo(x1, y1 - protrusion)
+            p.lineTo((x1 + x2) / 2, y1)
+            p.lineTo(x2, y1 - protrusion)
+            p.lineTo(x2 + protrusion, y1)
+            p.lineTo(x2, (y1 + y2) / 2)
+            p.lineTo(x2 + protrusion, y2)
+            p.lineTo(x2, y2 + protrusion)
+            p.lineTo((x1 + x2) / 2, y2)
+            p.lineTo(x1, y2 + protrusion)
+            p.lineTo(x1 - protrusion, y2)
+            p.lineTo(x1, (y1 + y2) / 2)
+            p.lineTo(x1 - protrusion, y1)
+            p.closeSubpath()
+            painter.drawPath(p)
+        elif variant == "daijobo":
+            side = s - (2 * m) - 30
+            x = int(cx - side / 2)
+            y = int(cx - side / 2)
+            painter.drawRect(x, y, int(side), int(side))
+            inner = int(side * 0.46)
+            inner_x = int(cx - inner / 2)
+            inner_y = int(cx - inner / 2)
+            painter.setBrush(QColor(152, 210, 176))
+            painter.drawRect(inner_x, inner_y, inner, inner)
+        else:
+            self._draw_keyhole_tomb(painter, s, m, "normal", color)
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_fortress(self, painter, s, m):
         """Castle/fortress — crenellated rectangle."""
@@ -1480,6 +1887,97 @@ class TemplateGenerator:
         painter.drawLine(nx, ny - 10, nx - 5, ny - 3)
         painter.drawLine(nx, ny - 10, nx + 5, ny - 3)
         painter.setPen(old_pen)
+
+    def _draw_north_arrow(self, painter, s, m, color):
+        """Map-style north arrow used in archaeological figures."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        painter.setPen(QPen(color.darker(165), 2.0))
+        painter.setBrush(color)
+        cx = s / 2.0
+        arrow = QPainterPath()
+        arrow.moveTo(cx, m + 12)
+        arrow.lineTo(cx + 34, s - m - 56)
+        arrow.lineTo(cx + 10, s - m - 56)
+        arrow.lineTo(cx + 10, s - m - 16)
+        arrow.lineTo(cx - 10, s - m - 16)
+        arrow.lineTo(cx - 10, s - m - 56)
+        arrow.lineTo(cx - 34, s - m - 56)
+        arrow.closeSubpath()
+        painter.drawPath(arrow)
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(color.darker(185), 1.6))
+        painter.drawText(int(cx - 10), m + 26, "N")
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    def _draw_scale_bar(self, painter, s, m, color):
+        """Segmented scale bar convention for map figures."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        painter.setPen(QPen(color.darker(160), 1.8))
+        seg_w = 34
+        bar_h = 18
+        x0 = int(s / 2 - (seg_w * 2))
+        y0 = int(s * 0.54)
+        for i in range(4):
+            if i % 2 == 0:
+                painter.setBrush(color)
+            else:
+                painter.setBrush(Qt.white)
+            painter.drawRect(x0 + i * seg_w, y0, seg_w, bar_h)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawLine(x0, y0 + bar_h + 2, x0 + seg_w * 4, y0 + bar_h + 2)
+        for i in range(5):
+            tx = x0 + i * seg_w
+            painter.drawLine(tx, y0 + bar_h + 2, tx, y0 + bar_h + 9)
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    def _draw_harris_matrix_context(self, painter, s, m, color):
+        """Simplified Harris matrix context box + relation connectors."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        painter.setPen(QPen(color.darker(160), 1.8))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 70))
+
+        top = QRectF(m + 40, m + 28, s - 2 * m - 80, 36)
+        mid = QRectF(m + 26, s * 0.44, s - 2 * m - 52, 40)
+        bot_l = QRectF(m + 22, s - m - 56, 72, 32)
+        bot_r = QRectF(s - m - 94, s - m - 56, 72, 32)
+        painter.drawRect(top)
+        painter.drawRect(mid)
+        painter.drawRect(bot_l)
+        painter.drawRect(bot_r)
+
+        painter.setBrush(Qt.NoBrush)
+        painter.drawLine(int(top.center().x()), int(top.bottom()), int(mid.center().x()), int(mid.top()))
+        painter.drawLine(int(mid.left() + 24), int(mid.bottom()), int(bot_l.center().x()), int(bot_l.top()))
+        painter.drawLine(int(mid.right() - 24), int(mid.bottom()), int(bot_r.center().x()), int(bot_r.top()))
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    def _draw_stratigraphic_unit(self, painter, s, m, color):
+        """Layered context symbol inspired by section stratigraphy notation."""
+        old_pen = painter.pen()
+        old_brush = painter.brush()
+        painter.setPen(QPen(color.darker(160), 1.5))
+        x = m + 16
+        y = m + 24
+        w = s - 2 * m - 32
+        h = s - 2 * m - 48
+        layers = 4
+        for i in range(layers):
+            top = int(y + i * (h / layers))
+            lh = int(h / layers)
+            shade = 70 + (i * 35)
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), min(190, shade)))
+            painter.drawRect(x, top, w, lh)
+            painter.setPen(QPen(color.darker(170), 1.0))
+            painter.drawLine(x + 8, top + lh - 4, x + w - 8, top + lh - 10)
+            painter.setPen(QPen(color.darker(160), 1.5))
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_survey_point(self, painter, s, m, color):
         """Survey point — crosshair with circle."""
