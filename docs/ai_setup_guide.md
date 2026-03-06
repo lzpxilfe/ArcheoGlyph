@@ -18,7 +18,7 @@ Choose one of the following options:
 
 ### Step 1: Get API Key
 
-1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
+1. Visit [Google AI Studio](https://aistudio.google.com/apikey)
 2. Sign in with your Google account
 3. Click **"Create API Key"**
 4. Copy the generated key
@@ -29,13 +29,13 @@ Open QGIS Python Console (`Plugins > Python Console`) and run:
 
 ```python
 import subprocess
-subprocess.check_call(['pip', 'install', 'google-generativeai'])
+subprocess.check_call(['pip', 'install', 'google-genai'])
 ```
 
 Or run in your system terminal:
 
 ```bash
-pip install google-generativeai
+pip install google-genai
 ```
 
 ### Step 3: Configure in Plugin

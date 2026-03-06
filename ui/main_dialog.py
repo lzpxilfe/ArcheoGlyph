@@ -5,7 +5,7 @@ ArcheoGlyph - Main Dialog UI
 
 import os
 from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread, QRectF, QSettings
-from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent, QPainter
+from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QSpinBox, QGroupBox, QRadioButton, QButtonGroup,

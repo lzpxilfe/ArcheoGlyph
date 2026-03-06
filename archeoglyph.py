@@ -4,10 +4,9 @@ ArcheoGlyph - Main Plugin Class
 """
 
 import os
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsProject
 
 from .ui.main_dialog import ArcheoGlyphDialog
 from .defaults import HF_DEFAULT_MODEL_ID, HF_LEGACY_MODEL_ALIASES, PLUGIN_VERSION

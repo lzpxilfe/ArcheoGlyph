@@ -36,3 +36,30 @@ HF_LEGACY_MODEL_ALIASES = {
     "CompVis/stable-diffusion-v1-4": HF_LEGACY_COMPAT_MODEL_ID,
     "prompthero/openjourney": HF_LEGACY_COMPAT_MODEL_ID,
 }
+
+GEMINI_INSTALL_PACKAGE = "google-genai"
+GEMINI_AI_STUDIO_URL = "https://aistudio.google.com/apikey"
+
+GEMINI_TEXT_MODEL_CANDIDATES = (
+    "gemini-3.1-pro-preview",
+    "gemini-3-pro-preview",
+    "gemini-3.1-flash-preview",
+    "gemini-3-flash-preview",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+)
+
+GEMINI_IMAGE_MODEL_CANDIDATES = (
+    "gemini-3.1-flash-image-preview",
+    "gemini-3-pro-image-preview",
+    "gemini-2.5-flash-image",
+)
+
+GEMINI_EXCLUDED_KEYWORDS = (
+    "deep-research",
+    "experimental",
+    "tts",
+    "computer-use",
+    "audio",
+)

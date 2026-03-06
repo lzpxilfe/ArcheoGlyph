@@ -123,11 +123,11 @@ If conversion feels slow:
 
 ### Google Gemini
 
-1. Create API key: https://makersuite.google.com/app/apikey
+1. Create API key: https://aistudio.google.com/apikey
 2. Install dependency:
 
 ```bash
-pip install google-generativeai
+pip install google-genai
 ```
 
 3. Enter API key in plugin Settings

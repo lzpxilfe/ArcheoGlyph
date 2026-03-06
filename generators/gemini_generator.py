@@ -4,12 +4,19 @@ ArcheoGlyph - Google Gemini Generator
 Generates stylized archaeological symbols using Google Gemini API.
 """
 
+import base64
 import os
 import re
 from qgis.PyQt.QtCore import QSettings, Qt, QByteArray, QRectF
 from qgis.PyQt.QtGui import QImage, QPainter
 from qgis.PyQt.QtSvg import QSvgRenderer
 
+from ..defaults import (
+    GEMINI_EXCLUDED_KEYWORDS,
+    GEMINI_IMAGE_MODEL_CANDIDATES,
+    GEMINI_INSTALL_PACKAGE,
+    GEMINI_TEXT_MODEL_CANDIDATES,
+)
 
 
 
@@ -47,6 +54,21 @@ class GeminiGenerator:
         "- Maintain the exact aspect ratio of the original image.\n"
         "- Use smooth vector geometry with sufficient control points for curved sections.\n"
         "- Output must read as an archaeological symbol icon, not a painting.\n\n"
+    )
+
+    _IMAGE_SHAPE_PREAMBLE = (
+        "You are an expert archaeological illustrator. "
+        "STEP 1 - SHAPE ANALYSIS: Analyze this artifact image carefully. "
+        "Identify measured outline, asymmetry, and diagnostic form transitions. "
+        "Keep silhouette factual, suppressing only tiny visual noise that hurts legibility. "
+        "STEP 2 - SCALE ANALYSIS: Preserve the artifact's exact aspect ratio and major proportions. "
+        "STEP 3 - IMAGE GENERATION: Create one factual archaeological symbol image. "
+        "\n\n"
+        "ABSOLUTE RULES:\n"
+        "- Preserve measured proportions and major shape cues from the reference.\n"
+        "- Maintain the exact aspect ratio of the original image.\n"
+        "- Output exactly one isolated artifact symbol.\n"
+        "- Render clean, legible, symbol-like edges rather than painterly texture.\n\n"
     )
 
     # Style prompts: only control rendering style, never the shape.
@@ -93,6 +115,12 @@ class GeminiGenerator:
         "Use <path d='...'> with C (cubic bezier) commands. "
         "Use ABSOLUTE coordinates. "
         "Ensure the path is closed (ends with Z)."
+    )
+
+    _IMAGE_OUTPUT_RULES = (
+        "\n\nOUTPUT: Return one generated image only. "
+        "Prefer transparent background. Plain white background is acceptable if transparency is unavailable. "
+        "No border, no frame, no caption, no watermark, no scene."
     )
 
     _NO_EXAGGERATION_RULES = (
@@ -150,6 +178,323 @@ class GeminiGenerator:
             f"exaggeration={controls[STYLE_CONTROL_EXAGGERATION]}/100."
         )
 
+    def _normalize_model_name(self, model_name):
+        """Normalize model names by removing whitespace and optional SDK prefix."""
+        normalized = str(model_name or "").strip()
+        if normalized.startswith("models/"):
+            normalized = normalized.replace("models/", "", 1)
+        return normalized
+
+    def _is_excluded_model(self, model_name):
+        """Filter out unstable or unsupported Gemini utility models."""
+        low = str(model_name or "").strip().lower()
+        return any(keyword in low for keyword in GEMINI_EXCLUDED_KEYWORDS)
+
+    def _is_image_model(self, model_name):
+        """Detect Gemini image-generation/edit models."""
+        return "image" in str(model_name or "").strip().lower()
+
+    def _model_rank(self, model_name):
+        """Rank Gemini models by family recency and practical utility."""
+        low = str(model_name or "").strip().lower()
+        major = 0
+        minor = 0
+        match = re.search(r"gemini-(\d+)(?:\.(\d+))?", low)
+        if match:
+            major = int(match.group(1))
+            minor = int(match.group(2) or 0)
+
+        score = (major * 1000) + (minor * 100)
+        if self._is_image_model(low):
+            score += 160
+        if "pro" in low:
+            score += 60
+        if "flash" in low:
+            score += 45
+        if "preview" in low:
+            score += 8
+        if "lite" in low:
+            score -= 12
+        if "exp" in low:
+            score -= 20
+        return score
+
+    def _style_prompt_for_output(self, style_key, output_kind):
+        """Return style prompt tuned for SVG or raster output."""
+        if output_kind == "image":
+            if style_key == STYLE_COLORED:
+                return (
+                    "RENDERING STYLE: Archaeological catalog symbol icon (NOT painting). "
+                    "1. SHAPE RULES: Strictly trace the provided silhouette constraints. "
+                    "2. OUTLINE: Use a clean black or very dark outline. "
+                    "3. INTERNAL STRUCTURE: Add 1-3 structural feature lines that follow form. "
+                    "4. SHADING: Optional 2-3 flat muted tone regions only. No painterly texture. "
+                    "5. BACKGROUND: transparent or pure white only. "
+                    "6. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background."
+                )
+            if style_key == STYLE_TYPOLOGY:
+                return (
+                    "RENDERING STYLE: Typological archaeological symbol icon. "
+                    "1. Preserve the measured silhouette and diagnostic form transitions. "
+                    "2. Use a bold outer contour and clean axis-centered composition. "
+                    "3. Add 1-3 structural lines only (e.g., shoulder/band/midline). "
+                    "4. Use muted flat color blocks (2-3 analogous tones), no texture noise. "
+                    "5. Keep visible tone separation; do not collapse to a single flat fill. "
+                    "6. Avoid decorative elements and scenic context."
+                )
+            return self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_COLORED])
+
+        if style_key == STYLE_COLORED:
+            return (
+                "RENDERING STYLE: Archaeological catalog symbol icon (NOT painting). "
+                "1. SHAPE RULES: Strictly trace the provided silhouette constraints. "
+                "2. OUTLINE: Use a clean black outline (about 1-2px equivalent). "
+                "3. INTERNAL STRUCTURE: Add 1-3 structural feature lines that follow form "
+                "(for example rim/shoulder/base or blade midline), and do not invent ornament. "
+                "4. SHADING: Optional 2-3 flat tone regions only. No painterly texture. "
+                "5. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background. "
+                "6. SVG PURITY: Use simple vector paths only; do not use gradients, filters, images, or masks."
+            )
+        if style_key == STYLE_TYPOLOGY:
+            return (
+                "RENDERING STYLE: Typological archaeological symbol icon. "
+                "1. Preserve the measured silhouette and diagnostic form transitions. "
+                "2. Use a bold outer contour and clean axis-centered composition. "
+                "3. Add 1-3 structural lines only (e.g., shoulder/band/midline). "
+                "4. Use muted flat color blocks (2-3 analogous tones), no texture noise. "
+                "5. Do not render as one single flat fill color; keep visible tone separation. "
+                "6. Avoid decorative elements and avoid scenic context."
+            )
+        return self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_COLORED])
+
+    def _build_prompt(
+        self,
+        style_key,
+        user_prompt_text,
+        color,
+        symmetry,
+        silhouette_bytes,
+        factuality,
+        symbolic_looseness,
+        exaggeration,
+        output_kind="svg",
+    ):
+        """Build prompt for SVG or raster Gemini generation."""
+        full_prompt = (
+            self._SHAPE_PREAMBLE if output_kind == "svg" else self._IMAGE_SHAPE_PREAMBLE
+        )
+        full_prompt += self._style_prompt_for_output(style_key, output_kind)
+        full_prompt += self._NO_EXAGGERATION_RULES
+        full_prompt += self._style_control_hint(
+            factuality=factuality,
+            symbolic_looseness=symbolic_looseness,
+            exaggeration=exaggeration,
+        )
+        if user_prompt_text:
+            full_prompt += (
+                "\nUSER NOTE (respect if consistent with factual evidence): "
+                + user_prompt_text
+            )
+
+        if symmetry:
+            full_prompt += (
+                "\n\nSYMMETRY RULE: Apply bilateral symmetry only when the artifact appears "
+                "naturally symmetrical in the photo. Do not force perfect symmetry for damaged "
+                "or asymmetrical objects."
+            )
+
+        if color and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
+            full_prompt += (
+                f"\n\nCOLOR INSTRUCTIONS:"
+                f"\n1. Detect and use the artifact's observed material color from the photo."
+                f"\n2. If user color {color} conflicts with the photo, prioritize the photo."
+                f"\n3. Use 2-3 analogous muted tones from the observed material."
+                f"\n4. Keep color variations subtle and realistic; avoid saturated fantasy tones."
+                f"\n5. Keep the outline clean and documentary."
+            )
+
+        if silhouette_bytes and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
+            full_prompt += (
+                "\n\nCRITICAL INSTRUCTION: Two images are provided.\n"
+                "Image 1: Original photo (material/color reference).\n"
+                "Image 2: Black-and-white silhouette (shape constraint).\n"
+                "Draw to match the exact shape of Image 2. "
+                "Do not invent decorative textures."
+            )
+
+        full_prompt += self._SVG_FORMAT if output_kind == "svg" else self._IMAGE_OUTPUT_RULES
+        return full_prompt
+
+    def _list_genai_models(self, client):
+        """List available Gemini model names from the Google GenAI SDK."""
+        names = []
+        try:
+            for model in client.models.list():
+                name = self._normalize_model_name(getattr(model, "name", ""))
+                if not name:
+                    continue
+                low = name.lower()
+                if "gemini" not in low or self._is_excluded_model(name):
+                    continue
+                names.append(name)
+        except Exception:
+            return []
+
+        deduped = []
+        for name in names:
+            if name not in deduped:
+                deduped.append(name)
+        return deduped
+
+    def _expand_model_candidates(self, available_names, aliases):
+        """Resolve exact or prefix matches against live model names."""
+        normalized_available = {}
+        for name in list(available_names or []):
+            normalized = self._normalize_model_name(name)
+            if normalized and normalized not in normalized_available:
+                normalized_available[normalized] = normalized
+
+        chosen = []
+        for alias in list(aliases or []):
+            normalized_alias = self._normalize_model_name(alias)
+            if not normalized_alias:
+                continue
+            if normalized_alias in normalized_available:
+                exact = normalized_available[normalized_alias]
+                if exact not in chosen:
+                    chosen.append(exact)
+                continue
+
+            matches = [name for name in normalized_available if name.startswith(normalized_alias)]
+            if matches:
+                matches.sort(key=self._model_rank, reverse=True)
+                best = matches[0]
+                if best not in chosen:
+                    chosen.append(best)
+
+        return chosen
+
+    def _resolve_models_to_try(self, available_names, preferred_model, image_mode=False):
+        """Build text or image model fallback list."""
+        route_candidates = (
+            list(GEMINI_IMAGE_MODEL_CANDIDATES)
+            if image_mode else
+            list(GEMINI_TEXT_MODEL_CANDIDATES)
+        )
+        aliases = []
+        preferred = self._normalize_model_name(preferred_model)
+        if preferred and image_mode == self._is_image_model(preferred):
+            aliases.append(preferred)
+        aliases.extend(route_candidates)
+
+        models_to_try = self._expand_model_candidates(available_names, aliases)
+
+        route_pool = []
+        for name in list(available_names or []):
+            normalized = self._normalize_model_name(name)
+            if not normalized or self._is_excluded_model(normalized):
+                continue
+            if image_mode != self._is_image_model(normalized):
+                continue
+            route_pool.append(normalized)
+        route_pool.sort(key=self._model_rank, reverse=True)
+
+        for name in route_pool:
+            if name not in models_to_try:
+                models_to_try.append(name)
+
+        if models_to_try:
+            return models_to_try
+
+        return [self._normalize_model_name(name) for name in route_candidates if name]
+
+    def _build_genai_contents(self, sdk_types, full_prompt, image_path, image_data, silhouette_bytes, style_key):
+        """Build modern Google GenAI content parts."""
+        contents = [full_prompt]
+        contents.append(
+            sdk_types.Part.from_bytes(
+                data=image_data,
+                mime_type=self._get_mime_type(image_path),
+            )
+        )
+        if silhouette_bytes and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
+            contents.append(
+                sdk_types.Part.from_bytes(
+                    data=silhouette_bytes,
+                    mime_type="image/png",
+                )
+            )
+        return contents
+
+    def _extract_response_parts(self, response):
+        """Collect response parts from modern Google GenAI SDK responses."""
+        parts = list(getattr(response, "parts", []) or [])
+        if parts:
+            return parts
+
+        for candidate in list(getattr(response, "candidates", []) or []):
+            content = getattr(candidate, "content", None)
+            candidate_parts = list(getattr(content, "parts", []) or [])
+            if candidate_parts:
+                parts.extend(candidate_parts)
+        return parts
+
+    def _extract_image_from_response(self, response):
+        """Extract the first image payload from a Gemini response."""
+        for part in self._extract_response_parts(response):
+            inline_data = getattr(part, "inline_data", None)
+            if inline_data is None:
+                continue
+
+            mime_type = str(getattr(inline_data, "mime_type", "") or "").strip().lower()
+            if not mime_type.startswith("image/"):
+                continue
+
+            payload = getattr(inline_data, "data", None)
+            if payload is None:
+                continue
+
+            if isinstance(payload, str):
+                try:
+                    payload = base64.b64decode(payload)
+                except Exception:
+                    continue
+            elif isinstance(payload, bytearray):
+                payload = bytes(payload)
+
+            if not isinstance(payload, (bytes, bytearray)):
+                continue
+
+            image = QImage()
+            if image.loadFromData(bytes(payload)):
+                return image
+
+        return None
+
+    def _postprocess_image_result(self, generated_image, image_path, style, color, symmetry, prompt):
+        """Reuse factual masking logic for Gemini image outputs."""
+        if generated_image is None or generated_image.isNull():
+            return generated_image
+        if not image_path or not os.path.exists(image_path):
+            return generated_image
+
+        try:
+            from .huggingface_generator import HuggingFaceGenerator
+
+            helper = HuggingFaceGenerator()
+            prompt_influence = helper._prompt_influence_score(prompt)
+            return helper._apply_reference_mask(
+                generated_image=generated_image,
+                image_path=image_path,
+                symmetry=symmetry,
+                style=style,
+                color=color,
+                prompt_influence=prompt_influence,
+                used_contour_seed=False,
+            )
+        except Exception:
+            return generated_image
+
     def generate(
         self,
         image_path,
@@ -163,285 +508,156 @@ class GeminiGenerator:
     ):
         """
         Generate a symbol from the input image using Gemini.
-        Returns the SVG code as a string.
+        Returns SVG text or a QImage depending on the selected Gemini model path.
         """
         if not self.api_key:
             raise ValueError(
                 "Gemini API key not configured. Please set your API key in the settings."
             )
-            
+
         try:
-            import google.generativeai as genai
+            from google import genai
+            from google.genai import types as genai_types
         except ImportError:
             raise ImportError(
-                "google-generativeai package not installed. "
-                "Please run: pip install google-generativeai"
+                f"{GEMINI_INSTALL_PACKAGE} package not installed. "
+                f"Please run: pip install {GEMINI_INSTALL_PACKAGE}"
             )
-            
-        # Configure the API
-        genai.configure(api_key=self.api_key)
-        
-        # Read and encode the input image
+
+        client = genai.Client(api_key=self.api_key)
+
         with open(image_path, 'rb') as f:
             image_data = f.read()
-            
+
         user_prompt_text = str(prompt or "").strip()
-
-        # Build the full prompt
         style_key = self._normalize_style(style)
-        style_prompt = self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_COLORED])
-        # Keep colored output non-exaggerated and documentary.
-        if style_key == STYLE_COLORED:
-            style_prompt = (
-                "RENDERING STYLE: Archaeological catalog symbol icon (NOT painting). "
-                "1. SHAPE RULES: Strictly trace the provided silhouette constraints. "
-                "2. OUTLINE: Use a clean black outline (about 1-2px equivalent). "
-                "3. INTERNAL STRUCTURE: Add 1-3 structural feature lines that follow form "
-                "(for example rim/shoulder/base or blade midline), and do not invent ornament. "
-                "4. SHADING: Optional 2-3 flat tone regions only. No painterly texture. "
-                "5. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background. "
-                "6. SVG PURITY: Use simple vector paths only; do not use gradients, filters, images, or masks."
-            )
-        elif style_key == STYLE_TYPOLOGY:
-            style_prompt = (
-                "RENDERING STYLE: Typological archaeological symbol icon. "
-                "1. Preserve the measured silhouette and diagnostic form transitions. "
-                "2. Use a bold outer contour and clean axis-centered composition. "
-                "3. Add 1-3 structural lines only (e.g., shoulder/band/midline). "
-                "4. Use muted flat color blocks (2-3 analogous tones), no texture noise. "
-                "5. Do not render as one single flat fill color; keep visible tone separation. "
-                "6. Avoid decorative elements and avoid scenic context."
-            )
 
-        full_prompt = self._SHAPE_PREAMBLE + style_prompt
-        full_prompt += self._NO_EXAGGERATION_RULES
-        full_prompt += self._style_control_hint(
-            factuality=factuality,
-            symbolic_looseness=symbolic_looseness,
-            exaggeration=exaggeration,
-        )
-        if user_prompt_text:
-            full_prompt += (
-                "\nUSER NOTE (respect if consistent with factual evidence): "
-                + user_prompt_text
-            )
-        
-        # Hybrid Workflow: Get Silhouette
         silhouette_bytes = None
         try:
-             silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
+            silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
         except Exception as e:
-             print(f"Silhouette extraction failed: {e}")
-             
-        if symmetry:
-            full_prompt += (
-                "\n\nSYMMETRY RULE: Apply bilateral symmetry only when the artifact appears "
-                "naturally symmetrical in the photo. Do not force perfect symmetry for damaged "
-                "or asymmetrical objects."
-            )
-        
-        if color and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
-             full_prompt += (
-                 f"\n\nCOLOR INSTRUCTIONS:"
-                 f"\n1. Detect and use the artifact's observed material color from the photo."
-                 f"\n2. If user color {color} conflicts with the photo, prioritize the photo."
-                 f"\n3. Use 2-3 analogous muted tones from the observed material."
-                 f"\n4. Keep color variations subtle and realistic; avoid saturated fantasy tones."
-                 f"\n5. Keep the outline black and clean."
-             )
-        elif color:
-             # For Line Drawing / Publication, color serves as a hint/tint but dominant style rules apply
-             pass
-             
-        # Add Hybrid Logic Instructions to Prompt if applicable
-        if silhouette_bytes and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
-             full_prompt += (
-                 "\n\nCRITICAL INSTRUCTION: Two images are provided.\n"
-                 "Image 1: Original photo (material/color reference).\n"
-                 "Image 2: Black-and-white silhouette (shape constraint).\n"
-                 "Draw to match the exact shape of Image 2. "
-                 "Do not invent decorative textures."
-             )
+            print(f"Silhouette extraction failed: {e}")
 
-        full_prompt += self._SVG_FORMAT
-        
-        # Construct content parts
-        parts = []
-        parts.append(full_prompt)
-        parts.append({"mime_type": self._get_mime_type(image_path), "data": image_data}) # Image 1: Reference
-        
-        if silhouette_bytes and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
-             parts.append({"mime_type": "image/png", "data": silhouette_bytes}) # Image 2: Mask
-        
-        # Priorities: latest generation first, then stable high-throughput fallbacks.
-        start_models = [
-            'gemini-3-pro-image-preview',
-            'gemini-3-pro-preview',
-            'gemini-3-flash-preview',
-            'gemini-2.5-pro',
-            'gemini-2.5-flash-image',
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',
-        ]
-
-        # Respect auto-refreshed preferred model from settings when available.
-        preferred_model = str(
+        preferred_model = self._normalize_model_name(
             self.settings.value('ArcheoGlyph/gemini_model_id', '')
-        ).strip()
-        if preferred_model.startswith('models/'):
-            preferred_model = preferred_model.replace('models/', '', 1)
-        if preferred_model:
-            start_models = [preferred_model] + start_models
+        )
+        available_models = self._list_genai_models(client)
 
-        normalized_start_models = []
-        for model_name in start_models:
-            normalized = str(model_name or "").strip()
-            if normalized.startswith('models/'):
-                normalized = normalized.replace('models/', '', 1)
-            if normalized and normalized not in normalized_start_models:
-                normalized_start_models.append(normalized)
-        start_models = normalized_start_models
-        
-        # Explicitly exclude models known to be unstable or quota-restricted for general use
-        # "deep-research" caused 429 errors.
-        excluded_keywords = ['deep-research', 'experimental', 'tts', 'computer-use', 'audio']
+        route_order = [("svg", False), ("image", True)]
+        if preferred_model and self._is_image_model(preferred_model):
+            route_order = [("image", True), ("svg", False)]
 
-        models_to_try = []
-        try:
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            # normalize names
-            available_map = {m.replace('models/', ''): m for m in available_models}
-            
-            # Helper to check if a model name should be excluded
-            def is_excluded(name):
-                return any(keyword in name.lower() for keyword in excluded_keywords)
-
-            # 1. Try preferred start models if they exist (exact or prefix match)
-            for m_pref in start_models:
-                # Direct match
-                if m_pref in available_map and not is_excluded(m_pref):
-                    model_name = available_map[m_pref]
-                    if model_name not in models_to_try:
-                        models_to_try.append(model_name)
-                    continue
-                    
-                # Prefix match (e.g. 'gemini-2.5-flash' matches 'gemini-2.5-flash-preview-09-2025')
-                # We find the *latest* version if multiple exist (usually lexicographically last is best estimate if versioned)
-                matches = [name for name in available_map.keys() if name.startswith(m_pref) and not is_excluded(name)]
-                if matches:
-                    # distinct versions, pick the shortest name (usually the alias) or the latest version
-                    # simplistic: sort and pick last (often highest version number)
-                    matches.sort()
-                    best_match = matches[-1]
-                    model_name = available_map[best_match]
-                    if model_name not in models_to_try:
-                        models_to_try.append(model_name)
-            
-            # 2. If none of the specific pro models found, fall back to any 'pro' model
-            if not models_to_try:
-                for name, full_name in available_map.items():
-                    low = name.lower()
-                    if 'gemini' not in low:
-                        continue
-                    if 'pro' in low and not is_excluded(name) and full_name not in models_to_try:
-                        models_to_try.append(full_name)
-            
-            # 3. If still nothing, try any 'flash' model
-            if not models_to_try:
-                for name, full_name in available_map.items():
-                    low = name.lower()
-                    if 'gemini' not in low:
-                        continue
-                    if 'flash' in low and not is_excluded(name) and full_name not in models_to_try:
-                        models_to_try.append(full_name)
-                        
-            # 4. Last resort: whatever is available (filtered)
-            if not models_to_try:
-                models_to_try = [
-                    m for m in available_models
-                    if ('gemini' in m.lower() and not is_excluded(m))
-                ]
-                
-        except Exception:
-             # Offline fallback or API error list
-            models_to_try = []
-            if preferred_model:
-                models_to_try.append(f'models/{preferred_model}')
-            fallback_models = [
-                'models/gemini-3-pro-preview',
-                'models/gemini-3-flash-preview',
-                'models/gemini-2.5-flash',
-                'models/gemini-2.0-flash',
-            ]
-            for fm in fallback_models:
-                if fm not in models_to_try:
-                    models_to_try.append(fm)
-        
         last_error = None
         last_svg_issue = None
         quota_blocked = False
-        for model_name in models_to_try:
-            # Retry logic with exponential backoff
-            max_retries = 3
-            base_delay = 2  # seconds
-            
-            for attempt in range(max_retries + 1):
-                try:
-                    model = genai.GenerativeModel(model_name)
-                    
-                    # Generate text (SVG code)
-                    response = model.generate_content(parts)
-                    
-                    # If successful, extract SVG code and return as string
-                    if response.text:
-                        svg_code = self._extract_svg(response.text)
-                        if svg_code:
-                            is_safe, issue = self._is_svg_documentary_safe(svg_code, style_key=style_key)
-                            if is_safe:
-                                if silhouette_bytes:
-                                    is_match, shape_issue = self._matches_reference_silhouette(
-                                        svg_code=svg_code,
-                                        silhouette_bytes=silhouette_bytes,
-                                        style_key=style_key,
-                                    )
-                                    if is_match:
-                                        return svg_code
-                                    last_svg_issue = shape_issue
-                                else:
-                                    return svg_code
-                            else:
-                                last_svg_issue = issue
-                        
-                    # If we got a response but no SVG, maybe try next model
-                    break 
- 
-                         
-                except Exception as e:
-                    error_str = str(e)
-                    lowered = error_str.lower()
-                    is_quota_exhausted = (
-                        "quota exceeded" in lowered or
-                        "limit: 0" in lowered or
-                        "generate_content_free_tier" in lowered
-                    )
-                    is_rate_limit = "429" in error_str or "Quota" in error_str or "ResourceExhausted" in error_str
+        for output_kind, image_mode in route_order:
+            models_to_try = self._resolve_models_to_try(
+                available_names=available_models,
+                preferred_model=preferred_model,
+                image_mode=image_mode,
+            )
+            full_prompt = self._build_prompt(
+                style_key=style_key,
+                user_prompt_text=user_prompt_text,
+                color=color,
+                symmetry=symmetry,
+                silhouette_bytes=silhouette_bytes,
+                factuality=factuality,
+                symbolic_looseness=symbolic_looseness,
+                exaggeration=exaggeration,
+                output_kind=output_kind,
+            )
+            contents = self._build_genai_contents(
+                sdk_types=genai_types,
+                full_prompt=full_prompt,
+                image_path=image_path,
+                image_data=image_data,
+                silhouette_bytes=silhouette_bytes,
+                style_key=style_key,
+            )
 
-                    if is_quota_exhausted:
-                        last_error = e
-                        quota_blocked = True
+            for model_name in models_to_try:
+                max_retries = 3
+                base_delay = 2
+
+                for attempt in range(max_retries + 1):
+                    try:
+                        config = None
+                        if image_mode:
+                            config = {"response_modalities": ["IMAGE", "TEXT"]}
+
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=contents,
+                            config=config,
+                        )
+
+                        if image_mode:
+                            image = self._extract_image_from_response(response)
+                            if image is not None and not image.isNull():
+                                return self._postprocess_image_result(
+                                    generated_image=image,
+                                    image_path=image_path,
+                                    style=style,
+                                    color=color,
+                                    symmetry=symmetry,
+                                    prompt=user_prompt_text,
+                                )
+                            break
+
+                        response_text = str(getattr(response, "text", "") or "")
+                        if response_text:
+                            svg_code = self._extract_svg(response_text)
+                            if svg_code:
+                                is_safe, issue = self._is_svg_documentary_safe(
+                                    svg_code,
+                                    style_key=style_key,
+                                )
+                                if is_safe:
+                                    if silhouette_bytes:
+                                        is_match, shape_issue = self._matches_reference_silhouette(
+                                            svg_code=svg_code,
+                                            silhouette_bytes=silhouette_bytes,
+                                            style_key=style_key,
+                                        )
+                                        if is_match:
+                                            return svg_code
+                                        last_svg_issue = shape_issue
+                                    else:
+                                        return svg_code
+                                else:
+                                    last_svg_issue = issue
                         break
 
-                    if is_rate_limit and attempt < max_retries:
-                        import time
-                        import random
-                        # Exponential backoff with jitter
-                        delay = (base_delay * (2 ** attempt)) + (random.uniform(0, 1))
-                        print(f"Gemini API rate limit hit ({model_name}). Retrying in {delay:.2f}s...")
-                        time.sleep(delay)
-                        continue
-                    else:
+                    except Exception as e:
+                        error_str = str(e)
+                        lowered = error_str.lower()
+                        is_quota_exhausted = (
+                            "quota exceeded" in lowered or
+                            "limit: 0" in lowered or
+                            "generate_content_free_tier" in lowered
+                        )
+                        is_rate_limit = (
+                            "429" in error_str or
+                            "quota" in lowered or
+                            "resourceexhausted" in lowered
+                        )
+
+                        if is_quota_exhausted:
+                            last_error = e
+                            quota_blocked = True
+                            break
+
+                        if is_rate_limit and attempt < max_retries:
+                            import random
+                            import time
+
+                            delay = (base_delay * (2 ** attempt)) + random.uniform(0, 1)
+                            print(f"Gemini API rate limit hit ({model_name}). Retrying in {delay:.2f}s...")
+                            time.sleep(delay)
+                            continue
+
                         last_error = e
-                        # If it's not a rate limit, or we ran out of retries, try the next model
                         break
 
         # Final factual fallback: deterministic contour extraction.

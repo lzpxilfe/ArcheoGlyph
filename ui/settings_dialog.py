@@ -15,9 +15,18 @@ from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QGroupBox, QTabWidget, QWidget, QTextBrowser,
     QMessageBox, QScrollArea, QFrame, QApplication,
-    QCheckBox, QComboBox, QFileDialog
+    QCheckBox, QComboBox, QFileDialog, QSpinBox
 )
-from ..defaults import HF_DEFAULT_MODEL_ID, HF_FALLBACK_MODEL_IDS, HF_LEGACY_MODEL_ALIASES
+from ..defaults import (
+    GEMINI_AI_STUDIO_URL,
+    GEMINI_EXCLUDED_KEYWORDS,
+    GEMINI_IMAGE_MODEL_CANDIDATES,
+    GEMINI_INSTALL_PACKAGE,
+    GEMINI_TEXT_MODEL_CANDIDATES,
+    HF_DEFAULT_MODEL_ID,
+    HF_FALLBACK_MODEL_IDS,
+    HF_LEGACY_MODEL_ALIASES,
+)
 
 
 class InfoLabel(QLabel):
@@ -54,6 +63,53 @@ class WarningLabel(QLabel):
                 color: #856404;
             }
         """)
+
+
+def _normalize_gemini_model_name(model_name):
+    """Normalize Gemini model name from SDK or saved setting."""
+    normalized = str(model_name or "").strip()
+    if normalized.startswith("models/"):
+        normalized = normalized.replace("models/", "", 1)
+    return normalized
+
+
+def _is_excluded_gemini_model(model_name):
+    """Filter out Gemini utility models not suitable for symbol generation."""
+    low = str(model_name or "").strip().lower()
+    return any(keyword in low for keyword in GEMINI_EXCLUDED_KEYWORDS)
+
+
+def _is_image_gemini_model(model_name):
+    """Detect Gemini image-generation/edit model names."""
+    return "image" in str(model_name or "").strip().lower()
+
+
+def _rank_gemini_model(model_name):
+    """Rank Gemini models by family recency and modality utility."""
+    import re
+
+    low = str(model_name or "").strip().lower()
+    major = 0
+    minor = 0
+    match = re.search(r"gemini-(\d+)(?:\.(\d+))?", low)
+    if match:
+        major = int(match.group(1))
+        minor = int(match.group(2) or 0)
+
+    score = (major * 1000) + (minor * 100)
+    if _is_image_gemini_model(low):
+        score += 160
+    if "pro" in low:
+        score += 60
+    if "flash" in low:
+        score += 45
+    if "preview" in low:
+        score += 8
+    if "lite" in low:
+        score -= 12
+    if "exp" in low:
+        score -= 20
+    return score
 
 
 class SettingsDialog(QDialog):
@@ -398,18 +454,19 @@ class SettingsDialog(QDialog):
         
         install_desc = QLabel(
             "<b>What is this?</b><br>"
-            "The 'google-generativeai' package allows Python to communicate with Google's AI.<br><br>"
+            "The modern 'google-genai' package allows Python to communicate with Gemini 3.1 "
+            "and Nano Banana image models.<br><br>"
             "<b>How to install:</b><br>"
             "Click the button below. Installation takes 1-2 minutes.<br>"
             "If it fails, you can install manually by opening Command Prompt and typing:<br>"
-            "<code>pip install google-generativeai</code>"
+            f"<code>pip install {GEMINI_INSTALL_PACKAGE}</code>"
         )
         install_desc.setWordWrap(True)
         install_desc.setTextFormat(Qt.RichText)
         install_layout.addWidget(install_desc)
         
         btn_layout = QHBoxLayout()
-        self.install_btn = QPushButton("Install google-generativeai")
+        self.install_btn = QPushButton(f"Install {GEMINI_INSTALL_PACKAGE}")
         self.install_btn.setMinimumHeight(40)
         self.install_btn.setStyleSheet("""
             QPushButton {
@@ -470,7 +527,7 @@ class SettingsDialog(QDialog):
         link_btn.setToolTip("Opens Google AI Studio in your web browser")
         link_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(
-                QUrl("https://makersuite.google.com/app/apikey")
+                QUrl(GEMINI_AI_STUDIO_URL)
             )
         )
         apikey_layout.addWidget(link_btn)
@@ -545,7 +602,9 @@ class SettingsDialog(QDialog):
         
         # Usage info
         usage_info = InfoLabel(
-            "If you encounter HTTP 429, check Gemini quota limits and retry after cooldown.",
+            "Gemini text models can return SVG. Image models such as Nano Banana return raster "
+            "images that are post-processed into factual symbols. If you encounter HTTP 429, "
+            "check Gemini quota limits and retry after cooldown.",
             "Tip"
         )
         layout.addWidget(usage_info)
@@ -1439,10 +1498,14 @@ class SettingsDialog(QDialog):
         
         # Check if package is installed
         try:
-            package_found = importlib.util.find_spec("google.generativeai") is not None
+            package_found = importlib.util.find_spec("google.genai") is not None
+            legacy_found = importlib.util.find_spec("google.generativeai") is not None
             if package_found:
                 self.install_status.setText("Installed")
                 self.install_status.setStyleSheet("color: green; font-weight: bold;")
+            elif legacy_found:
+                self.install_status.setText("Legacy only")
+                self.install_status.setStyleSheet("color: #8a4b00; font-weight: bold;")
             else:
                 self.install_status.setText("Not installed")
                 self.install_status.setStyleSheet("color: red;")
@@ -1657,11 +1720,11 @@ class SettingsDialog(QDialog):
         QMessageBox.warning(self, "Connection Failed", "Unexpected test result.")
         
     def install_gemini_package(self):
-        """Install google-generativeai package using QProcess (Async)."""
+        """Install Google GenAI SDK using QProcess (Async)."""
         reply = QMessageBox.question(
             self,
             "Install Package",
-            "This will install 'google-generativeai' package.\n\n"
+            f"This will install '{GEMINI_INSTALL_PACKAGE}' package.\n\n"
             "The installer will run in the background.\n"
             "You can continue using QGIS while it installs.\n\n"
             "Continue?",
@@ -1696,7 +1759,7 @@ class SettingsDialog(QDialog):
             python_path = sys.executable
             
         # Use --user flag to avoid permission issues
-        args = ['-m', 'pip', 'install', '--user', 'google-generativeai']
+        args = ['-m', 'pip', 'install', '--user', GEMINI_INSTALL_PACKAGE]
         
         self.process.start(python_path, args)
         
@@ -1717,7 +1780,7 @@ class SettingsDialog(QDialog):
     def _handle_process_finished(self, exit_code, exit_status):
         """Handle install completion."""
         self.install_btn.setEnabled(True)
-        self.install_btn.setText("Install google-generativeai")
+        self.install_btn.setText(f"Install {GEMINI_INSTALL_PACKAGE}")
         
         from qgis.core import QgsMessageLog, Qgis
         
@@ -1758,14 +1821,14 @@ class SettingsDialog(QDialog):
             clicked_button = msg.clickedButton()
             if clicked_button is not None and clicked_button.text() == "Copy Command":
                 clipboard = QApplication.clipboard()
-                cmd = f'"{self._get_python_executable()}" -m pip install --user google-generativeai'
+                cmd = f'"{self._get_python_executable()}" -m pip install --user {GEMINI_INSTALL_PACKAGE}'
                 clipboard.setText(cmd)
                 QMessageBox.information(self, "Copied", "Command copied to clipboard!\nPaste it in your terminal.")
             
     def _handle_process_error(self, error):
         """Handle process start error."""
         self.install_btn.setEnabled(True)
-        self.install_btn.setText("Install google-generativeai")
+        self.install_btn.setText(f"Install {GEMINI_INSTALL_PACKAGE}")
         self.install_status.setText("Error")
         self.install_status.setStyleSheet("color: red;")
         
@@ -1825,7 +1888,7 @@ class SettingsDialog(QDialog):
                 QMessageBox.warning(
                     self,
                     "Package Not Installed",
-                    "The google-generativeai package is not installed.\n\n"
+                    f"The {GEMINI_INSTALL_PACKAGE} package is not installed.\n\n"
                     "Please:\n"
                     "1. Complete Step 1 (Install Package)\n"
                     "2. Restart QGIS\n"
@@ -2018,59 +2081,51 @@ class LatestModelRefreshThread(QThread):
             return ""
 
         try:
-            import re
-            import google.generativeai as genai
+            from google import genai
 
-            genai.configure(api_key=self.gemini_api_key)
+            client = genai.Client(api_key=self.gemini_api_key)
 
             available = []
-            for model in genai.list_models():
-                methods = list(getattr(model, "supported_generation_methods", []) or [])
-                if "generateContent" not in methods:
+            for model in client.models.list():
+                name = _normalize_gemini_model_name(getattr(model, "name", ""))
+                if not name:
                     continue
-                name = str(getattr(model, "name", "") or "")
-                if name.startswith("models/"):
-                    name = name.replace("models/", "", 1)
                 low = name.lower()
-                if "gemini" not in low:
-                    continue
-                if (
-                    "deep-research" in low or
-                    "experimental" in low or
-                    "tts" in low or
-                    "computer-use" in low or
-                    "audio" in low
-                ):
+                if "gemini" not in low or _is_excluded_gemini_model(name):
                     continue
                 available.append(name)
 
             if not available:
                 return ""
 
-            def rank(name):
-                low = name.lower()
-                major = 0
-                minor = 0
-                m = re.search(r"gemini-(\d+)(?:\.(\d+))?", low)
-                if m:
-                    major = int(m.group(1))
-                    minor = int(m.group(2) or 0)
-                score = (major * 1000) + (minor * 100)
-                if "image" in low:
-                    score += 120
-                if "pro" in low:
-                    score += 50
-                if "flash" in low:
-                    score += 40
-                if "preview" in low:
-                    score += 5
-                if "lite" in low:
-                    score -= 10
-                if "exp" in low:
-                    score -= 20
-                return score
+            preferred = []
+            for alias in list(GEMINI_IMAGE_MODEL_CANDIDATES) + list(GEMINI_TEXT_MODEL_CANDIDATES):
+                normalized_alias = _normalize_gemini_model_name(alias)
+                exact = [name for name in available if name == normalized_alias]
+                if exact:
+                    preferred.extend(exact)
+                    continue
+                prefix_matches = [name for name in available if name.startswith(normalized_alias)]
+                prefix_matches.sort(key=_rank_gemini_model, reverse=True)
+                if prefix_matches:
+                    preferred.append(prefix_matches[0])
 
-            available.sort(key=rank, reverse=True)
+            ordered = []
+            for name in preferred:
+                if name not in ordered:
+                    ordered.append(name)
+
+            remaining = sorted(
+                [name for name in available if name not in ordered],
+                key=_rank_gemini_model,
+                reverse=True,
+            )
+            ordered.extend(remaining)
+
+            if not ordered:
+                return ""
+
+            available = ordered
             return available[0]
         except Exception:
             return ""
@@ -2117,83 +2172,98 @@ class GeminiTestThread(QThread):
         super().__init__()
         self.api_key = api_key
 
+    def _response_has_image(self, response):
+        """Return True when any response part contains image bytes."""
+        parts = list(getattr(response, "parts", []) or [])
+        if not parts:
+            for candidate in list(getattr(response, "candidates", []) or []):
+                content = getattr(candidate, "content", None)
+                candidate_parts = list(getattr(content, "parts", []) or [])
+                if candidate_parts:
+                    parts.extend(candidate_parts)
+
+        for part in parts:
+            inline_data = getattr(part, "inline_data", None)
+            if inline_data is None:
+                continue
+            mime_type = str(getattr(inline_data, "mime_type", "") or "").strip().lower()
+            if mime_type.startswith("image/") and getattr(inline_data, "data", None):
+                return True
+        return False
+
     def run(self):
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            
-            # List available models from the API
+            from google import genai
+
+            client = genai.Client(api_key=self.api_key)
+
             available_models = []
             try:
-                for m in genai.list_models():
-                    if 'generateContent' in m.supported_generation_methods:
-                        # Clean up model name (remove 'models/' prefix if present)
-                        name = m.name
-                        if name.startswith('models/'):
-                            name = name.replace('models/', '')
-                        available_models.append(name)
+                for model in client.models.list():
+                    name = _normalize_gemini_model_name(getattr(model, "name", ""))
+                    if not name:
+                        continue
+                    if "gemini" not in name.lower() or _is_excluded_gemini_model(name):
+                        continue
+                    available_models.append(name)
             except Exception as e:
                 self.finished.emit(False, f"Connection/Auth Error: {str(e)}")
                 return
-            
+
             if not available_models:
                 self.finished.emit(False, "No models available for your API key.")
                 return
 
-            # Prioritize models
             models_to_try = []
-            
-            # Exclusion list (same as generator)
-            excluded_keywords = ['deep-research', 'experimental', 'tts', 'computer-use', 'audio']
-            
-            def is_excluded(name):
-                return any(keyword in name.lower() for keyword in excluded_keywords)
-            
-            # 1. Latest generation first, then robust fallbacks.
-            preferred_models = [
-                'gemini-3-pro-image-preview',
-                'gemini-3-pro-preview',
-                'gemini-3-flash-preview',
-                'gemini-2.5-pro',
-                'gemini-2.5-flash-image',
-                'gemini-2.5-flash',
-                'gemini-2.0-flash',
-            ]
-            
+            preferred_models = list(GEMINI_IMAGE_MODEL_CANDIDATES) + list(GEMINI_TEXT_MODEL_CANDIDATES)
+
             for pref in preferred_models:
                 for m in available_models:
-                    if pref in m and not is_excluded(m):
+                    if _normalize_gemini_model_name(pref) == m or m.startswith(_normalize_gemini_model_name(pref)):
                         models_to_try.append(m)
-            
-            # 2. Others (Fallback) - with strict filtering
+
             for m in available_models:
-                if m not in models_to_try and not is_excluded(m):
-                    if 'flash' in m.lower() or 'pro' in m.lower():
-                        models_to_try.append(m)
-            
+                if m not in models_to_try:
+                    models_to_try.append(m)
+
+            models_to_try.sort(key=_rank_gemini_model, reverse=True)
+
             last_error = None
             success = False
 
             for model_name in models_to_try:
                 try:
-                    model = genai.GenerativeModel(model_name)
-                    response = model.generate_content("Say 'Hello!'")
-                    
-                    if response and response.text:
-                        self.finished.emit(True, f"[{model_name}] {response.text}")
-                        success = True
-                        break
-                        
+                    if _is_image_gemini_model(model_name):
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents="Create a simple black circle icon on transparent background.",
+                            config={"response_modalities": ["IMAGE", "TEXT"]},
+                        )
+                        if self._response_has_image(response):
+                            self.finished.emit(True, f"[{model_name}] image response ok")
+                            success = True
+                            break
+                    else:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents="Say Hello!",
+                        )
+                        response_text = str(getattr(response, "text", "") or "").strip()
+                        if response_text:
+                            self.finished.emit(True, f"[{model_name}] {response_text}")
+                            success = True
+                            break
+
                 except Exception as e:
                     last_error = e
                     continue
-            
+
             if not success:
                 error_msg = str(last_error) if last_error else "No suitable model found"
                 self.finished.emit(False, error_msg)
-                
+
         except ImportError:
-            self.finished.emit(False, "Package 'google-generativeai' not installed")
+            self.finished.emit(False, f"Package '{GEMINI_INSTALL_PACKAGE}' not installed")
         except Exception as e:
             self.finished.emit(False, str(e))
 
