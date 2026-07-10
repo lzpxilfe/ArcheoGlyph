@@ -143,6 +143,11 @@ pip install google-genai
 - Issues: https://github.com/lzpxilfe/ArcheoGlyph/issues
 
 ## Citation
+[![Cite this repository](https://img.shields.io/badge/Cite_this-repository-2ea44f?logo=github)](https://github.com/lzpxilfe/ArcheoGlyph)
+[![Star this repository](https://img.shields.io/github/stars/lzpxilfe/ArcheoGlyph?style=social)](https://github.com/lzpxilfe/ArcheoGlyph)
+
+인용 메타데이터는 [CITATION.cff](CITATION.cff)에 보관합니다.
+
 
 ```bibtex
 @software{hwang2026archaeoglyph,
