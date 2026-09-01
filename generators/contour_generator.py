@@ -3887,6 +3887,36 @@ class ContourGenerator:
             return encoded_img.tobytes()
         return None
 
+
+    def get_ink_constraint_bytes(self, image_path, fmt="png"):
+        """
+        Generate Ink Centerline constraint image bytes for AI guidance.
+        Shows factual stroke centerlines on a parchment canvas so
+        Gemini / HF can follow real linework instead of hallucinating.
+        Returns PNG bytes or None.
+        """
+        if cv2 is None or np is None:
+            return None
+        try:
+            from .ink_centerline import render_ink_constraint_bytes
+        except ImportError:
+            return None
+        try:
+            img = self._load_image(image_path)
+            if img is None:
+                return None
+            processing_img, _ = self._adaptive_prescale(img)
+            if len(processing_img.shape) == 4:
+                bgr = cv2.cvtColor(processing_img, cv2.COLOR_BGRA2BGR)
+            else:
+                bgr = processing_img
+            target_mask = self._get_mask(bgr)
+            if target_mask is None or int(np.count_nonzero(target_mask)) < 40:
+                return None
+            return render_ink_constraint_bytes(bgr, mask=target_mask, fmt=fmt)
+        except Exception:
+            return None
+
     def _get_mask(self, bgr_img):
         """Internal helper: produce silhouette mask using selected backend."""
         backend = str(self.settings.value('ArcheoGlyph/mask_backend', 'auto')).strip().lower()

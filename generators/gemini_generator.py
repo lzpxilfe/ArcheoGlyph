@@ -321,6 +321,15 @@ class GeminiGenerator:
                 "Draw to match the exact shape of Image 2. "
                 "Do not invent decorative textures."
             )
+        if silhouette_bytes:
+            full_prompt += (
+                "\n\nINK CONSTRAINT: An additional image shows factual ink centerlines "
+                "(thin dark lines on a parchment background) extracted by multi-scale "
+                "Black Top-Hat analysis. "
+                "These lines are the ACTUAL strokes and engravings present in the artifact. "
+                "Follow these line positions precisely when drawing internal structure. "
+                "Do NOT invent motifs not visible in the ink constraint image."
+            )
 
         full_prompt += self._SVG_FORMAT if output_kind == "svg" else self._IMAGE_OUTPUT_RULES
         return full_prompt
@@ -408,7 +417,7 @@ class GeminiGenerator:
 
         return [self._normalize_model_name(name) for name in route_candidates if name]
 
-    def _build_genai_contents(self, sdk_types, full_prompt, image_path, image_data, silhouette_bytes, style_key):
+    def _build_genai_contents(self, sdk_types, full_prompt, image_path, image_data, silhouette_bytes, style_key, ink_constraint_bytes=None):
         """Build modern Google GenAI content parts."""
         contents = [full_prompt]
         contents.append(
@@ -421,6 +430,14 @@ class GeminiGenerator:
             contents.append(
                 sdk_types.Part.from_bytes(
                     data=silhouette_bytes,
+                    mime_type="image/png",
+                )
+            )
+        # Ink Centerline constraint: factual stroke positions for AI to follow
+        if ink_constraint_bytes:
+            contents.append(
+                sdk_types.Part.from_bytes(
+                    data=ink_constraint_bytes,
                     mime_type="image/png",
                 )
             )
@@ -538,6 +555,12 @@ class GeminiGenerator:
         except Exception as e:
             print(f"Silhouette extraction failed: {e}")
 
+        ink_constraint_bytes = None
+        try:
+            ink_constraint_bytes = self.contour_gen.get_ink_constraint_bytes(image_path)
+        except Exception as e:
+            print(f"Ink constraint extraction failed: {e}")
+
         preferred_model = self._normalize_model_name(
             self.settings.value('ArcheoGlyph/gemini_model_id', '')
         )
@@ -574,6 +597,7 @@ class GeminiGenerator:
                 image_data=image_data,
                 silhouette_bytes=silhouette_bytes,
                 style_key=style_key,
+                ink_constraint_bytes=ink_constraint_bytes,
             )
 
             for model_name in models_to_try:

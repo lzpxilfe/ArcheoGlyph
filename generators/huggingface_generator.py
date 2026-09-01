@@ -1043,6 +1043,16 @@ class HuggingFaceGenerator:
                 if contour_seed is not None:
                     contour_seed_b64 = self._qimage_to_base64_png(contour_seed)
 
+            # Ink Centerline constraint image for img2img prompt enrichment
+            ink_constraint_b64 = None
+            try:
+                ink_bytes = self.contour_gen.get_ink_constraint_bytes(image_path)
+                if ink_bytes:
+                    import base64 as _b64
+                    ink_constraint_b64 = _b64.b64encode(ink_bytes).decode("utf-8")
+            except Exception:
+                pass
+
             if not reference_hex:
                 silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
                 if silhouette_bytes:
@@ -1071,6 +1081,11 @@ class HuggingFaceGenerator:
                         "retain observed engraved motifs and relief zones as simplified factual linework, "
                         "do not invent motifs, allow stylistic simplification into a readable archaeological symbol icon"
                     )
+                    if ink_constraint_b64:
+                        img2img_prompt += (
+                            ", STRICT: follow the ink centerline constraint image — "
+                            "thin dark lines show real artifact strokes; match their position and direction"
+                        )
                     img_strength = 0.28 + (0.18 * float(prompt_influence))
                     source_tag = "reference_photo"
 
