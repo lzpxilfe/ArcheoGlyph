@@ -26,7 +26,10 @@ from ..defaults import (
 )
 from .contour_generator import ContourGenerator
 from .style_control_utils import resolve_style_controls, style_controls_prompt_hint
+import numpy as np
+
 from ..log import log, log_exception
+from . import image_ops
 from .symbol_result import SymbolResult
 from .style_utils import (
     STYLE_COLORED,
@@ -272,238 +275,201 @@ class HuggingFaceGenerator:
 
         return max(0.0, min(1.0, score))
 
+
+
+
+
+
+
+    # ------------------------------------------------------------------
+    # Post-processing (numpy; see generators/image_ops.py)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _image_byte_count(image):
+        """Buffer size across Qt versions (sizeInBytes is Qt 5.10+)."""
+        for name in ("sizeInBytes", "byteCount"):
+            getter = getattr(image, name, None)
+            if getter is not None:
+                try:
+                    return int(getter())
+                except Exception:
+                    continue
+        return int(image.bytesPerLine()) * int(image.height())
+
+    @classmethod
+    def _qimage_to_arrays(cls, image):
+        """
+        QImage -> (rgb uint8 (h, w, 3), alpha uint8 (h, w)).
+
+        Uses the raw buffer when it is readable, and falls back to a PNG
+        round-trip, which is still orders of magnitude faster than reading
+        pixel by pixel.
+        """
+        converted = image.convertToFormat(QImage.Format_RGBA8888)
+        width, height = int(converted.width()), int(converted.height())
+        try:
+            buffer = converted.constBits()
+            setsize = getattr(buffer, "setsize", None)
+            if setsize is not None:
+                setsize(cls._image_byte_count(converted))
+            raw = np.frombuffer(bytes(buffer), dtype=np.uint8)
+            # Rows may be padded, so stride by bytesPerLine rather than width.
+            stride = int(converted.bytesPerLine()) // 4
+            raw = raw[: height * stride * 4].reshape(height, stride, 4)[:, :width, :]
+            return np.ascontiguousarray(raw[:, :, :3]), np.ascontiguousarray(raw[:, :, 3])
+        except Exception as e:
+            log_exception("Falling back to PNG decoding for image conversion", e)
+
+        payload = cls._image_to_png_bytes(converted)
+        if payload is None:
+            raise RuntimeError("Could not read the image buffer.")
+        import cv2
+
+        decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+        if decoded is None:
+            raise RuntimeError("Could not decode the image buffer.")
+        if decoded.ndim == 2:
+            decoded = cv2.cvtColor(decoded, cv2.COLOR_GRAY2BGRA)
+        if decoded.shape[2] == 3:
+            decoded = cv2.cvtColor(decoded, cv2.COLOR_BGR2BGRA)
+        rgb = np.ascontiguousarray(decoded[:, :, :3][:, :, ::-1])
+        return rgb, np.ascontiguousarray(decoded[:, :, 3])
+
+    @staticmethod
+    def _image_to_png_bytes(image):
+        """Encode a QImage as PNG bytes, or None on failure."""
+        data = QByteArray()
+        buffer = QBuffer(data)
+        if not buffer.open(QIODevice.WriteOnly):
+            return None
+        ok = image.save(buffer, "PNG")
+        buffer.close()
+        return bytes(data) if ok else None
+
+    @staticmethod
+    def _arrays_to_qimage(rgb, alpha):
+        """(rgb, alpha) -> QImage. The buffer is copied, so it outlives the arrays."""
+        height, width = alpha.shape[:2]
+        rgba = np.ascontiguousarray(np.dstack([rgb, alpha]).astype(np.uint8, copy=False))
+        image = QImage(rgba.data, width, height, 4 * width, QImage.Format_RGBA8888)
+        # copy() detaches from the numpy buffer, which is about to go out of scope.
+        return image.copy()
+
+    def _mask_arrays(self, mask_img, image_path=None, size=None):
+        """
+        Silhouette mask as a boolean array, plus the reference photo resampled
+        to the same size when ``image_path`` is given.
+        """
+        mask_rgb, _mask_alpha = self._qimage_to_arrays(mask_img)
+        inside = image_ops.mask_inside(mask_rgb)
+        if image_path is None:
+            return inside, None, None
+        reference = QImage(image_path)
+        if reference.isNull():
+            return inside, None, None
+        target = size or (mask_img.width(), mask_img.height())
+        reference = reference.scaled(target[0], target[1], Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        ref_rgb, ref_alpha = self._qimage_to_arrays(reference)
+        return inside, ref_rgb, ref_alpha
+
     def _parse_hex_rgb(self, hex_color):
         """Parse #RRGGBB to (r,g,b), return None if invalid."""
-        value = str(hex_color or "").strip().lstrip("#")
-        if len(value) != 6:
-            return None
-        try:
-            return (
-                int(value[0:2], 16),
-                int(value[2:4], 16),
-                int(value[4:6], 16),
-            )
-        except Exception:
-            return None
-
-    def _estimate_reference_rgb(self, image_path, mask_img, forced_hex=None):
-        """Estimate artifact color from reference image constrained by silhouette mask."""
-        forced = self._parse_hex_rgb(forced_hex)
-        if forced:
-            return forced
-
-        ref = QImage(image_path)
-        if ref.isNull():
-            return (88, 112, 92)
-
-        ref = ref.scaled(mask_img.width(), mask_img.height(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-        ref = ref.convertToFormat(QImage.Format_ARGB32)
-
-        sum_r = 0
-        sum_g = 0
-        sum_b = 0
-        count = 0
-
-        for y in range(mask_img.height()):
-            for x in range(mask_img.width()):
-                mp = mask_img.pixelColor(x, y)
-                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
-                if not inside:
-                    continue
-
-                px = ref.pixelColor(x, y)
-                if px.alpha() < 8:
-                    continue
-                mx = max(px.red(), px.green(), px.blue())
-                mn = min(px.red(), px.green(), px.blue())
-                sat = mx - mn
-                if sat < 12 or mx < 28 or mx > 245:
-                    continue
-
-                sum_r += px.red()
-                sum_g += px.green()
-                sum_b += px.blue()
-                count += 1
-
-        if count < 25:
-            for y in range(mask_img.height()):
-                for x in range(mask_img.width()):
-                    mp = mask_img.pixelColor(x, y)
-                    inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
-                    if not inside:
-                        continue
-                    px = ref.pixelColor(x, y)
-                    if px.alpha() < 8:
-                        continue
-                    sum_r += px.red()
-                    sum_g += px.green()
-                    sum_b += px.blue()
-                    count += 1
-
-        if count < 5:
-            return (88, 112, 92)
-        return (int(sum_r / count), int(sum_g / count), int(sum_b / count))
+        return image_ops.parse_hex_rgb(hex_color)
 
     def _rgb_to_hex(self, rgb):
-        """Convert (r,g,b) tuple to #rrggbb."""
-        if not rgb or len(rgb) != 3:
-            return "#58705c"
-        r = max(0, min(255, int(rgb[0])))
-        g = max(0, min(255, int(rgb[1])))
-        b = max(0, min(255, int(rgb[2])))
-        return f"#{r:02x}{g:02x}{b:02x}"
+        """Convert an (r, g, b) tuple to #RRGGBB."""
+        r, g, b = image_ops.clamp_rgb(rgb)
+        return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
     def _blend_rgb(self, base_rgb, mix_rgb, mix_ratio=0.35):
         """Blend two RGB tuples while preserving base tone identity."""
-        br, bg, bb = [max(0, min(255, int(v))) for v in base_rgb]
-        mr, mg, mb = [max(0, min(255, int(v))) for v in mix_rgb]
-        t = max(0.0, min(1.0, float(mix_ratio)))
-        return (
-            int((br * (1.0 - t)) + (mr * t)),
-            int((bg * (1.0 - t)) + (mg * t)),
-            int((bb * (1.0 - t)) + (mb * t)),
-        )
+        return image_ops.blend_rgb(base_rgb, mix_rgb, mix_ratio)
+
+    def _estimate_reference_rgb(self, image_path, mask_img, forced_hex=None):
+        """Estimate artifact color from the reference photo inside the silhouette."""
+        forced = image_ops.parse_hex_rgb(forced_hex)
+        if forced:
+            return forced
+        inside, ref_rgb, ref_alpha = self._mask_arrays(mask_img, image_path)
+        if ref_rgb is None:
+            return image_ops.DEFAULT_MATERIAL_RGB
+        return image_ops.estimate_reference_rgb(ref_rgb, ref_alpha, inside)
 
     def _extract_reference_palette(self, image_path, mask_img, forced_hex=None, max_colors=4):
-        """
-        Extract compact material palette from masked reference image.
-        Uses coarse RGB binning to stay deterministic without heavy dependencies.
-        """
-        forced = self._parse_hex_rgb(forced_hex)
+        """Dominant material tones from the reference photo inside the silhouette."""
+        forced = image_ops.parse_hex_rgb(forced_hex)
         if forced:
             return [forced]
-
-        ref = QImage(image_path)
-        if ref.isNull() or mask_img is None or mask_img.isNull():
+        if mask_img is None or mask_img.isNull():
             return []
-
-        ref = ref.scaled(mask_img.width(), mask_img.height(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-        ref = ref.convertToFormat(QImage.Format_ARGB32)
-
-        bins = {}
-        w = mask_img.width()
-        h = mask_img.height()
-        # Keep extraction responsive on large images.
-        step = 1 if (w * h) <= 180000 else 2
-
-        for y in range(0, h, step):
-            for x in range(0, w, step):
-                mp = mask_img.pixelColor(x, y)
-                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
-                if not inside:
-                    continue
-
-                px = ref.pixelColor(x, y)
-                if px.alpha() < 8:
-                    continue
-
-                mx = max(px.red(), px.green(), px.blue())
-                mn = min(px.red(), px.green(), px.blue())
-                sat = mx - mn
-                if sat < 8 or mx < 20 or mx > 248:
-                    continue
-
-                key = (px.red() >> 5, px.green() >> 5, px.blue() >> 5)
-                if key not in bins:
-                    bins[key] = {"count": 0, "r": 0, "g": 0, "b": 0}
-                bucket = bins[key]
-                bucket["count"] += 1
-                bucket["r"] += px.red()
-                bucket["g"] += px.green()
-                bucket["b"] += px.blue()
-
-        if not bins:
+        inside, ref_rgb, ref_alpha = self._mask_arrays(mask_img, image_path)
+        if ref_rgb is None:
             return []
-
-        ranked = sorted(bins.values(), key=lambda item: int(item["count"]), reverse=True)
-        palette = []
-        for item in ranked:
-            count = max(1, int(item["count"]))
-            rgb = (
-                int(item["r"] / count),
-                int(item["g"] / count),
-                int(item["b"] / count),
-            )
-            if any(
-                ((rgb[0] - ex[0]) ** 2 + (rgb[1] - ex[1]) ** 2 + (rgb[2] - ex[2]) ** 2) ** 0.5 < 24.0
-                for ex in palette
-            ):
-                continue
-            palette.append(rgb)
-            if len(palette) >= int(max_colors):
-                break
-
-        return palette
+        return image_ops.extract_reference_palette(ref_rgb, ref_alpha, inside, max_colors=max_colors)
 
     def _harmonize_typology_output(self, image, base_rgb, palette_rgb=None, preserve_ratio=0.34):
-        """
-        Harmonize typology output with 2-3 analogous tones instead of collapsing to one flat color.
-        """
-        out = image.convertToFormat(QImage.Format_ARGB32)
-        base = tuple(max(0, min(255, int(v))) for v in base_rgb)
+        """Map output onto analogous tone blocks instead of one flat colour."""
+        rgb, alpha = self._qimage_to_arrays(image)
+        out_rgb, out_alpha = image_ops.harmonize_typology(
+            rgb, alpha, base_rgb, palette_rgb, preserve_ratio=preserve_ratio
+        )
+        return self._arrays_to_qimage(out_rgb, out_alpha)
 
-        palette = [tuple(max(0, min(255, int(v))) for v in rgb) for rgb in (palette_rgb or []) if rgb]
-        if not palette:
-            palette = [base]
+    def _harmonize_colored_output(self, image, base_rgb, flatten=False, preserve_ratio=0.18):
+        """Reduce painterly drift by harmonizing output to reference material color."""
+        rgb, alpha = self._qimage_to_arrays(image)
+        out_rgb, out_alpha = image_ops.harmonize_colored(
+            rgb, alpha, base_rgb, flatten=flatten, preserve_ratio=preserve_ratio
+        )
+        return self._arrays_to_qimage(out_rgb, out_alpha)
 
-        def _luma(rgb):
-            return (0.299 * rgb[0]) + (0.587 * rgb[1]) + (0.114 * rgb[2])
+    def _harmonize_mono_output(self, image, publication=False):
+        """Convert output to stable monochrome for line/publication styles."""
+        rgb, alpha = self._qimage_to_arrays(image)
+        out_rgb, out_alpha = image_ops.harmonize_mono(rgb, alpha, publication=publication)
+        return self._arrays_to_qimage(out_rgb, out_alpha)
 
-        palette_sorted = sorted(palette, key=_luma, reverse=True)
-        hi_seed = palette_sorted[0]
-        lo_seed = palette_sorted[-1]
-        mid_seed = palette_sorted[1] if len(palette_sorted) > 2 else base
+    def _estimate_texture_noise(self, image, mask_img):
+        """Estimate high-frequency texture noise inside the masked artifact area."""
+        if image is None or mask_img is None:
+            return 0.0
+        rgb, _alpha = self._qimage_to_arrays(image)
+        mask_rgb, _mask_alpha = self._qimage_to_arrays(mask_img)
+        inside = image_ops.mask_inside(mask_rgb)
+        height = min(rgb.shape[0], inside.shape[0])
+        width = min(rgb.shape[1], inside.shape[1])
+        return image_ops.estimate_texture_noise(rgb[:height, :width], inside[:height, :width])
 
-        highlight = self._blend_rgb(base, hi_seed, 0.52)
-        mid = self._blend_rgb(base, mid_seed, 0.42)
-        shadow = self._blend_rgb(base, lo_seed, 0.56)
+    def _estimate_luma_variance(self, image, mask_img):
+        """Estimate luminance variance inside the silhouette area."""
+        if image is None or mask_img is None:
+            return 0.0
+        rgb, _alpha = self._qimage_to_arrays(image)
+        mask_rgb, _mask_alpha = self._qimage_to_arrays(mask_img)
+        inside = image_ops.mask_inside(mask_rgb)
+        height = min(rgb.shape[0], inside.shape[0])
+        width = min(rgb.shape[1], inside.shape[1])
+        return image_ops.estimate_luma_variance(rgb[:height, :width], inside[:height, :width])
 
-        if (_luma(highlight) - _luma(mid)) < 16.0:
-            highlight = self._blend_rgb(mid, (255, 255, 255), 0.18)
-        if (_luma(mid) - _luma(shadow)) < 16.0:
-            shadow = self._blend_rgb(mid, (0, 0, 0), 0.22)
-        if (_luma(highlight) - _luma(shadow)) < 32.0:
-            highlight = self._blend_rgb(highlight, (255, 255, 255), 0.12)
-            shadow = self._blend_rgb(shadow, (0, 0, 0), 0.12)
-
-        patina = palette_sorted[2] if len(palette_sorted) > 2 else self._blend_rgb(mid, highlight, 0.34)
-        preserve = max(0.10, min(0.62, float(preserve_ratio)))
-
-        for y in range(out.height()):
-            for x in range(out.width()):
-                px = out.pixelColor(x, y)
-                if px.alpha() < 8:
-                    continue
-
-                lum = (0.299 * px.red() + 0.587 * px.green() + 0.114 * px.blue()) / 255.0
-                # Suppress noisy micro-variation while keeping visible tone separation.
-                lum = round(max(0.0, min(1.0, lum)) * 5.0) / 5.0
-
-                if lum <= 0.25:
-                    tone = shadow
-                elif lum <= 0.50:
-                    t = (lum - 0.25) / 0.25
-                    tone = self._blend_rgb(shadow, mid, t)
-                elif lum <= 0.78:
-                    t = (lum - 0.50) / 0.28
-                    tone = self._blend_rgb(mid, highlight, t)
-                else:
-                    tone = highlight
-
-                sat = max(px.red(), px.green(), px.blue()) - min(px.red(), px.green(), px.blue())
-                patina_mix = max(0.0, min(0.22, (sat - 12.0) / 180.0))
-                tone = self._blend_rgb(tone, patina, patina_mix)
-
-                nr = int((tone[0] * (1.0 - preserve)) + (px.red() * preserve))
-                ng = int((tone[1] * (1.0 - preserve)) + (px.green() * preserve))
-                nb = int((tone[2] * (1.0 - preserve)) + (px.blue() * preserve))
-                px.setRed(max(0, min(255, nr)))
-                px.setGreen(max(0, min(255, ng)))
-                px.setBlue(max(0, min(255, nb)))
-                px.setAlpha(255)
-                out.setPixelColor(x, y, px)
-
-        return out
+    def _apply_reference_tone_map(self, image, image_path, mask_img, strength=0.5):
+        """Apply a coarse three-level tone map taken from the reference photo."""
+        rgb, alpha = self._qimage_to_arrays(image)
+        inside, ref_rgb, _ref_alpha = self._mask_arrays(
+            mask_img, image_path, size=(image.width(), image.height())
+        )
+        if ref_rgb is None:
+            return image
+        height = min(rgb.shape[0], inside.shape[0], ref_rgb.shape[0])
+        width = min(rgb.shape[1], inside.shape[1], ref_rgb.shape[1])
+        if height < 2 or width < 2:
+            return image
+        out_rgb, out_alpha = image_ops.reference_tone_map(
+            rgb[:height, :width], alpha[:height, :width],
+            ref_rgb[:height, :width], inside[:height, :width],
+            strength=strength,
+        )
+        return self._arrays_to_qimage(out_rgb, out_alpha)
 
     def _qimage_to_base64_png(self, image):
         """Encode QImage to base64 PNG string."""
@@ -520,193 +486,10 @@ class HuggingFaceGenerator:
             return None
         return base64.b64encode(bytes(ba)).decode("utf-8")
 
-    def _estimate_texture_noise(self, image, mask_img):
-        """Estimate high-frequency texture noise inside masked artifact area."""
-        if image is None or mask_img is None:
-            return 0.0
 
-        img = image.convertToFormat(QImage.Format_ARGB32)
-        w = min(img.width(), mask_img.width())
-        h = min(img.height(), mask_img.height())
-        if w < 3 or h < 3:
-            return 0.0
 
-        diff_sum = 0.0
-        samples = 0
-        for y in range(1, h - 1):
-            for x in range(1, w - 1):
-                mp = mask_img.pixelColor(x, y)
-                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
-                if not inside:
-                    continue
 
-                p = img.pixelColor(x, y)
-                l = img.pixelColor(x - 1, y)
-                r = img.pixelColor(x + 1, y)
-                u = img.pixelColor(x, y - 1)
-                d = img.pixelColor(x, y + 1)
 
-                dl = (
-                    abs(p.red() - l.red()) + abs(p.green() - l.green()) + abs(p.blue() - l.blue()) +
-                    abs(p.red() - r.red()) + abs(p.green() - r.green()) + abs(p.blue() - r.blue()) +
-                    abs(p.red() - u.red()) + abs(p.green() - u.green()) + abs(p.blue() - u.blue()) +
-                    abs(p.red() - d.red()) + abs(p.green() - d.green()) + abs(p.blue() - d.blue())
-                ) / 12.0
-                diff_sum += dl
-                samples += 1
-
-        if samples < 20:
-            return 0.0
-        return diff_sum / samples
-
-    def _estimate_luma_variance(self, image, mask_img):
-        """Estimate luminance variance inside silhouette area."""
-        if image is None or mask_img is None:
-            return 0.0
-
-        img = image.convertToFormat(QImage.Format_ARGB32)
-        w = min(img.width(), mask_img.width())
-        h = min(img.height(), mask_img.height())
-        if w < 2 or h < 2:
-            return 0.0
-
-        total = 0.0
-        total_sq = 0.0
-        count = 0
-        for y in range(h):
-            for x in range(w):
-                mp = mask_img.pixelColor(x, y)
-                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
-                if not inside:
-                    continue
-
-                px = img.pixelColor(x, y)
-                lum = (0.299 * px.red()) + (0.587 * px.green()) + (0.114 * px.blue())
-                total += lum
-                total_sq += (lum * lum)
-                count += 1
-
-        if count < 20:
-            return 0.0
-        mean = total / count
-        var = (total_sq / count) - (mean * mean)
-        return max(0.0, var)
-
-    def _apply_reference_tone_map(self, image, image_path, mask_img, strength=0.5):
-        """
-        Apply a coarse (3-level) tone map from the reference photo.
-        Keeps factual highlights/shadows without introducing painterly noise.
-        """
-        ref = QImage(image_path)
-        if ref.isNull():
-            return image
-
-        out = image.convertToFormat(QImage.Format_ARGB32)
-        ref = ref.scaled(out.width(), out.height(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-        ref = ref.convertToFormat(QImage.Format_ARGB32)
-
-        w = min(out.width(), mask_img.width())
-        h = min(out.height(), mask_img.height())
-        if w < 2 or h < 2:
-            return out
-
-        min_l = 255.0
-        max_l = 0.0
-        for y in range(h):
-            for x in range(w):
-                mp = mask_img.pixelColor(x, y)
-                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
-                if not inside:
-                    continue
-                rp = ref.pixelColor(x, y)
-                lum = (0.299 * rp.red()) + (0.587 * rp.green()) + (0.114 * rp.blue())
-                if lum < min_l:
-                    min_l = lum
-                if lum > max_l:
-                    max_l = lum
-
-        span = max_l - min_l
-        if span < 6.0:
-            return out
-
-        s = max(0.0, min(1.0, float(strength)))
-        for y in range(h):
-            for x in range(w):
-                mp = mask_img.pixelColor(x, y)
-                inside = (mp.red() < 90 and mp.green() < 90 and mp.blue() < 90)
-                if not inside:
-                    continue
-
-                rp = ref.pixelColor(x, y)
-                lum = (0.299 * rp.red()) + (0.587 * rp.green()) + (0.114 * rp.blue())
-                norm = (lum - min_l) / span
-                if norm < 0.34:
-                    tone = 0.90
-                elif norm < 0.68:
-                    tone = 1.00
-                else:
-                    tone = 1.10
-
-                px = out.pixelColor(x, y)
-                tr = max(0, min(255, int(px.red() * tone)))
-                tg = max(0, min(255, int(px.green() * tone)))
-                tb = max(0, min(255, int(px.blue() * tone)))
-                nr = int((px.red() * (1.0 - s)) + (tr * s))
-                ng = int((px.green() * (1.0 - s)) + (tg * s))
-                nb = int((px.blue() * (1.0 - s)) + (tb * s))
-                px.setRed(max(0, min(255, nr)))
-                px.setGreen(max(0, min(255, ng)))
-                px.setBlue(max(0, min(255, nb)))
-                px.setAlpha(255)
-                out.setPixelColor(x, y, px)
-        return out
-
-    def _harmonize_colored_output(self, image, base_rgb, flatten=False, preserve_ratio=0.18):
-        """Reduce painterly drift by harmonizing output to reference material color."""
-        out = image.convertToFormat(QImage.Format_ARGB32)
-        br, bg, bb = base_rgb
-        for y in range(out.height()):
-            for x in range(out.width()):
-                px = out.pixelColor(x, y)
-                if px.alpha() < 8:
-                    continue
-                lum = (0.299 * px.red() + 0.587 * px.green() + 0.114 * px.blue()) / 255.0
-                if flatten:
-                    lum = round(lum * 3.0) / 3.0
-                shade = 0.58 + (0.64 * lum)
-                tr = max(0, min(255, int(br * shade)))
-                tg = max(0, min(255, int(bg * shade)))
-                tb = max(0, min(255, int(bb * shade)))
-                nr = int((tr * (1.0 - preserve_ratio)) + (px.red() * preserve_ratio))
-                ng = int((tg * (1.0 - preserve_ratio)) + (px.green() * preserve_ratio))
-                nb = int((tb * (1.0 - preserve_ratio)) + (px.blue() * preserve_ratio))
-                px.setRed(max(0, min(255, nr)))
-                px.setGreen(max(0, min(255, ng)))
-                px.setBlue(max(0, min(255, nb)))
-                px.setAlpha(255)
-                out.setPixelColor(x, y, px)
-        return out
-
-    def _harmonize_mono_output(self, image, publication=False):
-        """Convert output to stable monochrome for line/publication styles."""
-        out = image.convertToFormat(QImage.Format_ARGB32)
-        for y in range(out.height()):
-            for x in range(out.width()):
-                px = out.pixelColor(x, y)
-                if px.alpha() < 8:
-                    continue
-                lum = int(0.299 * px.red() + 0.587 * px.green() + 0.114 * px.blue())
-                if publication:
-                    v = 25 if lum < 135 else 70
-                else:
-                    v = int(20 + (lum * 0.35))
-                v = max(0, min(255, v))
-                px.setRed(v)
-                px.setGreen(v)
-                px.setBlue(v)
-                px.setAlpha(255)
-                out.setPixelColor(x, y, px)
-        return out
 
     def _render_svg_to_image(self, svg_code):
         """Render SVG string to QImage."""
@@ -800,22 +583,12 @@ class HuggingFaceGenerator:
                 target_w, target_h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
             ).convertToFormat(QImage.Format_ARGB32)
 
-            out = QImage(target_w, target_h, QImage.Format_ARGB32_Premultiplied)
-            out.fill(Qt.transparent)
-
-            for y in range(target_h):
-                for x in range(target_w):
-                    mask_px = mask_img.pixelColor(x, y)
-                    # In silhouette mask: object is black, background is white.
-                    inside = (
-                        mask_px.red() < 90 and
-                        mask_px.green() < 90 and
-                        mask_px.blue() < 90
-                    )
-                    if inside:
-                        px = generated.pixelColor(x, y)
-                        px.setAlpha(255)
-                        out.setPixelColor(x, y, px)
+            # Keep only what falls inside the measured silhouette.
+            mask_rgb, _mask_alpha = self._qimage_to_arrays(mask_img)
+            generated_rgb, _generated_alpha = self._qimage_to_arrays(generated)
+            inside = image_ops.mask_inside(mask_rgb)
+            out_rgb, out_alpha = image_ops.apply_silhouette(generated_rgb, inside)
+            out = self._arrays_to_qimage(out_rgb, out_alpha)
 
             texture_noise = self._estimate_texture_noise(generated, mask_img)
 

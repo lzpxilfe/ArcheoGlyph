@@ -74,8 +74,15 @@ def _install_qgis_stubs():
     ):
         setattr(core, name, type(name, (), {}))
     qtgui = types.ModuleType("qgis.PyQt.QtGui")
-    for name in ("QColor", "QImage", "QPixmap", "QPainter", "QPainterPath", "QPolygonF", "QPen", "QFont"):
+    for name in ("QColor", "QPixmap", "QPainter", "QPainterPath", "QPolygonF", "QPen", "QFont"):
         setattr(qtgui, name, type(name, (), {}))
+    # QImage carries the format enum values the image bridge references.
+    qtgui.QImage = type("QImage", (), {
+        "Format_RGBA8888": 17,
+        "Format_ARGB32": 5,
+        "Format_ARGB32_Premultiplied": 6,
+        "Format_RGB32": 4,
+    })
     qtsvg = types.ModuleType("qgis.PyQt.QtSvg")
     for name in ("QSvgGenerator", "QSvgRenderer"):
         setattr(qtsvg, name, type(name, (), {}))

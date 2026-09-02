@@ -21,6 +21,7 @@ QGIS_FREE_MODULES = [
     "generators.shape_match",
     "generators.ink_centerline",
     "generators.raster_vectorize",
+    "generators.image_ops",
     "generators.style_utils",
     "generators.style_control_utils",
     "generators.autotrace.options",
