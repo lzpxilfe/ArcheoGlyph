@@ -60,20 +60,40 @@ Two one-click presets are available in the main dialog:
 
 1. `Auto Trace`
 - Fastest local path (no API key required)
-- Best for factual symbol extraction from input photos
+- Photographs and line drawings (measured drawings, rubbings) are detected
+  automatically, or you can force either in `Input type`
+- Optional ONNX background removal for difficult photographs
 
-2. `AI (Hugging Face)`
-- Reference-first generation with robust model fallback
+2. `AI (Google Gemini)`
+- SVG-oriented factual generation, guided by the measured silhouette and
+  stroke paths, with the result validated and sanitised before use
 
-3. `AI (Google Gemini)`
-- SVG-oriented factual generation with safety checks and fallback
+3. `AI (Hugging Face)`
+- Reference-first generation through the Hugging Face inference providers
 
 4. `AI (Local Stable Diffusion)`
 - Automatic1111 API workflow for local/offline control
 
 5. `Use Template`
 - Uses built-in template names and categories
-- If SVG files are missing, programmatic placeholders are generated
+
+Every mode produces an SVG marker where possible, so symbols stay sharp when
+printed and can be recoloured in QGIS through `param(fill)` and
+`param(outline)`. Symbols are stored in your QGIS profile under
+`archeoglyph/symbols/`, so saved projects keep working.
+
+## Optional Dependencies
+
+Install into the Python that QGIS uses:
+
+```bash
+python -m pip install "opencv-python-headless>=4.8,<4.13"   # required for Auto Trace
+python -m pip install scikit-image scipy                    # better ink centrelines
+python -m pip install onnxruntime                           # background-removal models
+python -m pip install vtracer                               # smoother raster tracing
+python -m pip install huggingface_hub                       # Hugging Face backend
+python -m pip install google-genai                          # Gemini backend
+```
 
 ## Template Coverage
 

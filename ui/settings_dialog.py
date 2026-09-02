@@ -7,6 +7,7 @@ Configure AI API keys and view setup instructions.
 import os
 import sys
 import importlib.util
+from importlib.util import find_spec
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from qgis.PyQt.QtCore import Qt, QSettings, QUrl, QProcess, QThread, pyqtSignal
@@ -17,6 +18,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox, QScrollArea, QFrame, QApplication,
     QCheckBox, QComboBox, QFileDialog, QSpinBox
 )
+from ..auth import get_api_key, set_api_key, storage_description
 from ..defaults import (
     GEMINI_AI_STUDIO_URL,
     GEMINI_EXCLUDED_KEYWORDS,
@@ -118,8 +120,25 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.settings = QSettings()
+        # Worker threads are kept here so they are never garbage collected
+        # while still running (which aborts the QGIS process).
+        # The thread object stays referenced until the next refresh replaces it.
+        self.test_thread = None
+        self.hf_test_thread = None
         self.setup_ui()
         self.load_settings()
+
+    def _running_threads(self):
+        return [
+            thread for thread in (self.model_refresh_thread, self.test_thread, self.hf_test_thread)
+            if thread is not None and thread.isRunning()
+        ]
+
+    def closeEvent(self, event):
+        """Wait for worker threads before the dialog (and its threads) die."""
+        for thread in self._running_threads():
+            thread.wait(3000)
+        super().closeEvent(event)
         
     def setup_ui(self):
         """Initialize the settings UI."""
@@ -386,10 +405,6 @@ class SettingsDialog(QDialog):
 
         weak_row = QHBoxLayout()
         weak_row.addWidget(QLabel("Warning threshold (minimum):"))
-        self.image_warn_min_kb_spin = QSpinBox()
-        self.image_warn_min_kb_spin.setRange(50, 5000)
-        self.image_warn_min_kb_spin.setSuffix(" KB")
-        weak_row.addWidget(self.image_warn_min_kb_spin)
         self.image_warn_min_short_px_spin = QSpinBox()
         self.image_warn_min_short_px_spin.setRange(256, 4096)
         self.image_warn_min_short_px_spin.setSuffix(" px")
@@ -398,19 +413,27 @@ class SettingsDialog(QDialog):
 
         rec_row = QHBoxLayout()
         rec_row.addWidget(QLabel("Recommended threshold:"))
-        self.image_warn_recommended_kb_spin = QSpinBox()
-        self.image_warn_recommended_kb_spin.setRange(50, 5000)
-        self.image_warn_recommended_kb_spin.setSuffix(" KB")
-        rec_row.addWidget(self.image_warn_recommended_kb_spin)
         self.image_warn_recommended_short_px_spin = QSpinBox()
         self.image_warn_recommended_short_px_spin.setRange(256, 4096)
         self.image_warn_recommended_short_px_spin.setSuffix(" px")
         rec_row.addWidget(self.image_warn_recommended_short_px_spin)
         quality_layout.addLayout(rec_row)
 
+        sharp_row = QHBoxLayout()
+        sharp_row.addWidget(QLabel("Minimum sharpness:"))
+        self.image_warn_min_sharpness_spin = QSpinBox()
+        self.image_warn_min_sharpness_spin.setRange(0, 2000)
+        self.image_warn_min_sharpness_spin.setToolTip(
+            "Variance of the Laplacian. Lower values accept softer images; 0 disables the check."
+        )
+        sharp_row.addWidget(self.image_warn_min_sharpness_spin)
+        sharp_row.addStretch()
+        quality_layout.addLayout(sharp_row)
+
         quality_help = QLabel(
-            "For bronze mirrors, typical practical floor is around 180KB / 700px short side; "
-            "recommended starts around 300KB / 900px short side."
+            "Resolution and sharpness decide how much detail can be traced; file size does not. "
+            "A practical floor is a 700px short side, with 900px recommended, and a sharpness "
+            "of about 60 for an in-focus photo."
         )
         quality_help.setWordWrap(True)
         quality_help.setStyleSheet("color: #666; font-size: 11px;")
@@ -540,7 +563,7 @@ class SettingsDialog(QDialog):
         
         key_desc = QLabel(
             "<b>Paste your API key below:</b><br>"
-            "Your key is stored locally and never shared. It looks like: AIza..."
+            "Your key is stored locally and never sent anywhere except Google. It looks like: AIza..."
         )
         key_desc.setWordWrap(True)
         key_desc.setTextFormat(Qt.RichText)
@@ -551,7 +574,7 @@ class SettingsDialog(QDialog):
         self.gemini_key_input.setEchoMode(QLineEdit.Password)
         self.gemini_key_input.setPlaceholderText("Paste your API key here (AIza...)")
         self.gemini_key_input.setMinimumHeight(35)
-        self.gemini_key_input.setToolTip("Your Google Gemini API key - kept secure and private")
+        self.gemini_key_input.setToolTip("Your Google Gemini API key")
         key_input_layout.addWidget(self.gemini_key_input)
         
         show_key_btn = QPushButton("Show")
@@ -560,7 +583,12 @@ class SettingsDialog(QDialog):
         show_key_btn.clicked.connect(self._toggle_key_visibility)
         key_input_layout.addWidget(show_key_btn)
         key_layout.addLayout(key_input_layout)
-        
+
+        self.key_storage_label = QLabel("")
+        self.key_storage_label.setWordWrap(True)
+        self.key_storage_label.setStyleSheet("color: #555; font-size: 11px;")
+        key_layout.addWidget(self.key_storage_label)
+
         layout.addWidget(key_group)
         
         # Step 4: Test connection
@@ -985,7 +1013,7 @@ class SettingsDialog(QDialog):
             hf_candidates=hf_candidates,
             sam_candidates=sam_candidates,
         )
-        self.model_refresh_thread.finished.connect(
+        self.model_refresh_thread.result_ready.connect(
             lambda result: self._handle_latest_model_refresh_result(result, manual, apply_changes)
         )
         self.model_refresh_thread.start()
@@ -1051,7 +1079,8 @@ class SettingsDialog(QDialog):
         self.refresh_models_btn.setEnabled(True)
         if hasattr(self, "check_models_btn"):
             self.check_models_btn.setEnabled(True)
-        self.model_refresh_thread = None
+        # Keep the reference: this runs from the thread's own signal, and
+        # dropping the last reference here can destroy a still-running QThread.
 
         if not isinstance(result, dict):
             result = {"status": "error", "message": "Invalid model refresh result payload."}
@@ -1334,15 +1363,13 @@ class SettingsDialog(QDialog):
         checkpoint = self.sam_checkpoint_input.text().strip()
         checkpoint_ok = bool(checkpoint and os.path.exists(checkpoint))
 
+        # Probe without importing: a real torch import freezes the dialog for
+        # seconds, and this runs on every keystroke in the checkpoint field.
         dep_missing = []
-        try:
-            import torch  # noqa: F401
-        except Exception:
+        if not find_spec("torch"):
             dep_missing.append("torch")
         if uses_hf_sam:
-            try:
-                import transformers  # noqa: F401
-            except Exception:
+            if not find_spec("transformers"):
                 dep_missing.append("transformers")
             if dep_missing:
                 self.sam_status_label.setText(
@@ -1358,9 +1385,7 @@ class SettingsDialog(QDialog):
             self.sam_status_label.setStyleSheet("color: green; font-size: 11px;")
             return
 
-        try:
-            import segment_anything  # noqa: F401
-        except Exception:
+        if not find_spec("segment_anything"):
             dep_missing.append("segment-anything")
 
         if checkpoint_ok and not dep_missing:
@@ -1404,16 +1429,19 @@ class SettingsDialog(QDialog):
                 self.sam_model_type_combo.setCurrentIndex(idx)
         self._refresh_sam_status()
             
+    def _describe_key_storage(self):
+        """Tell the user where API keys are kept."""
+        if hasattr(self, "key_storage_label"):
+            self.key_storage_label.setText(storage_description(self.settings))
+
     def load_settings(self):
         """Load saved settings."""
-        gemini_key = self.settings.value('ArcheoGlyph/gemini_api_key', '')
-        hf_key = self.settings.value('ArcheoGlyph/huggingface_api_key', '')
-        hf_model = self.settings.value(
-            'ArcheoGlyph/hf_model_id',
-            HF_DEFAULT_MODEL_ID
+        gemini_key = get_api_key("gemini", self.settings)
+        hf_key = get_api_key("huggingface", self.settings)
+        # Loading must not change stored settings; normalise for display only.
+        hf_model = self._normalize_hf_model_id(
+            self.settings.value('ArcheoGlyph/hf_model_id', HF_DEFAULT_MODEL_ID)
         )
-        hf_model = self._normalize_hf_model_id(hf_model)
-        self.settings.setValue('ArcheoGlyph/hf_model_id', hf_model)
 
         mask_backend = self.settings.value('ArcheoGlyph/mask_backend', 'auto')
         sam_checkpoint = self.settings.value('ArcheoGlyph/sam_checkpoint_path', '')
@@ -1430,17 +1458,13 @@ class SettingsDialog(QDialog):
         ).strip().lower()
         if autotrace_detail_mode not in ("fast", "precise"):
             autotrace_detail_mode = "fast"
-        image_warn_min_kb = self._parse_int_setting(
-            self.settings.value('ArcheoGlyph/image_warn_min_kb', 180),
-            default=180,
+        image_warn_min_sharpness = self._parse_int_setting(
+            self.settings.value('ArcheoGlyph/image_warn_min_sharpness', 60),
+            default=60,
         )
         image_warn_min_short_px = self._parse_int_setting(
             self.settings.value('ArcheoGlyph/image_warn_min_short_px', 700),
             default=700,
-        )
-        image_warn_recommended_kb = self._parse_int_setting(
-            self.settings.value('ArcheoGlyph/image_warn_recommended_kb', 300),
-            default=300,
         )
         image_warn_recommended_short_px = self._parse_int_setting(
             self.settings.value('ArcheoGlyph/image_warn_recommended_short_px', 900),
@@ -1460,19 +1484,14 @@ class SettingsDialog(QDialog):
         if mode_idx >= 0:
             self.autotrace_detail_mode_combo.setCurrentIndex(mode_idx)
 
-        image_warn_min_kb = max(50, min(5000, int(image_warn_min_kb)))
+        image_warn_min_sharpness = max(0, min(2000, int(image_warn_min_sharpness)))
         image_warn_min_short_px = max(256, min(4096, int(image_warn_min_short_px)))
-        image_warn_recommended_kb = max(
-            image_warn_min_kb,
-            min(5000, int(image_warn_recommended_kb)),
-        )
         image_warn_recommended_short_px = max(
             image_warn_min_short_px,
             min(4096, int(image_warn_recommended_short_px)),
         )
-        self.image_warn_min_kb_spin.setValue(image_warn_min_kb)
+        self.image_warn_min_sharpness_spin.setValue(image_warn_min_sharpness)
         self.image_warn_min_short_px_spin.setValue(image_warn_min_short_px)
-        self.image_warn_recommended_kb_spin.setValue(image_warn_recommended_kb)
         self.image_warn_recommended_short_px_spin.setValue(image_warn_recommended_short_px)
 
         idx = self.mask_backend_combo.findData(str(mask_backend).strip().lower())
@@ -1487,7 +1506,6 @@ class SettingsDialog(QDialog):
         sam_model_type = str(sam_model_type).strip() or "hf:facebook/sam2.1-hiera-large"
         if sam_model_type.lower() == "hf:facebook/sam3-hiera-large":
             sam_model_type = "hf:facebook/sam2.1-hiera-large"
-            self.settings.setValue('ArcheoGlyph/sam_model_type', sam_model_type)
         type_idx = self.sam_model_type_combo.findData(sam_model_type)
         if type_idx < 0:
             type_idx = self.sam_model_type_combo.findText(sam_model_type)
@@ -1495,7 +1513,8 @@ class SettingsDialog(QDialog):
             self.sam_model_type_combo.setCurrentIndex(type_idx)
         self.hf_overlay_linework_check.setChecked(hf_overlay_linework)
         self._refresh_sam_status()
-        
+        self._describe_key_storage()
+
         # Check if package is installed
         try:
             package_found = importlib.util.find_spec("google.genai") is not None
@@ -1517,8 +1536,8 @@ class SettingsDialog(QDialog):
 
     def save_settings(self):
         """Save settings."""
-        self.settings.setValue('ArcheoGlyph/gemini_api_key', self.gemini_key_input.text())
-        self.settings.setValue('ArcheoGlyph/huggingface_api_key', self.hf_key_input.text())
+        set_api_key("gemini", self.gemini_key_input.text(), self.settings)
+        set_api_key("huggingface", self.hf_key_input.text(), self.settings)
         self.settings.setValue('ArcheoGlyph/hf_model_id', self._normalize_hf_model_id(self.hf_model_input.text()))
         mask_backend = self.mask_backend_combo.currentData()
         sam_checkpoint = self.sam_checkpoint_input.text().strip()
@@ -1528,10 +1547,7 @@ class SettingsDialog(QDialog):
         # Safety: strict validation only when user forces SAM-only backend.
         if mask_backend == "sam":
             if uses_hf_sam:
-                try:
-                    import torch  # noqa: F401
-                    import transformers  # noqa: F401
-                except Exception:
+                if not (find_spec("torch") and find_spec("transformers")):
                     QMessageBox.warning(
                         self,
                         "SAM Package Missing",
@@ -1556,10 +1572,7 @@ class SettingsDialog(QDialog):
                     if idx >= 0:
                         self.mask_backend_combo.setCurrentIndex(idx)
                 else:
-                    try:
-                        import torch  # noqa: F401
-                        import segment_anything  # noqa: F401
-                    except Exception:
+                    if not (find_spec("torch") and find_spec("segment_anything")):
                         QMessageBox.warning(
                             self,
                             "SAM Package Missing",
@@ -1586,19 +1599,16 @@ class SettingsDialog(QDialog):
         detail_mode = str(self.autotrace_detail_mode_combo.currentData() or "fast").strip().lower()
         if detail_mode not in ("fast", "precise"):
             detail_mode = "fast"
-        warn_min_kb = int(self.image_warn_min_kb_spin.value())
+        warn_min_sharpness = int(self.image_warn_min_sharpness_spin.value())
         warn_min_short_px = int(self.image_warn_min_short_px_spin.value())
-        warn_rec_kb = max(warn_min_kb, int(self.image_warn_recommended_kb_spin.value()))
         warn_rec_short_px = max(
             warn_min_short_px,
             int(self.image_warn_recommended_short_px_spin.value()),
         )
-        self.image_warn_recommended_kb_spin.setValue(warn_rec_kb)
         self.image_warn_recommended_short_px_spin.setValue(warn_rec_short_px)
         self.settings.setValue('ArcheoGlyph/autotrace_detail_mode', detail_mode)
-        self.settings.setValue('ArcheoGlyph/image_warn_min_kb', warn_min_kb)
+        self.settings.setValue('ArcheoGlyph/image_warn_min_sharpness', warn_min_sharpness)
         self.settings.setValue('ArcheoGlyph/image_warn_min_short_px', warn_min_short_px)
-        self.settings.setValue('ArcheoGlyph/image_warn_recommended_kb', warn_rec_kb)
         self.settings.setValue('ArcheoGlyph/image_warn_recommended_short_px', warn_rec_short_px)
         self.settings.setValue('ArcheoGlyph/sd_server', self.sd_url_input.text())
         self._refresh_sam_status()
@@ -1642,7 +1652,7 @@ class SettingsDialog(QDialog):
                 candidate_models.append(normalized)
 
         self.hf_test_thread = HfConnectionTestThread(api_key, candidate_models)
-        self.hf_test_thread.finished.connect(
+        self.hf_test_thread.result_ready.connect(
             lambda result: self._handle_hf_test_result(result, trigger_button, model_id)
         )
         self.hf_test_thread.start()
@@ -1742,6 +1752,7 @@ class SettingsDialog(QDialog):
         # Setup QProcess
         from qgis.PyQt.QtCore import QProcess
         
+        self._install_log = {}
         self.process = QProcess(self)
         self.process.readyReadStandardOutput.connect(self._handle_process_output)
         self.process.readyReadStandardError.connect(self._handle_process_output)
@@ -1764,9 +1775,12 @@ class SettingsDialog(QDialog):
         self.process.start(python_path, args)
         
     def _handle_process_output(self):
-        """Handle process output."""
+        """Handle process output (kept, since reading it drains the buffer)."""
         stdout = bytes(self.process.readAllStandardOutput()).decode('utf-8', errors='replace').strip()
         stderr = bytes(self.process.readAllStandardError()).decode('utf-8', errors='replace').strip()
+        for stream, text in (("stdout", stdout), ("stderr", stderr)):
+            if text:
+                self._install_log.setdefault(stream, []).append(text)
         msg = stdout or stderr
 
         if msg:
@@ -1799,10 +1813,12 @@ class SettingsDialog(QDialog):
             self.install_status.setText("Failed")
             self.install_status.setStyleSheet("color: red;")
             
-            # Read all output for debugging
-            stdout = bytes(self.process.readAllStandardOutput()).decode('utf-8', errors='replace')
-            stderr = bytes(self.process.readAllStandardError()).decode('utf-8', errors='replace')
-            
+            # Use the accumulated log: the streams were already drained while
+            # the installer was running, so reading them here returns nothing.
+            self._handle_process_output()
+            log_data = getattr(self, "_install_log", {})
+            stdout = "\n".join(log_data.get("stdout", []))
+            stderr = "\n".join(log_data.get("stderr", []))
             full_log = f"STDOUT:\n{stdout}\n\nSTDERR:\n{stderr}"
             QgsMessageLog.logMessage(f"ArcheoGlyph Install Failed:\n{full_log}", "ArcheoGlyph", Qgis.Critical)
             
@@ -1813,13 +1829,12 @@ class SettingsDialog(QDialog):
             msg.setText(f"Installation failed (Exit Code: {exit_code}).")
             msg.setInformativeText("Check the 'ArcheoGlyph' tab in QGIS Log Messages panel for full details.")
             msg.setDetailedText(full_log)
-            msg.addButton("Copy Command", QMessageBox.ActionRole)
+            copy_button = msg.addButton("Copy Command", QMessageBox.ActionRole)
             msg.addButton(QMessageBox.Ok)
-            
+
             msg.exec_()
-            
-            clicked_button = msg.clickedButton()
-            if clicked_button is not None and clicked_button.text() == "Copy Command":
+
+            if msg.clickedButton() is copy_button:
                 clipboard = QApplication.clipboard()
                 cmd = f'"{self._get_python_executable()}" -m pip install --user {GEMINI_INSTALL_PACKAGE}'
                 clipboard.setText(cmd)
@@ -1863,7 +1878,7 @@ class SettingsDialog(QDialog):
             sender.setEnabled(False)
             
         self.test_thread = GeminiTestThread(api_key)
-        self.test_thread.finished.connect(lambda s, m: self._handle_test_result(s, m, sender))
+        self.test_thread.result_ready.connect(lambda s, m: self._handle_test_result(s, m, sender))
         self.test_thread.start()
         
     def _handle_test_result(self, success, message, button):
@@ -1960,7 +1975,9 @@ class SettingsDialog(QDialog):
 
 class LatestModelRefreshThread(QThread):
     """Resolve latest practical model recommendations for HF/SAM/Gemini."""
-    finished = pyqtSignal(object)  # dict result payload
+    # Not named "finished": QThread already defines that signal, and shadowing
+    # it breaks the idiomatic finished -> deleteLater connection.
+    result_ready = pyqtSignal(object)  # dict result payload
 
     def __init__(self, hf_api_key, gemini_api_key, hf_candidates, sam_candidates):
         super().__init__()
@@ -2137,7 +2154,7 @@ class LatestModelRefreshThread(QThread):
             gemini_model = self._select_best_gemini()
 
             if not hf_model and not sam_model_type and not gemini_model:
-                self.finished.emit({
+                self.result_ready.emit({
                     "status": "error",
                     "message": "Could not resolve latest model recommendations (check network/API keys).",
                 })
@@ -2151,7 +2168,7 @@ class LatestModelRefreshThread(QThread):
             if gemini_model:
                 summary.append(f"Gemini: {gemini_model}")
 
-            self.finished.emit({
+            self.result_ready.emit({
                 "status": "ok",
                 "hf_model": hf_model,
                 "sam_model_type": sam_model_type,
@@ -2161,116 +2178,62 @@ class LatestModelRefreshThread(QThread):
                 "sam_candidates_found": len(sam_records),
             })
         except Exception as exc:
-            self.finished.emit({"status": "error", "message": str(exc)})
+            self.result_ready.emit({"status": "error", "message": str(exc)})
 
 
 class GeminiTestThread(QThread):
-    """Thread for testing Gemini API connection."""
-    finished = pyqtSignal(bool, str) # success, message
+    """
+    Check the Gemini API key without generating anything.
+
+    Listing models proves the key is valid and shows what it can reach; the
+    old test ran real image generations against model after model, which cost
+    quota every time the user pressed the button.
+    """
+    result_ready = pyqtSignal(bool, str)  # success, message
 
     def __init__(self, api_key):
         super().__init__()
         self.api_key = api_key
 
-    def _response_has_image(self, response):
-        """Return True when any response part contains image bytes."""
-        parts = list(getattr(response, "parts", []) or [])
-        if not parts:
-            for candidate in list(getattr(response, "candidates", []) or []):
-                content = getattr(candidate, "content", None)
-                candidate_parts = list(getattr(content, "parts", []) or [])
-                if candidate_parts:
-                    parts.extend(candidate_parts)
-
-        for part in parts:
-            inline_data = getattr(part, "inline_data", None)
-            if inline_data is None:
-                continue
-            mime_type = str(getattr(inline_data, "mime_type", "") or "").strip().lower()
-            if mime_type.startswith("image/") and getattr(inline_data, "data", None):
-                return True
-        return False
-
     def run(self):
         try:
             from google import genai
-
-            client = genai.Client(api_key=self.api_key)
-
-            available_models = []
-            try:
-                for model in client.models.list():
-                    name = _normalize_gemini_model_name(getattr(model, "name", ""))
-                    if not name:
-                        continue
-                    if "gemini" not in name.lower() or _is_excluded_gemini_model(name):
-                        continue
-                    available_models.append(name)
-            except Exception as e:
-                self.finished.emit(False, f"Connection/Auth Error: {str(e)}")
-                return
-
-            if not available_models:
-                self.finished.emit(False, "No models available for your API key.")
-                return
-
-            models_to_try = []
-            preferred_models = list(GEMINI_IMAGE_MODEL_CANDIDATES) + list(GEMINI_TEXT_MODEL_CANDIDATES)
-
-            for pref in preferred_models:
-                for m in available_models:
-                    if _normalize_gemini_model_name(pref) == m or m.startswith(_normalize_gemini_model_name(pref)):
-                        models_to_try.append(m)
-
-            for m in available_models:
-                if m not in models_to_try:
-                    models_to_try.append(m)
-
-            models_to_try.sort(key=_rank_gemini_model, reverse=True)
-
-            last_error = None
-            success = False
-
-            for model_name in models_to_try:
-                try:
-                    if _is_image_gemini_model(model_name):
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents="Create a simple black circle icon on transparent background.",
-                            config={"response_modalities": ["IMAGE", "TEXT"]},
-                        )
-                        if self._response_has_image(response):
-                            self.finished.emit(True, f"[{model_name}] image response ok")
-                            success = True
-                            break
-                    else:
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents="Say Hello!",
-                        )
-                        response_text = str(getattr(response, "text", "") or "").strip()
-                        if response_text:
-                            self.finished.emit(True, f"[{model_name}] {response_text}")
-                            success = True
-                            break
-
-                except Exception as e:
-                    last_error = e
-                    continue
-
-            if not success:
-                error_msg = str(last_error) if last_error else "No suitable model found"
-                self.finished.emit(False, error_msg)
-
         except ImportError:
-            self.finished.emit(False, f"Package '{GEMINI_INSTALL_PACKAGE}' not installed")
+            self.result_ready.emit(False, f"Package '{GEMINI_INSTALL_PACKAGE}' not installed")
+            return
+
+        try:
+            client = genai.Client(api_key=self.api_key)
+            available = []
+            for model in client.models.list():
+                name = _normalize_gemini_model_name(getattr(model, "name", ""))
+                if not name or "gemini" not in name.lower() or _is_excluded_gemini_model(name):
+                    continue
+                available.append(name)
         except Exception as e:
-            self.finished.emit(False, str(e))
+            self.result_ready.emit(False, f"Connection/Auth Error: {e}")
+            return
+
+        if not available:
+            self.result_ready.emit(False, "The key works, but no Gemini models are available for it.")
+            return
+
+        available.sort(key=_rank_gemini_model, reverse=True)
+        image_models = [name for name in available if _is_image_gemini_model(name)]
+        summary = f"Key valid. {len(available)} models available; best: {available[0]}"
+        if image_models:
+            summary += f"; image model: {image_models[0]}"
+        self.result_ready.emit(True, summary)
 
 
 class HfConnectionTestThread(QThread):
-    """Thread for testing Hugging Face model connectivity without blocking UI."""
-    finished = pyqtSignal(object)  # dict result payload
+    """
+    Check the Hugging Face token and model availability cheaply.
+
+    Model metadata says whether the id exists and whether it is gated; the old
+    test submitted a real generation job to up to seventeen models in turn.
+    """
+    result_ready = pyqtSignal(object)  # dict result payload
 
     def __init__(self, api_key, candidate_models):
         super().__init__()
@@ -2279,65 +2242,56 @@ class HfConnectionTestThread(QThread):
 
     def run(self):
         try:
-            import requests
-        except Exception as exc:
-            self.finished.emit({"status": "error", "message": str(exc)})
+            from huggingface_hub import HfApi
+            from huggingface_hub.utils import GatedRepoError, HfHubHTTPError, RepositoryNotFoundError
+        except Exception:
+            self.result_ready.emit({
+                "status": "error",
+                "message": "The 'huggingface_hub' package is required. Install it with: pip install huggingface_hub",
+            })
             return
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "Accept": "image/png",
-        }
-        payload = {
-            "inputs": "simple icon of an ancient pottery shard on white background",
-            "parameters": {"num_inference_steps": 1},
-        }
+        api = HfApi(token=self.api_key or None)
+        try:
+            who = api.whoami()
+        except Exception as exc:
+            message = str(exc)
+            if "401" in message or "invalid" in message.lower():
+                self.result_ready.emit({"status": "invalid_token"})
+            else:
+                self.result_ready.emit({"status": "error", "message": message})
+            return
 
-        saw_403 = False
-        saw_404 = False
-        last_status = None
+        saw_gated = False
+        saw_missing = False
         last_error = ""
-
-        for candidate in self.candidate_models:
+        for candidate in self.candidate_models[:6]:
             if not candidate:
                 continue
-            api_url = f"https://router.huggingface.co/hf-inference/models/{candidate}"
             try:
-                response = requests.post(api_url, headers=headers, json=payload, timeout=12)
-            except requests.RequestException as exc:
+                info = api.model_info(candidate)
+            except GatedRepoError:
+                saw_gated = True
+                continue
+            except RepositoryNotFoundError:
+                saw_missing = True
+                continue
+            except (HfHubHTTPError, Exception) as exc:
                 last_error = str(exc)
                 continue
 
-            response_text = (response.text or "").lower()
-            last_status = response.status_code
-
-            if response.status_code == 200:
-                self.finished.emit({"status": "connected", "model": candidate})
-                return
-            if response.status_code == 503 or "loading" in response_text:
-                self.finished.emit({"status": "loading", "model": candidate})
-                return
-            if response.status_code == 401:
-                self.finished.emit({"status": "invalid_token"})
-                return
-            if response.status_code == 403:
-                saw_403 = True
-                continue
-            if response.status_code == 404:
-                saw_404 = True
-                continue
-
-        if saw_403:
-            self.finished.emit({"status": "forbidden"})
+            self.result_ready.emit({
+                "status": "connected",
+                "model": candidate,
+                "user": str(who.get("name", "")) if isinstance(who, dict) else "",
+                "pipeline": str(getattr(info, "pipeline_tag", "") or ""),
+            })
             return
-        if saw_404:
-            self.finished.emit({"status": "not_found"})
+
+        if saw_gated:
+            self.result_ready.emit({"status": "forbidden"})
             return
-        if last_error:
-            self.finished.emit({"status": "error", "message": last_error})
+        if saw_missing:
+            self.result_ready.emit({"status": "not_found"})
             return
-        self.finished.emit({"status": "error", "message": f"Error {last_status if last_status is not None else 'unknown'}"})
-
-
-
+        self.result_ready.emit({"status": "error", "message": last_error or "No model could be reached."})

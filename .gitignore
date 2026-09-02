@@ -20,6 +20,7 @@ Thumbs.db
 
 # Build
 dist/
+.pytest_qgis_profile/
 build/
 *.egg-info/
 

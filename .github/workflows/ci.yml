@@ -32,3 +32,7 @@ jobs:
         run: python -m flake8 .
       - name: Run tests
         run: python -m pytest -q
+      - name: Import smoke test
+        run: python scripts/qgis_import_smoke.py
+      - name: Build plugin package
+        run: python scripts/package_plugin.py --output dist

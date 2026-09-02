@@ -6,22 +6,33 @@ version=0.2.0
 author=lzpxilfe (balguljang2)
 email=balguljang2@gmail.com
 
-about=ArchaeoGlyph helps archaeologists create factual, standardized symbols for GIS maps. Upload artifact or feature images and generate map-ready symbols using Auto Trace, AI (Hugging Face, Google Gemini, or local Stable Diffusion), or built-in templates. Features include style controls (Colored/Typology/Line/Measured), optional SAM segmentation, target layer selection, color adjustment, proportional sizing, and direct QGIS symbol library integration.
+about=ArchaeoGlyph helps archaeologists create factual, standardized symbols for GIS maps. Drop in an artifact photo or a measured drawing and generate map-ready SVG symbols using Auto Trace, AI (Google Gemini, Hugging Face, or local Stable Diffusion), or built-in templates. Symbols are recolourable in QGIS, and features include style controls (Simple Symbol/Line/Measured), optional background-removal models, target layer selection, graduated sizing, and direct symbol library integration.
 
 tracker=https://github.com/lzpxilfe/ArcheoGlyph/issues
 repository=https://github.com/lzpxilfe/ArcheoGlyph.git
 
 changelog=
-    0.2.0 - Hardening and vector output
-        * CI now runs flake8 and pytest on the QGIS-free modules
-        * Class-break computation moved to symbol_breaks.py with tests
-        * Diagnostics routed through the QGIS message log
+    0.2.0 - Vector output, factual Auto Trace, working AI backends
+        * Symbols are produced as SVG markers with param(fill)/param(outline)
+          and stored in the QGIS profile, so they stay sharp and recolourable
+        * Auto Trace split into testable modules; fixed silently broken polar
+          motif extraction, discarded alpha channels, ignored EXIF rotation,
+          non-deterministic colours and a no-op line filter
+        * Schematic structure lines are opt-in; only observed lines are drawn
+        * Ink Centerline v2: colour-aware, halo-suppressed, junction-aware,
+          with automatic photograph/drawing routing
+        * Optional ONNX background removal with verified model downloads
+        * Gemini: stroke styles work again, SVG is parsed and sanitised,
+          model fan-out capped, fallbacks are visible
+        * Hugging Face: calls go through the inference providers with the
+          right pipeline per model
+        * API keys move to the QGIS authentication database
+        * Generation can be cancelled; CI runs lint, tests and packaging
     0.1.1 - Branding/metadata/docs refresh
         * Display naming unified to ArchaeoGlyph
         * Author metadata updated
         * README rewritten for current feature set
         * Added citation, star request, and Ko-fi support section
-        * Stable default HF model updated to FLUX.2-dev
     0.1.0 - Stable baseline
         * English-first UI and naming
         * Styles: Colored, Typology, Line, Measured

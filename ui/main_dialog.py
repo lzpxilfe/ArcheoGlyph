@@ -3,7 +3,9 @@
 ArcheoGlyph - Main Dialog UI
 """
 
+import inspect
 import os
+import threading
 from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread, QRectF, QSettings
 from qgis.PyQt.QtGui import QPixmap, QColor, QDragEnterEvent, QDropEvent
 from qgis.PyQt.QtWidgets import (
@@ -46,14 +48,29 @@ class GenerationThread(QThread):
         self.source_label = source_label
         self.style_label = style_label
         self.kwargs = kwargs
+        self._cancel = threading.Event()
+
+    def cancel(self):
+        """Ask the generator to stop at its next checkpoint."""
+        self._cancel.set()
+
+    @property
+    def cancelled(self):
+        return self._cancel.is_set()
 
     def run(self):
         try:
-            raw = self.generator_func(**self.kwargs)
+            kwargs = dict(self.kwargs)
+            if "cancel_check" in inspect.signature(self.generator_func).parameters:
+                kwargs["cancel_check"] = self._cancel.is_set
+            raw = self.generator_func(**kwargs)
+            if self._cancel.is_set():
+                self.result_ready.emit(None, "")
+                return
             result = SymbolResult.coerce(raw, source=self.source_label, style=self.style_label)
             self.result_ready.emit(result, "")
         except Exception as e:
-            self.result_ready.emit(None, str(e))
+            self.result_ready.emit(None, "" if self._cancel.is_set() else str(e))
 
 
 class ImageDropArea(QLabel):
@@ -424,6 +441,38 @@ class ArcheoGlyphDialog(QDialog):
             True,
             type=bool,
         )
+        input_kind_default = str(
+            self.settings.value("ArcheoGlyph/autotrace_input_kind", "auto")
+        ).strip().lower()
+        if input_kind_default not in ("auto", "photo", "drawing"):
+            input_kind_default = "auto"
+        input_kind_row = QHBoxLayout()
+        input_kind_row.addWidget(QLabel("Input type:"))
+        self.input_kind_combo = QComboBox()
+        self.input_kind_combo.addItem("Auto detect", "auto")
+        self.input_kind_combo.addItem("Photograph", "photo")
+        self.input_kind_combo.addItem("Drawing / rubbing", "drawing")
+        self.input_kind_combo.setToolTip(
+            "Drawings and rubbings are traced from their ink strokes; photographs\n"
+            "go through background removal first."
+        )
+        idx = self.input_kind_combo.findData(input_kind_default)
+        self.input_kind_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.input_kind_combo.currentIndexChanged.connect(self._on_input_kind_changed)
+        input_kind_row.addWidget(self.input_kind_combo, 1)
+        basic_layout.addLayout(input_kind_row)
+
+        self.synthetic_structure_check = QCheckBox("Add schematic structure lines")
+        self.synthetic_structure_check.setChecked(
+            self.settings.value("ArcheoGlyph/autotrace_synthetic_structure", False, type=bool)
+        )
+        self.synthetic_structure_check.setToolTip(
+            "Off by default: only lines observed in the image are drawn.\n"
+            "Enable to add conventional rim/shoulder, centre and terminal lines."
+        )
+        self.synthetic_structure_check.toggled.connect(self._on_synthetic_structure_toggled)
+        basic_layout.addWidget(self.synthetic_structure_check)
+
         self.autotrace_upscale_check = QCheckBox("Low-res detail boost (upscale)")
         self.autotrace_upscale_check.setChecked(bool(upscale_default))
         self.autotrace_upscale_check.setToolTip(
@@ -725,6 +774,12 @@ class ArcheoGlyphDialog(QDialog):
         """)
         self.generate_btn.clicked.connect(self.generate_symbol)
         button_layout.addWidget(self.generate_btn)
+
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.setToolTip("Stop the running generation.")
+        self.cancel_btn.clicked.connect(self.cancel_generation)
+        button_layout.addWidget(self.cancel_btn)
         
         self.save_btn = QPushButton("Save to Library")
         self.save_btn.setEnabled(False)
@@ -772,6 +827,8 @@ class ArcheoGlyphDialog(QDialog):
         self.autotrace_upscale_check.setEnabled(is_autotrace)
         self.autotrace_detail_mode_combo.setEnabled(is_autotrace)
         self.round_strategy_combo.setEnabled(is_autotrace)
+        self.input_kind_combo.setEnabled(is_autotrace)
+        self.synthetic_structure_check.setEnabled(is_autotrace)
 
         # Show prompt input for HF mode (and maybe others in future)
         self.prompt_group.setVisible(
@@ -803,6 +860,17 @@ class ArcheoGlyphDialog(QDialog):
                 border-radius: 4px;
             }}
         """)
+
+    def _on_input_kind_changed(self, _index):
+        """Persist the input-type choice."""
+        kind = str(self.input_kind_combo.currentData() or "auto").strip().lower()
+        if kind not in ("auto", "photo", "drawing"):
+            kind = "auto"
+        self.settings.setValue("ArcheoGlyph/autotrace_input_kind", kind)
+
+    def _on_synthetic_structure_toggled(self, checked):
+        """Persist the schematic-structure preference."""
+        self.settings.setValue("ArcheoGlyph/autotrace_synthetic_structure", bool(checked))
 
     def _on_autotrace_upscale_toggled(self, checked):
         """Persist Auto Trace low-resolution upscale preference."""
@@ -875,8 +943,30 @@ class ArcheoGlyphDialog(QDialog):
             ),
         )
 
+    def _image_sharpness(self, file_path):
+        """
+        Variance of the Laplacian: a blur measure. Returns None when OpenCV is
+        unavailable or the file cannot be read.
+        """
+        try:
+            import cv2
+            import numpy as np
+
+            with open(file_path, "rb") as stream:
+                buffer = np.frombuffer(stream.read(), dtype=np.uint8)
+            image = cv2.imdecode(buffer, cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                return None
+            side = max(image.shape[:2])
+            if side > 800:
+                scale = 800.0 / side
+                image = cv2.resize(image, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            return float(cv2.Laplacian(image, cv2.CV_64F).var())
+        except Exception:
+            return None
+
     def _update_input_quality_notice(self, file_path):
-        """Show warning text when source image quality is likely too low."""
+        """Warn when the source image is too small or too soft to trace well."""
         if not file_path or not os.path.exists(file_path):
             self.image_quality_hint_label.setVisible(False)
             self.image_quality_hint_label.setText("")
@@ -885,21 +975,14 @@ class ArcheoGlyphDialog(QDialog):
         def _s_int(key, default):
             try:
                 return int(self.settings.value(key, default))
-            except Exception:
+            except (TypeError, ValueError):
                 return int(default)
 
-        weak_kb = max(1, _s_int("ArcheoGlyph/image_warn_min_kb", 180))
         weak_short_px = max(128, _s_int("ArcheoGlyph/image_warn_min_short_px", 700))
-        recommended_kb = max(weak_kb, _s_int("ArcheoGlyph/image_warn_recommended_kb", 300))
         recommended_short_px = max(
-            weak_short_px,
-            _s_int("ArcheoGlyph/image_warn_recommended_short_px", 900),
+            weak_short_px, _s_int("ArcheoGlyph/image_warn_recommended_short_px", 900)
         )
-
-        try:
-            size_kb = int(round(float(os.path.getsize(file_path)) / 1024.0))
-        except Exception:
-            size_kb = 0
+        min_sharpness = float(_s_int("ArcheoGlyph/image_warn_min_sharpness", 60))
 
         px = QPixmap(file_path)
         if px.isNull():
@@ -910,27 +993,27 @@ class ArcheoGlyphDialog(QDialog):
         width = int(px.width())
         height = int(px.height())
         short_side = min(width, height)
+        sharpness = self._image_sharpness(file_path)
 
-        low_detail = (size_kb < weak_kb) or (short_side < weak_short_px)
-        borderline = (size_kb < recommended_kb) or (short_side < recommended_short_px)
+        problems = []
+        if short_side < weak_short_px:
+            problems.append(f"the short side is {short_side}px (recommended {recommended_short_px}px)")
+        elif short_side < recommended_short_px:
+            problems.append(f"the short side is only {short_side}px")
+        if sharpness is not None and sharpness < min_sharpness:
+            problems.append("the image looks blurred or heavily compressed")
 
-        if not (low_detail or borderline):
+        if not problems:
             self.image_quality_hint_label.setVisible(False)
             self.image_quality_hint_label.setText("")
             return
 
-        if low_detail:
-            level = "Low-detail input detected"
-        else:
-            level = "Input quality is borderline"
-
         self.image_quality_hint_label.setText(
-            f"<b>{level}</b> ({size_kb} KB, {width}x{height}). "
-            f"Recommended: >= {recommended_kb} KB, short side >= {recommended_short_px}px. "
-            "Try tighter crop + upscale."
+            f"<b>Input may trace poorly</b> ({width}x{height}): " + "; ".join(problems)
+            + ". A tighter crop of a sharper photo gives cleaner symbols."
         )
         self.image_quality_hint_label.setVisible(True)
-        
+
     def pick_color(self):
         """Open color picker dialog."""
         color = QColorDialog.getColor(self.current_color, self, "Select Symbol Color")
@@ -968,6 +1051,7 @@ class ArcheoGlyphDialog(QDialog):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0) # Indeterminate mode since we can't track exact progress in thread
         self.generate_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
         self.save_btn.setEnabled(False)
         self.apply_btn.setEnabled(False)
         # Ensure slider values are persisted before any generator reads QSettings.
@@ -1004,6 +1088,8 @@ class ArcheoGlyphDialog(QDialog):
                     'force_lowres_upscale': self.autotrace_upscale_check.isChecked(),
                     'detail_mode': detail_mode,
                     'round_strategy': round_strategy,
+                    'input_kind': str(self.input_kind_combo.currentData() or "auto"),
+                    'synthetic_structure': self.synthetic_structure_check.isChecked(),
                     STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
                     STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
                     STYLE_CONTROL_EXAGGERATION: controls[STYLE_CONTROL_EXAGGERATION],
@@ -1097,9 +1183,15 @@ class ArcheoGlyphDialog(QDialog):
         self.progress_bar.setVisible(False)
         self.progress_bar.setRange(0, 100) # Reset to normal
         self.generate_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
+        cancelled = self.generation_thread is not None and self.generation_thread.cancelled
         self._current_generator = None  # Release reference
         self._set_mode_info_with_controls(show_controls=True)
         
+        if cancelled:
+            self._set_mode_info_with_controls(show_controls=False, base_text="Generation cancelled.")
+            return
+
         if error_message:
             message = str(error_message or "")
             lower = message.lower()
@@ -1146,6 +1238,20 @@ class ArcheoGlyphDialog(QDialog):
         if result.warnings:
             info += " | " + "; ".join(result.warnings[:3])
         self._set_mode_info_with_controls(show_controls=False, base_text=info)
+
+    def cancel_generation(self):
+        """Stop a running generation."""
+        if self.generation_thread is not None and self.generation_thread.isRunning():
+            self.generation_thread.cancel()
+            self.cancel_btn.setEnabled(False)
+            self._set_mode_info_with_controls(show_controls=False, base_text="Cancelling...")
+
+    def closeEvent(self, event):
+        """Never let the dialog die while its worker thread is still running."""
+        if self.generation_thread is not None and self.generation_thread.isRunning():
+            self.generation_thread.cancel()
+            self.generation_thread.wait(3000)
+        super().closeEvent(event)
 
     def _result_to_pixmap(self, result):
         """Render a SymbolResult for the preview (GUI thread only)."""
