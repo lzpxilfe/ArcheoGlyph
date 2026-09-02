@@ -190,3 +190,15 @@ def test_model_download_verifies_hash_and_size(tmp_path, monkeypatch):
         model_store.download_model(bad, str(tmp_path))
     assert not model_store.is_installed(bad, str(tmp_path))
     assert not [n for n in (tmp_path / "archeoglyph" / "models").iterdir() if n.name.endswith(".part")]
+
+
+# ---------------------------------------------------------------- drawings
+
+def test_line_drawing_input_keeps_inner_strokes():
+    img = synthetic.line_drawing_sherd()
+    explicit = _run(img, style="Line", input_kind="drawing")
+    auto = _run(img, style="Line")
+    assert explicit == auto, "auto detection should route the drawing the same way"
+    assert _path_count(explicit) >= 2
+    photo_mode = _run(img, style="Line", input_kind="photo")
+    assert isinstance(photo_mode, str) and "<svg" in photo_mode

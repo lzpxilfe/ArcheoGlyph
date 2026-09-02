@@ -9,6 +9,7 @@ replaced by AutoTraceOptions and mask extraction delegated to the caller.
 import cv2
 import numpy as np
 
+from ..ink_centerline import extract_ink_polylines, looks_like_drawing, simplify_polyline
 from ..style_control_utils import (
     STYLE_CONTROL_EXAGGERATION,
     STYLE_CONTROL_FACTUALITY,
@@ -279,7 +280,35 @@ def run_autotrace(bgr, options, mask_provider):
         round_lines = []
         spine_lines = []
         terminal_lines = []
-    texture_lines = [] if (fast_round_structural or legend_mode) else extract_internal_lines_multisource(
+    # ---- Input kind: line drawing / rubbing vs. photograph -------------------
+    is_drawing = False
+    if options.input_kind == "drawing":
+        is_drawing = True
+    elif options.input_kind == "auto":
+        try:
+            is_drawing, _drawing_metrics = looks_like_drawing(processing_bgr, target_mask)
+        except Exception:
+            is_drawing = False
+    ink_lines = []
+    if is_drawing or is_mono:
+        try:
+            erode_px = max(2, int(round(0.015 * min(target_mask.shape[:2]))))
+            ink_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * erode_px + 1, 2 * erode_px + 1))
+            ink_mask = cv2.erode(target_mask, ink_kernel)
+            ink_source = processing_bgr if is_drawing else detail_bgr
+            ink_lines = [
+                [[int(x), int(y)] for x, y in simplify_polyline(pline, epsilon=1.2)]
+                for pline in extract_ink_polylines(
+                    ink_source,
+                    mask=ink_mask,
+                    min_arc_length=max(6.0, 0.02 * float(min(target_mask.shape[:2]))),
+                )
+            ]
+        except Exception:
+            ink_lines = []
+    skip_round_motifs = is_drawing
+
+    texture_lines = [] if (fast_round_structural or legend_mode or is_drawing) else extract_internal_lines_multisource(
         detail_bgr=detail_bgr,
         base_bgr=processing_bgr,
         target_mask=target_mask,
@@ -288,6 +317,11 @@ def run_autotrace(bgr, options, mask_provider):
         is_roundish=is_roundish,
         detail_mode=detail_mode_key,
     )
+    if is_drawing:
+        texture_lines = list(ink_lines)
+    elif is_mono and len(ink_lines) >= 3:
+        # Photographs: true stroke centrelines beat double-edged Canny contours.
+        texture_lines = list(ink_lines)
     round_motif_limit = int(round(clamp(
         (2.0 + (8.0 * factuality_v) - (3.0 * symbolic_v) - (2.0 * exaggeration_v)),
         0.0,
@@ -306,7 +340,7 @@ def run_autotrace(bgr, options, mask_provider):
             round_motif_limit,
             max(7, min(11, texture_count + 4)),
         )
-    if fast_round_structural:
+    if fast_round_structural or skip_round_motifs:
         round_motif_lines = []
         round_relief_lines = []
         round_relief_region_lines = []
@@ -689,6 +723,11 @@ def run_autotrace(bgr, options, mask_provider):
             internal_lines = profile_lines[:max(1, profile_count)] + spine_lines[:1]
             if factuality_v >= 0.7 and symbolic_v <= 0.4 and texture_count > 0:
                 internal_lines += remove_near_horizontal_lines(texture_lines)[:2]
+
+    if is_drawing:
+        # Drawings: the ink strokes *are* the content; keep them (longest first).
+        drawing_limit = 80 if is_mono else max(3, line_detail_count + 2)
+        internal_lines = [list(pl) for pl in ink_lines[:drawing_limit]]
 
     if is_typology:
         palette_seeds = list(material_palette[:4]) if material_palette else [final_color]
