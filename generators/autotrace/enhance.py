@@ -8,6 +8,8 @@ Auto-generated from the former ContourGenerator methods; QGIS-free.
 import cv2
 import numpy as np
 
+from ...log import log_exception
+
 from .geometry import dedupe_lines
 
 
@@ -23,7 +25,8 @@ def estimate_masked_edge_density(bgr_img, mask):
         if fg_pixels <= 0:
             return 0.0
         return float(np.count_nonzero(masked_edges)) / float(fg_pixels)
-    except Exception:
+    except Exception as e:
+        log_exception("estimate_masked_edge_density", e)
         return 0.0
 
 
@@ -77,7 +80,8 @@ def prepare_detail_source(bgr_img, mask, boost=False):
         out = bgr_img.copy()
         out[mask > 0] = sharp[mask > 0]
         return out
-    except Exception:
+    except Exception as e:
+        log_exception("prepare_detail_source", e)
         return bgr_img
 
 
@@ -98,7 +102,8 @@ def adaptive_canny(gray_img, mask=None, low_floor=12, high_cap=180):
         low = int(max(low_floor, min(high_cap - 6, 0.68 * med)))
         high = int(max(low + 6, min(high_cap, 1.36 * med)))
         return cv2.Canny(gray_img, low, high)
-    except Exception:
+    except Exception as e:
+        log_exception("adaptive_canny", e)
         return cv2.Canny(gray_img, int(low_floor), int(max(low_floor + 8, high_cap)))
 
 
@@ -132,7 +137,8 @@ def low_quality_variants(detail_bgr, base_bgr, mask):
                 variants.append(cv2.addWeighted(src, 0.82, edge_rgb, 0.28, 0))
 
             variants.append(cv2.cvtColor(hp, cv2.COLOR_GRAY2BGR))
-        except Exception:
+        except Exception as e:
+            log_exception("low_quality_variants", e)
             continue
     return variants[:4]
 
@@ -261,5 +267,6 @@ def extract_annular_relief_lines(bgr_img, target_mask, main_contour, max_lines=1
             candidates.append(line)
 
         return dedupe_lines(candidates, min_points=4, max_lines=max_lines)
-    except Exception:
+    except Exception as e:
+        log_exception("extract_annular_relief_lines", e)
         return []

@@ -8,6 +8,8 @@ Auto-generated from the former ContourGenerator methods; QGIS-free.
 import cv2
 import numpy as np
 
+from ...log import log_exception
+
 
 def hex_to_rgb(hex_color, fallback=(139, 69, 19)):
     """Convert hex color to RGB tuple."""
@@ -20,7 +22,8 @@ def hex_to_rgb(hex_color, fallback=(139, 69, 19)):
             int(value[2:4], 16),
             int(value[4:6], 16),
         )
-    except Exception:
+    except Exception as e:
+        log_exception("hex_to_rgb", e)
         return fallback
 
 
@@ -119,7 +122,8 @@ def extract_material_palette(bgr_img, mask=None, max_colors=4):
                 break
 
         return palette
-    except Exception:
+    except Exception as e:
+        log_exception("extract_material_palette", e)
         return []
 
 
@@ -136,7 +140,8 @@ def darken_hex(hex_color, factor):
         g = max(0, min(255, int(g * factor)))
         b = max(0, min(255, int(b * factor)))
         return f"#{r:02x}{g:02x}{b:02x}"
-    except Exception:
+    except Exception as e:
+        log_exception("darken_hex", e)
         return "#333333"
 
 
@@ -154,7 +159,8 @@ def lighten_hex(hex_color, amount):
         g = int(g + ((255 - g) * a))
         b = int(b + ((255 - b) * a))
         return f"#{r:02x}{g:02x}{b:02x}"
-    except Exception:
+    except Exception as e:
+        log_exception("lighten_hex", e)
         return "#d0d0d0"
 
 
@@ -173,7 +179,8 @@ def muted_hex(hex_color, keep=0.70):
         g = int((g * k) + (lum * (1.0 - k)))
         b = int((b * k) + (lum * (1.0 - k)))
         return f"#{r:02x}{g:02x}{b:02x}"
-    except Exception:
+    except Exception as e:
+        log_exception("muted_hex", e)
         return "#6f7c70"
 
 
@@ -202,5 +209,6 @@ def extract_dominant_color(bgr_img, mask=None):
             pixels = pixels[mid]
         b, g, r = (int(round(float(v))) for v in np.median(pixels, axis=0))
         return "#{:02x}{:02x}{:02x}".format(r, g, b)
-    except Exception:
+    except Exception as e:
+        log_exception("extract_dominant_color", e)
         return "#8B4513"

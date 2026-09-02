@@ -10,6 +10,8 @@ import math
 import cv2
 import numpy as np
 
+from ...log import log_exception
+
 
 def clamp(value, lower, upper):
     """Clamp numeric value into [lower, upper]."""
@@ -88,7 +90,8 @@ def diamond_polyline(cx, cy, radius):
             [int(round(cx)), int(round(cy - r))],
         ]
         return pts
-    except Exception:
+    except Exception as e:
+        log_exception("diamond_polyline", e)
         return []
 
 
@@ -243,7 +246,8 @@ def dedupe_lines(lines, min_points=4, max_lines=20):
         ranked.sort(key=lambda item: item[0], reverse=True)
         keep = max(1, int(max_lines))
         return [item[1] for item in ranked[:keep]]
-    except Exception:
+    except Exception as e:
+        log_exception("dedupe_lines", e)
         if not lines:
             return []
         return lines[: max(1, int(max_lines))]

@@ -8,6 +8,8 @@ Auto-generated from the former ContourGenerator methods; QGIS-free.
 import cv2
 import numpy as np
 
+from ...log import log_exception
+
 from .enhance import adaptive_canny
 from .geometry import arc_polyline, circle_polyline, dedupe_lines, diamond_polyline, line_angle_span, line_center, line_centroid_and_length, line_ring_likeness, merge_distinct_lines, polyline_arc_length, rotate_line_about_center
 
@@ -74,7 +76,8 @@ def extract_round_low_quality_lines(bgr_img, target_mask, main_contour, max_line
 
         candidates.sort(key=lambda item: item[0], reverse=True)
         return [line for _, line in candidates[:max(1, int(max_lines))]]
-    except Exception:
+    except Exception as e:
+        log_exception("extract_round_low_quality_lines", e)
         return []
 
 
@@ -108,7 +111,8 @@ def round_line_center_coverage(lines, target_mask):
         if total <= 0:
             return 0.0
         return float(centerish) / float(total)
-    except Exception:
+    except Exception as e:
+        log_exception("round_line_center_coverage", e)
         return 0.0
 
 
@@ -137,7 +141,8 @@ def round_line_inner_count(lines, target_mask, ratio=0.50):
             if r_mean <= limit:
                 count += 1
         return int(count)
-    except Exception:
+    except Exception as e:
+        log_exception("round_line_inner_count", e)
         return 0
 
 
@@ -181,7 +186,8 @@ def build_round_structural_lines(target_mask, main_contour, round_lines=None, ma
             stubs.append([p0, p1])
         out = merge_distinct_lines(out, stubs, min_center_sep=2.2, max_lines=target, min_arc_len=4.0)
         return out[:target]
-    except Exception:
+    except Exception as e:
+        log_exception("build_round_structural_lines", e)
         return list(round_lines or [])[:max(1, int(max_lines))]
 
 
@@ -252,7 +258,8 @@ def prefer_round_inner_lines(lines, target_mask, max_lines=10, inner_ratio=0.56,
             )
 
         return selected[:target]
-    except Exception:
+    except Exception as e:
+        log_exception("prefer_round_inner_lines", e)
         return list(lines or [])[:max(1, int(max_lines))]
 
 
@@ -339,7 +346,8 @@ def extract_round_center_fallback_lines(bgr_img, target_mask, main_contour, max_
         candidates.sort(key=lambda item: item[0], reverse=True)
         out = [line for _, line in candidates[:max(1, int(max_lines))]]
         return out
-    except Exception:
+    except Exception as e:
+        log_exception("extract_round_center_fallback_lines", e)
         return []
 
 
@@ -455,7 +463,8 @@ def extract_round_unwrap_lines(bgr_img, target_mask, main_contour, max_lines=12)
 
         candidates.sort(key=lambda item: item[0], reverse=True)
         return [line for _, line in candidates[:max(1, int(max_lines))]]
-    except Exception:
+    except Exception as e:
+        log_exception("extract_round_unwrap_lines", e)
         return []
 
 
@@ -612,7 +621,8 @@ def extract_round_mirror_signature_lines(bgr_img, mask, main_contour, max_lines=
 
         cleaned = dedupe_lines(lines, min_points=2, max_lines=max(4, limit))
         return cleaned[:max(1, limit)]
-    except Exception:
+    except Exception as e:
+        log_exception("extract_round_mirror_signature_lines", e)
         return []
 
 
@@ -1308,7 +1318,8 @@ def estimate_round_boss_radius(gray_img, mask, cx, cy, r_ref):
         if best_score < 18.0:
             return 0.0
         return float(best_r)
-    except Exception:
+    except Exception as e:
+        log_exception("estimate_round_boss_radius", e)
         return 0.0
 
 
@@ -1642,7 +1653,8 @@ def extract_round_polar_motif_lines(bgr_img, mask, main_contour, max_lines=16):
     n_rad = int(max(110, min(460, round(1.25 * r_ref))))
     try:
         polar = polar_unwrap(enhanced, cx, cy, polar_max, n_theta, n_rad)
-    except Exception:
+    except Exception as e:
+        log_exception("extract_round_polar_motif_lines", e)
         return []
     if polar is None or polar.size == 0:
         return []

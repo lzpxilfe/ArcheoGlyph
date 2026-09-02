@@ -197,3 +197,24 @@ def test_line_drawing_input_keeps_inner_strokes():
     assert _path_count(explicit) >= 2
     photo_mode = _run(img, style="Line", input_kind="photo")
     assert isinstance(photo_mode, str) and "<svg" in photo_mode
+
+
+def test_grabcut_refinement_skips_instead_of_failing_on_a_full_mask():
+    """
+    A mask covering the whole frame leaves GrabCut no background to sample.
+    That used to raise inside a silent except; it must return None instead.
+    """
+    img = synthetic.ellipse_blade()
+    full = np.full(img.shape[:2], 255, dtype=np.uint8)
+    assert segment.refine_with_grabcut(img, full) is None
+
+    empty = np.zeros(img.shape[:2], dtype=np.uint8)
+    assert segment.refine_with_grabcut(img, empty) is None
+
+
+def test_grabcut_refinement_still_runs_when_both_classes_exist():
+    img = synthetic.dark_flint_on_white()
+    truth = (img[:, :, 0] < 100).astype(np.uint8) * 255
+    refined = segment.refine_with_grabcut(img, truth)
+    assert refined is not None
+    assert _iou(refined, truth) > 0.85

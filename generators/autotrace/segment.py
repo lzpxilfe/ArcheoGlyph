@@ -10,6 +10,8 @@ import importlib.util
 import cv2
 import numpy as np
 
+from ...log import log, log_exception
+
 
 def get_mask_opencv(bgr_img):
     """
@@ -465,7 +467,8 @@ def recover_tall_component_from_image(bgr_img):
         out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, k5, iterations=1)
         out = smooth_mask_edges(out)
         return select_primary_component(out)
-    except Exception:
+    except Exception as e:
+        log_exception("recover_tall_component_from_image", e)
         return None
 
 
@@ -609,7 +612,8 @@ def detect_center_circle_mask(gray_img):
         cv2.circle(out, (int(x), int(y)), int(r), 255, thickness=-1)
         out = cv2.morphologyEx(out, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
         return out
-    except Exception:
+    except Exception as e:
+        log_exception("detect_center_circle_mask", e)
         return None
 
 
@@ -698,7 +702,8 @@ def get_mask_center_grabcut(bgr_img):
         if np.count_nonzero(fg) < 120:
             return None
         return smooth_mask_edges(fg)
-    except Exception:
+    except Exception as e:
+        log_exception("get_mask_center_grabcut", e)
         return None
 
 
@@ -724,11 +729,26 @@ def refine_with_grabcut(bgr_img, init_mask):
         gc_mask[sure_fg > 0] = cv2.GC_FGD
         gc_mask[sure_bg > 0] = cv2.GC_BGD
 
+        # GrabCut needs samples on both sides of the split. When the initial
+        # mask covers the whole frame - a common thresholding outcome - the
+        # assignments above leave no background pixel at all and the call
+        # raises. That failure used to be swallowed silently; skip instead and
+        # let the caller's centre-seeded pass handle the image.
+        background = np.count_nonzero((gc_mask == cv2.GC_BGD) | (gc_mask == cv2.GC_PR_BGD))
+        foreground = np.count_nonzero((gc_mask == cv2.GC_FGD) | (gc_mask == cv2.GC_PR_FGD))
+        if background < 40 or foreground < 40:
+            log(
+                "Skipping GrabCut refinement: the initial mask leaves no "
+                f"{'background' if background < 40 else 'foreground'} to sample."
+            )
+            return None
+
         fg = _grabcut_scaled(bgr_img, gc_mask=gc_mask, iterations=3)
         if np.count_nonzero(fg) < 120:
             return None
         return smooth_mask_edges(fg)
-    except Exception:
+    except Exception as e:
+        log_exception("refine_with_grabcut", e)
         return None
 
 
@@ -782,7 +802,8 @@ def auto_upright(bgr_img, mask):
         rot_mask = select_primary_component(rot_mask)
         rot_mask = smooth_mask_edges(rot_mask)
         return rot_bgr, rot_mask
-    except Exception:
+    except Exception as e:
+        log_exception("auto_upright", e)
         return bgr_img, mask
 
 
@@ -898,7 +919,8 @@ class OnnxSalientBackend:
 def _score(bgr_img, mask):
     try:
         return float(mask_selection_score(bgr_img, mask))
-    except Exception:
+    except Exception as e:
+        log_exception("_score", e)
         return 0.0
 
 
@@ -961,7 +983,8 @@ def select_mask(bgr_img, backend="auto", alpha=None, onnx_fn=None, sam_fn=None):
 
     try:
         model_mask = model_fn(bgr_img)
-    except Exception:
+    except Exception as e:
+        log_exception("select_mask", e)
         model_mask = None
     cv_mask = get_mask_opencv(bgr_img)
     chosen = _choose_between(bgr_img, model_mask, cv_mask, strict=(backend != "auto"))
