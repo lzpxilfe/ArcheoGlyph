@@ -1485,21 +1485,6 @@ class ContourGenerator:
         except Exception:
             return list(round_lines or [])[:max(1, int(max_lines))]
 
-    def _circle_polyline(self, cx, cy, radius, steps=48):
-        """Create circular polyline points."""
-        try:
-            r = float(max(1.0, radius))
-            n = int(max(12, steps))
-            pts = []
-            for i in range(n + 1):
-                t = (2.0 * np.pi * float(i)) / float(n)
-                x = int(round(float(cx) + (r * np.cos(t))))
-                y = int(round(float(cy) + (r * np.sin(t))))
-                pts.append([x, y])
-            return pts
-        except Exception:
-            return []
-
     def _diamond_polyline(self, cx, cy, radius):
         """Create diamond-shaped frame polyline points."""
         try:

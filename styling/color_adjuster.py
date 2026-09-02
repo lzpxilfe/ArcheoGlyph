@@ -4,8 +4,7 @@ ArcheoGlyph - Color Adjuster
 Provides HSL-based color adjustment for symbols.
 """
 
-from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QPainter
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QPixmap, QColor
 
 
 class ColorAdjuster:

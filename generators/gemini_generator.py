@@ -28,6 +28,7 @@ from .style_control_utils import (
     STYLE_CONTROL_SYMBOLIC_LOOSENESS,
     resolve_style_controls,
 )
+from ..log import log
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -553,13 +554,13 @@ class GeminiGenerator:
         try:
             silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
         except Exception as e:
-            print(f"Silhouette extraction failed: {e}")
+            log(f"Silhouette extraction failed: {e}")
 
         ink_constraint_bytes = None
         try:
             ink_constraint_bytes = self.contour_gen.get_ink_constraint_bytes(image_path)
         except Exception as e:
-            print(f"Ink constraint extraction failed: {e}")
+            log(f"Ink constraint extraction failed: {e}")
 
         preferred_model = self._normalize_model_name(
             self.settings.value('ArcheoGlyph/gemini_model_id', '')
@@ -677,7 +678,7 @@ class GeminiGenerator:
                             import time
 
                             delay = (base_delay * (2 ** attempt)) + random.uniform(0, 1)
-                            print(f"Gemini API rate limit hit ({model_name}). Retrying in {delay:.2f}s...")
+                            log(f"Gemini API rate limit hit ({model_name}). Retrying in {delay:.2f}s...")
                             time.sleep(delay)
                             continue
 

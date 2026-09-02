@@ -16,6 +16,7 @@ from qgis.PyQt.QtSvg import QSvgRenderer
 from ..defaults import HF_DEFAULT_MODEL_ID, HF_FALLBACK_MODEL_IDS, HF_LEGACY_MODEL_ALIASES
 from .contour_generator import ContourGenerator
 from .style_control_utils import resolve_style_controls, style_controls_prompt_hint
+from ..log import log
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -977,7 +978,7 @@ class HuggingFaceGenerator:
         try:
             p_text = str(prompt or "").strip()
             p_short = p_text if len(p_text) <= 120 else (p_text[:117] + "...")
-            print(f"[ArcheoGlyph] HF prompt influence={prompt_influence:.2f} prompt='{p_short}'")
+            log(f"[ArcheoGlyph] HF prompt influence={prompt_influence:.2f} prompt='{p_short}'")
         except Exception:
             pass
         base_prompt = self._build_prompt(
@@ -1093,7 +1094,7 @@ class HuggingFaceGenerator:
                 img_guidance = 4.0 + (1.2 * float(prompt_influence))
                 img_strength = max(0.12, min(0.62, float(img_strength)))
                 try:
-                    print(
+                    log(
                         f"[ArcheoGlyph] HF image source={source_tag} "
                         f"strength={img_strength:.2f} guidance={img_guidance:.2f} steps={img_steps}"
                     )

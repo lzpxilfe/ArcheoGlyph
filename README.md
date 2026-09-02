@@ -2,7 +2,7 @@
 
 Archaeological Symbol Generator for QGIS.
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.0+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 

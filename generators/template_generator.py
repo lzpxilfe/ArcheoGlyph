@@ -739,7 +739,6 @@ class TemplateGenerator:
         painter.setPen(QPen(q_color.darker(130), 2.0))
         
         m = 25  # margin
-        cx, cy = size / 2, size / 2
 
         # Dispatch drawing by keyword
         key = str(template_type or "").strip().lower().replace("/", " ")
@@ -1439,7 +1438,6 @@ class TemplateGenerator:
         """Castle/fortress — crenellated rectangle."""
         p = QPainterPath()
         bw = s - 2 * m  # base width
-        bh = s - 2 * m  # base height
         cw = bw / 5     # crenel width
         ch = 25          # crenel height
         

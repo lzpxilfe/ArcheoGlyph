@@ -8,6 +8,9 @@ import os
 import math
 import re
 import tempfile
+
+from .log import log_exception
+from .symbol_breaks import compute_breaks
 from qgis.core import (
     QgsMarkerSymbol,
     QgsRasterMarkerSymbolLayer, QgsSingleSymbolRenderer,
@@ -123,7 +126,7 @@ class SymbolManager:
             return True
             
         except Exception as e:
-            print(f"Error saving symbol: {e}")
+            log_exception("Error saving symbol", e)
             return False
             
     def apply_to_layer(
@@ -164,7 +167,7 @@ class SymbolManager:
                 )
                 
         except Exception as e:
-            print(f"Error applying symbol: {e}")
+            log_exception("Error applying symbol", e)
             return False
             
     def _apply_single_symbol(self, layer, image_path, size):
@@ -275,130 +278,9 @@ class SymbolManager:
         return values
 
     def _compute_breaks(self, values, num_classes, size_mode):
-        """
-        Compute class breaks by mode:
-        1 = natural breaks (Jenks), 2 = equal interval, 3 = quantile.
-        """
-        sorted_values = sorted(float(v) for v in values)
-        if not sorted_values:
-            return []
+        """Delegate to the QGIS-free implementation in symbol_breaks."""
+        return compute_breaks(values, num_classes, size_mode)
 
-        num_classes = max(1, min(int(num_classes), len(sorted_values)))
-        if num_classes == 1:
-            return [sorted_values[0], sorted_values[-1]]
-
-        if int(size_mode) == 1:
-            breaks = self._jenks_breaks(sorted_values, num_classes)
-        elif int(size_mode) == 3:
-            breaks = self._quantile_breaks(sorted_values, num_classes)
-        else:
-            breaks = self._equal_interval_breaks(sorted_values, num_classes)
-
-        # Ensure strictly increasing boundaries.
-        compact = [float(breaks[0])]
-        for value in breaks[1:]:
-            fv = float(value)
-            if fv > compact[-1]:
-                compact.append(fv)
-        if len(compact) == 1:
-            compact.append(compact[0] + 1.0)
-        return compact
-
-    def _equal_interval_breaks(self, sorted_values, num_classes):
-        """Equal-interval class boundaries."""
-        min_val = float(sorted_values[0])
-        max_val = float(sorted_values[-1])
-        if max_val == min_val:
-            return [min_val, max_val]
-
-        step = (max_val - min_val) / float(num_classes)
-        breaks = [min_val]
-        for i in range(1, num_classes):
-            breaks.append(min_val + (step * i))
-        breaks.append(max_val)
-        return breaks
-
-    def _quantile_breaks(self, sorted_values, num_classes):
-        """Quantile class boundaries."""
-        n = len(sorted_values)
-        breaks = [float(sorted_values[0])]
-        if n == 1:
-            breaks.append(float(sorted_values[0]))
-            return breaks
-
-        for i in range(1, num_classes):
-            pos = (n - 1) * (float(i) / float(num_classes))
-            low = int(math.floor(pos))
-            high = int(math.ceil(pos))
-            if low == high:
-                q = float(sorted_values[low])
-            else:
-                weight = pos - low
-                q = float(sorted_values[low] * (1.0 - weight) + sorted_values[high] * weight)
-            breaks.append(q)
-
-        breaks.append(float(sorted_values[-1]))
-        return breaks
-
-    def _jenks_breaks(self, sorted_values, num_classes):
-        """Natural-breaks (Jenks) class boundaries."""
-        n = len(sorted_values)
-        if n == 0:
-            return []
-        if num_classes <= 1:
-            return [float(sorted_values[0]), float(sorted_values[-1])]
-
-        lower = [[0] * (num_classes + 1) for _ in range(n + 1)]
-        variance = [[float("inf")] * (num_classes + 1) for _ in range(n + 1)]
-
-        for i in range(1, num_classes + 1):
-            lower[1][i] = 1
-            variance[1][i] = 0.0
-            for j in range(2, n + 1):
-                variance[j][i] = float("inf")
-
-        for row_end in range(2, n + 1):
-            sum_val = 0.0
-            sum_sq = 0.0
-            w = 0.0
-            variance_l = 0.0
-
-            for m in range(1, row_end + 1):
-                idx = row_end - m + 1
-                val = float(sorted_values[idx - 1])
-
-                w += 1.0
-                sum_val += val
-                sum_sq += val * val
-                variance_l = sum_sq - ((sum_val * sum_val) / w)
-
-                if idx == 1:
-                    continue
-
-                for j in range(2, num_classes + 1):
-                    candidate = variance_l + variance[idx - 1][j - 1]
-                    if variance[row_end][j] >= candidate:
-                        lower[row_end][j] = idx
-                        variance[row_end][j] = candidate
-
-            lower[row_end][1] = 1
-            variance[row_end][1] = variance_l
-
-        breaks = [0.0] * (num_classes + 1)
-        breaks[num_classes] = float(sorted_values[-1])
-        breaks[0] = float(sorted_values[0])
-
-        k = n
-        for j in range(num_classes, 1, -1):
-            idx = int(lower[k][j]) - 2
-            idx = max(0, idx)
-            breaks[j - 1] = float(sorted_values[idx])
-            k = int(lower[k][j] - 1)
-            if k <= 0:
-                break
-
-        return breaks
-        
     def get_saved_symbols(self):
         """Get list of saved symbols in the library."""
         symbols = []

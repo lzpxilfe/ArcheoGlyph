@@ -2,7 +2,7 @@
 name=ArchaeoGlyph
 qgisMinimumVersion=3.0
 description=Archaeological Symbol Generator - Generate factual, map-ready symbols from artifact images
-version=0.1.0
+version=0.2.0
 author=lzpxilfe (balguljang2)
 email=balguljang2@gmail.com
 
@@ -12,6 +12,10 @@ tracker=https://github.com/lzpxilfe/ArcheoGlyph/issues
 repository=https://github.com/lzpxilfe/ArcheoGlyph.git
 
 changelog=
+    0.2.0 - Hardening and vector output
+        * CI now runs flake8 and pytest on the QGIS-free modules
+        * Class-break computation moved to symbol_breaks.py with tests
+        * Diagnostics routed through the QGIS message log
     0.1.1 - Branding/metadata/docs refresh
         * Display naming unified to ArchaeoGlyph
         * Author metadata updated

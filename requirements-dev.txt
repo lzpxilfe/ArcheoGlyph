@@ -1,0 +1,9 @@
+# Development / CI requirements. The plugin itself runs inside the QGIS Python
+# and only needs numpy + opencv-python-headless for Auto Trace; scipy and
+# scikit-image are optional accelerators, pytest/flake8 are for CI only.
+numpy>=1.24
+opencv-python-headless>=4.8,<4.13
+scipy>=1.10
+scikit-image>=0.21
+pytest>=7.4
+flake8>=6.1
