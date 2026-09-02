@@ -552,7 +552,8 @@ class HuggingFaceGenerator:
             )
             image = self._apply_reference_tone_map(image, image_path, mask_img, strength=0.58)
             return image
-        except Exception:
+        except Exception as e:
+            log_exception("Rendering the contour SVG failed", e)
             return None
 
     def _apply_reference_mask(
@@ -700,7 +701,8 @@ class HuggingFaceGenerator:
                         return fallback
 
             return out
-        except Exception:
+        except Exception as e:
+            log_exception("Applying the reference silhouette failed", e)
             return generated_image
 
     def _try_models(
@@ -809,7 +811,7 @@ class HuggingFaceGenerator:
         try:
             p_text = str(prompt or "").strip()
             p_short = p_text if len(p_text) <= 120 else (p_text[:117] + "...")
-            log(f"[ArcheoGlyph] HF prompt influence={prompt_influence:.2f} prompt='{p_short}'")
+            log(f"HF prompt influence={prompt_influence:.2f} prompt='{p_short}'")
         except Exception:
             pass
         base_prompt = self._build_prompt(
@@ -929,7 +931,7 @@ class HuggingFaceGenerator:
                 img_strength = max(0.12, min(0.62, float(img_strength)))
                 try:
                     log(
-                        f"[ArcheoGlyph] HF image source={source_tag} "
+                        f"HF image source={source_tag} "
                         f"strength={img_strength:.2f} guidance={img_guidance:.2f} steps={img_steps}"
                     )
                 except Exception:

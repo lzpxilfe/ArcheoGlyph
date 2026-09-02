@@ -25,6 +25,7 @@ try:
 except ImportError:  # pragma: no cover
     cv2 = None
 
+from ..log import log_exception
 from .autotrace.svg_builder import SVG_NS, smooth_closed_path
 
 MIN_REGION_AREA_RATIO = 0.0008     # of the image area
@@ -159,7 +160,8 @@ def _vtracer_svg(png_bytes: bytes, max_colors: int) -> Optional[str]:
             mode="spline",
         )
         return svg if svg and "<svg" in svg else None
-    except Exception:
+    except Exception as e:
+        log_exception("vtracer failed; falling back to contour tracing", e)
         return None
 
 

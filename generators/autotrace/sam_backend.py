@@ -12,6 +12,7 @@ import os
 import cv2
 import numpy as np
 
+from ...log import log_exception
 from .segment import detect_center_circle_mask, mask_selection_score, select_primary_component, smooth_mask_edges
 
 
@@ -55,7 +56,8 @@ class SamBackend:
         try:
             import torch
             from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
-        except Exception:
+        except Exception as e:
+            log_exception("SAM 1 needs torch and segment-anything", e)
             return None
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -125,7 +127,8 @@ class SamBackend:
             target_mask = select_primary_component(target_mask)
             target_mask = smooth_mask_edges(target_mask)
             return target_mask
-        except Exception:
+        except Exception as e:
+            log_exception("SAM 1 segmentation failed", e)
             return None
 
     def _get_mask_hf(self, bgr_img, model_id):
@@ -141,7 +144,8 @@ class SamBackend:
             import torch
             from PIL import Image
             from transformers import pipeline
-        except Exception:
+        except Exception as e:
+            log_exception("SAM 2/3 needs torch, Pillow and transformers", e)
             return None
 
         device = 0 if torch.cuda.is_available() else -1
@@ -154,7 +158,8 @@ class SamBackend:
                     device=device,
                 )
                 self._sam_hf_cache_key = cache_key
-        except Exception:
+        except Exception as e:
+            log_exception(f"Could not load the SAM model {model_id}", e)
             self._sam_hf_generator = None
             self._sam_hf_cache_key = None
             return None
@@ -163,7 +168,8 @@ class SamBackend:
             rgb = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
             image = Image.fromarray(rgb)
             output = self._sam_hf_generator(image)
-        except Exception:
+        except Exception as e:
+            log_exception("SAM 2/3 segmentation failed", e)
             return None
 
         # Pipeline usually returns a list with one dict per image.

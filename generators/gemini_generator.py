@@ -355,7 +355,8 @@ class GeminiGenerator:
                 if "gemini" not in low or self._is_excluded_model(name):
                     continue
                 names.append(name)
-        except Exception:
+        except Exception as e:
+            log_exception("Could not list Gemini models", e)
             self._model_list_cache = []
             return []
 
@@ -522,7 +523,8 @@ class GeminiGenerator:
                 prompt_influence=prompt_influence,
                 used_contour_seed=False,
             )
-        except Exception:
+        except Exception as e:
+            log_exception("Post-processing of the Gemini image failed", e)
             return generated_image
 
     SYSTEM_INSTRUCTION = (
@@ -815,7 +817,8 @@ class GeminiGenerator:
         }
         try:
             return sdk_types.GenerateContentConfig(**options)
-        except Exception:
+        except Exception as e:
+            log_exception("This google-genai version rejected the generation config", e)
             return options
 
     def _get_mime_type(self, file_path):

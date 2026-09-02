@@ -10,6 +10,8 @@ from qgis.PyQt.QtGui import QImage, QColor, QPainter, QPainterPath, QPolygonF, Q
 from qgis.PyQt.QtCore import Qt, QBuffer, QByteArray, QIODevice, QPointF, QRect, QRectF, QSize
 from qgis.PyQt.QtSvg import QSvgGenerator, QSvgRenderer
 
+from ..log import log_exception
+
 
 class TemplateGenerator:
     """Generator using built-in SVG templates."""
@@ -721,7 +723,8 @@ class TemplateGenerator:
                 with open(svg_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 return re.sub(r'fill="[^"]*"', f'fill="{color}"', content)
-            except Exception:
+            except Exception as e:
+                log_exception(f"Could not read the template SVG {svg_path}", e)
                 return None
             
     def _svg_to_image(self, svg_data, size=256):

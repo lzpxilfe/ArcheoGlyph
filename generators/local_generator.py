@@ -101,7 +101,8 @@ class LocalGenerator:
             import requests
             response = requests.get(f"{self.server_url}/sdapi/v1/sd-models", timeout=5)
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            log_exception("Stable Diffusion server is not reachable", e)
             return False
             
     def generate(
