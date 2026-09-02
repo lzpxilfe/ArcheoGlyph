@@ -67,7 +67,7 @@ class ArcheoGlyph:
 
         # Safety migration: invalid SAM setup should not block Auto Trace.
         mask_backend = str(settings.value('ArcheoGlyph/mask_backend', 'auto')).strip().lower()
-        if mask_backend not in ("auto", "opencv", "sam"):
+        if mask_backend not in ("auto", "opencv", "onnx", "sam"):
             mask_backend = "auto"
             settings.setValue('ArcheoGlyph/mask_backend', mask_backend)
         sam_model_type = str(settings.value('ArcheoGlyph/sam_model_type', 'hf:facebook/sam2.1-hiera-large')).strip().lower()
