@@ -16,9 +16,17 @@ from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QGroupBox, QTabWidget, QWidget, QTextBrowser,
     QMessageBox, QScrollArea, QFrame, QApplication,
-    QCheckBox, QComboBox, QFileDialog, QSpinBox
+    QCheckBox, QComboBox, QFileDialog, QSpinBox, QProgressBar
 )
 from ..auth import get_api_key, set_api_key, storage_description
+from ..generators.autotrace.model_store import (
+    DEFAULT_MODEL_KEY,
+    MODEL_SPECS,
+    download_model,
+    is_installed,
+    model_path,
+    verify_model,
+)
 from ..defaults import (
     GEMINI_AI_STUDIO_URL,
     GEMINI_EXCLUDED_KEYWORDS,
@@ -122,21 +130,28 @@ class SettingsDialog(QDialog):
         self.settings = QSettings()
         # Worker threads are kept here so they are never garbage collected
         # while still running (which aborts the QGIS process).
-        # The thread object stays referenced until the next refresh replaces it.
+        self.model_refresh_thread = None
         self.test_thread = None
         self.hf_test_thread = None
+        self.onnx_download_thread = None
         self.setup_ui()
         self.load_settings()
 
     def _running_threads(self):
         return [
-            thread for thread in (self.model_refresh_thread, self.test_thread, self.hf_test_thread)
+            thread for thread in (
+                self.model_refresh_thread, self.test_thread,
+                self.hf_test_thread, self.onnx_download_thread,
+            )
             if thread is not None and thread.isRunning()
         ]
 
     def closeEvent(self, event):
         """Wait for worker threads before the dialog (and its threads) die."""
         for thread in self._running_threads():
+            cancel = getattr(thread, "cancel", None)
+            if callable(cancel):
+                cancel()
             thread.wait(3000)
         super().closeEvent(event)
         
@@ -313,18 +328,63 @@ class SettingsDialog(QDialog):
         advanced_layout = QVBoxLayout(advanced_group)
 
         advanced_layout.addWidget(QLabel(
-            "SAM segmentation is optional. Use SAM1 with a local checkpoint, or use "
-            "SAM2.1/SAM3 from Hugging Face (no local checkpoint file needed)."
+            "Auto Trace separates the artifact from its background. OpenCV needs no "
+            "download but struggles with gradients, shadows and grey-on-grey photos; "
+            "a background-removal model handles those. SAM is also supported."
         ))
 
         backend_row = QHBoxLayout()
         backend_row.addWidget(QLabel("Auto Trace Backend:"))
         self.mask_backend_combo = QComboBox()
-        self.mask_backend_combo.addItem("Auto (Recommended: SAM -> OpenCV fallback)", "auto")
-        self.mask_backend_combo.addItem("OpenCV", "opencv")
-        self.mask_backend_combo.addItem("SAM (Optional)", "sam")
+        self.mask_backend_combo.addItem("Auto (recommended: best available model, else OpenCV)", "auto")
+        self.mask_backend_combo.addItem("OpenCV only (no extra download)", "opencv")
+        self.mask_backend_combo.addItem("Background-removal model (ONNX)", "onnx")
+        self.mask_backend_combo.addItem("SAM (optional)", "sam")
         backend_row.addWidget(self.mask_backend_combo)
         advanced_layout.addLayout(backend_row)
+
+        onnx_group = QGroupBox("Background-removal model (recommended for photographs)")
+        onnx_layout = QVBoxLayout(onnx_group)
+        onnx_layout.addWidget(QLabel(
+            "Downloaded once, verified by size and SHA-256, and stored in your QGIS "
+            "profile. Runs on the CPU; no image ever leaves your machine."
+        ))
+
+        onnx_model_row = QHBoxLayout()
+        onnx_model_row.addWidget(QLabel("Model:"))
+        self.onnx_model_combo = QComboBox()
+        for key, spec in MODEL_SPECS.items():
+            self.onnx_model_combo.addItem(spec.label, key)
+        self.onnx_model_combo.currentIndexChanged.connect(lambda _idx: self._refresh_onnx_status())
+        onnx_model_row.addWidget(self.onnx_model_combo, 1)
+        onnx_layout.addLayout(onnx_model_row)
+
+        onnx_actions = QHBoxLayout()
+        self.onnx_install_runtime_btn = QPushButton("Install onnxruntime")
+        self.onnx_install_runtime_btn.setToolTip("Installs the CPU inference runtime with pip.")
+        self.onnx_install_runtime_btn.clicked.connect(self.install_onnx_runtime)
+        onnx_actions.addWidget(self.onnx_install_runtime_btn)
+
+        self.onnx_download_btn = QPushButton("Download model")
+        self.onnx_download_btn.clicked.connect(self.download_onnx_model)
+        onnx_actions.addWidget(self.onnx_download_btn)
+
+        self.onnx_verify_btn = QPushButton("Verify")
+        self.onnx_verify_btn.setToolTip("Re-check the stored file against its published SHA-256.")
+        self.onnx_verify_btn.clicked.connect(self.verify_onnx_model)
+        onnx_actions.addWidget(self.onnx_verify_btn)
+        onnx_actions.addStretch()
+        onnx_layout.addLayout(onnx_actions)
+
+        self.onnx_progress = QProgressBar()
+        self.onnx_progress.setVisible(False)
+        onnx_layout.addWidget(self.onnx_progress)
+
+        self.onnx_status_label = QLabel("")
+        self.onnx_status_label.setWordWrap(True)
+        self.onnx_status_label.setStyleSheet("color: #666; font-size: 11px;")
+        onnx_layout.addWidget(self.onnx_status_label)
+        advanced_layout.addWidget(onnx_group)
 
         sam_type_row = QHBoxLayout()
         sam_type_row.addWidget(QLabel("SAM Model Type:"))
@@ -378,6 +438,7 @@ class SettingsDialog(QDialog):
         advanced_layout.addWidget(self.sam_status_label)
         self.sam_checkpoint_input.textChanged.connect(lambda _text: self._refresh_sam_status())
         self.mask_backend_combo.currentIndexChanged.connect(lambda _idx: self._refresh_sam_status())
+        self.mask_backend_combo.currentIndexChanged.connect(lambda _idx: self._refresh_onnx_status())
         self.sam_model_type_combo.currentIndexChanged.connect(lambda _idx: self._refresh_sam_status())
 
         self.hf_overlay_linework_check = QCheckBox(
@@ -1356,6 +1417,116 @@ class SettingsDialog(QDialog):
             "If SAM is not ready, ArcheoGlyph automatically falls back to OpenCV."
         )
 
+    def _profile_dir(self):
+        """QGIS profile directory that holds downloaded models."""
+        from ..generators.contour_generator import profile_base_dir
+
+        return profile_base_dir()
+
+    def _selected_onnx_key(self):
+        return str(self.onnx_model_combo.currentData() or DEFAULT_MODEL_KEY)
+
+    def _refresh_onnx_status(self):
+        """Describe runtime and model availability for the ONNX backend."""
+        if not hasattr(self, "onnx_status_label"):
+            return
+        key = self._selected_onnx_key()
+        spec = MODEL_SPECS.get(key)
+        runtime = find_spec("onnxruntime") is not None
+        ready = bool(spec) and is_installed(spec, self._profile_dir())
+
+        self.onnx_download_btn.setEnabled(bool(spec) and not ready)
+        self.onnx_verify_btn.setEnabled(ready)
+        self.onnx_install_runtime_btn.setEnabled(not runtime)
+
+        parts = []
+        if runtime:
+            parts.append("onnxruntime installed")
+        else:
+            parts.append("onnxruntime missing - press 'Install onnxruntime'")
+        if ready:
+            parts.append(f"model downloaded ({spec.size // (1024 * 1024)} MB)")
+        elif spec:
+            parts.append(f"model not downloaded ({spec.size // (1024 * 1024)} MB)")
+
+        colour = "green" if (runtime and ready) else "#9a6700"
+        if runtime and ready:
+            parts.append("Auto Trace will use it for photographs.")
+        self.onnx_status_label.setText(" | ".join(parts))
+        self.onnx_status_label.setStyleSheet(f"color: {colour}; font-size: 11px;")
+
+    def install_onnx_runtime(self):
+        """Install onnxruntime with pip, reusing the package installer."""
+        self._start_pip_install(
+            "onnxruntime",
+            button=self.onnx_install_runtime_btn,
+            done=self._refresh_onnx_status,
+        )
+
+    def download_onnx_model(self):
+        """Download the selected model in the background, verifying it."""
+        spec = MODEL_SPECS.get(self._selected_onnx_key())
+        if spec is None:
+            return
+        size_mb = spec.size // (1024 * 1024)
+        reply = QMessageBox.question(
+            self,
+            "Download model",
+            f"Download {spec.label}?\n\n"
+            f"About {size_mb} MB, stored in your QGIS profile and verified by SHA-256.",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply == QMessageBox.No:
+            return
+
+        self.onnx_download_btn.setEnabled(False)
+        self.onnx_progress.setVisible(True)
+        self.onnx_progress.setRange(0, 100)
+        self.onnx_progress.setValue(0)
+        self.onnx_status_label.setText(f"Downloading {spec.filename}...")
+
+        self.onnx_download_thread = ModelDownloadThread(spec, self._profile_dir())
+        self.onnx_download_thread.progress.connect(self._on_onnx_progress)
+        self.onnx_download_thread.result_ready.connect(self._on_onnx_download_finished)
+        self.onnx_download_thread.start()
+
+    def _on_onnx_progress(self, received, total):
+        if total > 0:
+            self.onnx_progress.setValue(int(100 * received / total))
+
+    def _on_onnx_download_finished(self, result):
+        self.onnx_progress.setVisible(False)
+        self.onnx_download_btn.setEnabled(True)
+        message = str((result or {}).get("message", ""))
+        if (result or {}).get("ok"):
+            QMessageBox.information(self, "Model ready", message or "Download complete.")
+        else:
+            QMessageBox.warning(self, "Download failed", message or "The download did not complete.")
+        self._refresh_onnx_status()
+
+    def verify_onnx_model(self):
+        """Re-check the stored model against its published checksum."""
+        spec = MODEL_SPECS.get(self._selected_onnx_key())
+        if spec is None:
+            return
+        try:
+            ok = verify_model(spec, self._profile_dir())
+        except OSError as e:
+            QMessageBox.warning(self, "Verify failed", str(e))
+            return
+        if ok:
+            QMessageBox.information(
+                self, "Model verified",
+                f"{spec.filename} matches its published SHA-256.\n\n{model_path(spec, self._profile_dir())}",
+            )
+        else:
+            QMessageBox.warning(
+                self, "Model does not match",
+                "The stored file does not match its published checksum. "
+                "Delete it and download again.",
+            )
+        self._refresh_onnx_status()
+
     def _refresh_sam_status(self):
         """Update SAM readiness status text."""
         model_choice = str(self.sam_model_type_combo.currentData() or self.sam_model_type_combo.currentText()).strip()
@@ -1512,6 +1683,15 @@ class SettingsDialog(QDialog):
         if type_idx >= 0:
             self.sam_model_type_combo.setCurrentIndex(type_idx)
         self.hf_overlay_linework_check.setChecked(hf_overlay_linework)
+        onnx_model_key = str(
+            self.settings.value('ArcheoGlyph/onnx_bg_model', DEFAULT_MODEL_KEY) or DEFAULT_MODEL_KEY
+        )
+        onnx_idx = self.onnx_model_combo.findData(onnx_model_key)
+        if onnx_idx < 0:
+            onnx_idx = self.onnx_model_combo.findData(DEFAULT_MODEL_KEY)
+        if onnx_idx >= 0:
+            self.onnx_model_combo.setCurrentIndex(onnx_idx)
+        self._refresh_onnx_status()
         self._refresh_sam_status()
         self._describe_key_storage()
 
@@ -1540,7 +1720,27 @@ class SettingsDialog(QDialog):
         set_api_key("huggingface", self.hf_key_input.text(), self.settings)
         self.settings.setValue('ArcheoGlyph/hf_model_id', self._normalize_hf_model_id(self.hf_model_input.text()))
         mask_backend = self.mask_backend_combo.currentData()
+        onnx_model_key = self._selected_onnx_key()
         sam_checkpoint = self.sam_checkpoint_input.text().strip()
+
+        if mask_backend == "onnx":
+            spec = MODEL_SPECS.get(onnx_model_key)
+            missing = []
+            if not find_spec("onnxruntime"):
+                missing.append("the onnxruntime package")
+            if spec is None or not is_installed(spec, self._profile_dir()):
+                missing.append("the model file")
+            if missing:
+                QMessageBox.warning(
+                    self,
+                    "Background-removal model not ready",
+                    "Auto Trace needs " + " and ".join(missing) + ".\n"
+                    "Switching to Auto for now; the model is used automatically once installed.",
+                )
+                mask_backend = "auto"
+                idx = self.mask_backend_combo.findData("auto")
+                if idx >= 0:
+                    self.mask_backend_combo.setCurrentIndex(idx)
         sam_model_type = str(self.sam_model_type_combo.currentData() or self.sam_model_type_combo.currentText()).strip()
         uses_hf_sam = sam_model_type.lower().startswith("hf:")
 
@@ -1586,6 +1786,7 @@ class SettingsDialog(QDialog):
                             self.mask_backend_combo.setCurrentIndex(idx)
 
         self.settings.setValue('ArcheoGlyph/mask_backend', mask_backend)
+        self.settings.setValue('ArcheoGlyph/onnx_bg_model', onnx_model_key)
         self.settings.setValue('ArcheoGlyph/sam_checkpoint_path', sam_checkpoint)
         self.settings.setValue('ArcheoGlyph/sam_model_type', sam_model_type)
         self.settings.setValue(
@@ -1729,6 +1930,70 @@ class SettingsDialog(QDialog):
         self.hf_test_result.setStyleSheet("color: red;")
         QMessageBox.warning(self, "Connection Failed", "Unexpected test result.")
         
+    def _start_pip_install(self, package, button=None, done=None):
+        """
+        Install a package with pip in the background, reusing one QProcess and
+        the accumulated-output handling used by the Gemini installer.
+        """
+        reply = QMessageBox.question(
+            self,
+            "Install package",
+            f"Install '{package}' into the Python that QGIS uses?\n\n"
+            "The installer runs in the background; you can keep using QGIS.",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply == QMessageBox.No:
+            return
+
+        if button is not None:
+            button.setEnabled(False)
+            button.setText("Installing...")
+
+        self._pip_target = {"package": package, "button": button, "done": done, "label": button.text() if button else ""}
+        self._pip_log = {}
+        self.pip_process = QProcess(self)
+        self.pip_process.readyReadStandardOutput.connect(self._handle_pip_output)
+        self.pip_process.readyReadStandardError.connect(self._handle_pip_output)
+        self.pip_process.finished.connect(self._handle_pip_finished)
+        self.pip_process.start(self._get_python_executable(), ["-m", "pip", "install", "--user", package])
+
+    def _handle_pip_output(self):
+        for stream, reader in (
+            ("stdout", self.pip_process.readAllStandardOutput),
+            ("stderr", self.pip_process.readAllStandardError),
+        ):
+            text = bytes(reader()).decode("utf-8", errors="replace").strip()
+            if text:
+                self._pip_log.setdefault(stream, []).append(text)
+
+    def _handle_pip_finished(self, exit_code, _exit_status):
+        self._handle_pip_output()
+        target = getattr(self, "_pip_target", {})
+        button = target.get("button")
+        package = target.get("package", "package")
+        if button is not None:
+            button.setEnabled(True)
+            button.setText(f"Install {package}")
+
+        if exit_code == 0:
+            QMessageBox.information(
+                self, "Installed",
+                f"'{package}' was installed.\n\nRestart QGIS if it is not picked up immediately.",
+            )
+        else:
+            log_text = "STDOUT:\n" + "\n".join(self._pip_log.get("stdout", []))
+            log_text += "\n\nSTDERR:\n" + "\n".join(self._pip_log.get("stderr", []))
+            message = QMessageBox(self)
+            message.setIcon(QMessageBox.Warning)
+            message.setWindowTitle("Installation failed")
+            message.setText(f"Installing '{package}' failed (exit code {exit_code}).")
+            message.setDetailedText(log_text)
+            message.exec_()
+
+        callback = target.get("done")
+        if callable(callback):
+            callback()
+
     def install_gemini_package(self):
         """Install Google GenAI SDK using QProcess (Async)."""
         reply = QMessageBox.question(
@@ -2179,6 +2444,33 @@ class LatestModelRefreshThread(QThread):
             })
         except Exception as exc:
             self.result_ready.emit({"status": "error", "message": str(exc)})
+
+
+class ModelDownloadThread(QThread):
+    """Download and verify an ONNX model without blocking the dialog."""
+    progress = pyqtSignal(int, int)      # received, total
+    result_ready = pyqtSignal(object)    # {"ok": bool, "message": str}
+
+    def __init__(self, spec, base_dir):
+        super().__init__()
+        self.spec = spec
+        self.base_dir = base_dir
+        self._cancel = False
+
+    def cancel(self):
+        self._cancel = True
+
+    def run(self):
+        try:
+            path = download_model(
+                self.spec,
+                self.base_dir,
+                progress=lambda received, total: self.progress.emit(int(received), int(total)),
+                cancel_check=lambda: self._cancel,
+            )
+            self.result_ready.emit({"ok": True, "message": f"Model ready:\n{path}"})
+        except Exception as e:
+            self.result_ready.emit({"ok": False, "message": str(e)})
 
 
 class GeminiTestThread(QThread):
