@@ -7,8 +7,8 @@ Generates symbols from built-in SVG templates with comprehensive archaeological 
 import os
 import re
 from qgis.PyQt.QtGui import QImage, QColor, QPainter, QPainterPath, QPolygonF, QPen
-from qgis.PyQt.QtCore import Qt, QByteArray, QPointF, QRectF
-from qgis.PyQt.QtSvg import QSvgRenderer
+from qgis.PyQt.QtCore import Qt, QBuffer, QByteArray, QIODevice, QPointF, QRect, QRectF, QSize
+from qgis.PyQt.QtSvg import QSvgGenerator, QSvgRenderer
 
 
 class TemplateGenerator:
@@ -414,6 +414,7 @@ class TemplateGenerator:
 
         # Features
         "Hearth / Fire Pit": {
+            "draw": ("_draw_hearth", "COLOR"),
             "file": "hearth.svg",
             "default_color": "#FF4500",
             "category": "features"
@@ -609,30 +610,39 @@ class TemplateGenerator:
         
     def generate(self, template_type, color=None):
         """
-        Generate a symbol from a template.
-        
-        :param template_type: Template type name
-        :param color: Optional hex color for the symbol
-        :return: QImage of generated symbol or None on failure
+        Generate a symbol from a built-in template.
+
+        :return: SymbolResult carrying parametrised SVG (plus a raster preview)
         """
+        from .symbol_result import SymbolResult
+        from .autotrace.svg_builder import finalize_svg
+
         template_type = self._normalize_template_type(template_type)
         template_info = self.TEMPLATE_INFO.get(template_type)
         if not template_info:
             return None
-            
+
+        color = color or template_info['default_color']
+        result = SymbolResult(source="template", style=str(template_type))
+
         template_path = os.path.join(self.template_dir, template_info['file'])
-        
-        # If template file doesn't exist, create a placeholder
-        if not os.path.exists(template_path):
-            return self._create_placeholder(template_type, color or template_info['default_color'])
-            
-        # Load and colorize the SVG
-        svg_data = self._load_and_colorize_svg(template_path, color or template_info['default_color'])
-        
+        svg_data = None
+        if os.path.exists(template_path):
+            svg_data = self._load_and_colorize_svg(template_path, color)
+        if not svg_data:
+            svg_data = self._create_placeholder_svg(template_type, color)
+
         if svg_data:
-            return self._svg_to_image(svg_data)
-            
-        return None
+            svg, info = finalize_svg(svg_data)
+            result.svg = svg
+            result.meta.update(info)
+        image = self._create_placeholder(template_type, color)
+        if image is not None and not image.isNull():
+            png = SymbolResult.coerce(image).raster_png
+            result.raster_png = png
+        if result.is_empty:
+            return None
+        return result
 
     def _normalize_template_type(self, template_type):
         """Normalize template names for backward compatibility."""
@@ -725,23 +735,24 @@ class TemplateGenerator:
         
         return image
         
-    def _create_placeholder(self, template_type, color):
-        """Create a placeholder symbol when template SVG is not available."""
-        size = 256
-        image = QImage(size, size, QImage.Format_ARGB32_Premultiplied)
-        image.fill(Qt.transparent)
-        
-        painter = QPainter(image)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        q_color = QColor(color)
-        painter.setBrush(q_color)
-        painter.setPen(QPen(q_color.darker(130), 2.0))
-        
-        m = 25  # margin
+    # Sentinel for "pass the resolved QColor here".
+    COLOR = object()
 
-        # Dispatch drawing by keyword
+    def _resolve_draw(self, template_type):
+        """
+        Map a template name to (draw method name, extra args).
+
+        An explicit ``draw`` entry in TEMPLATE_INFO wins; otherwise the name is
+        matched by keyword. Returns (None, ()) for the generic fallback shape.
+        """
+        info = self.TEMPLATE_INFO.get(template_type) or {}
+        explicit = info.get("draw")
+        if explicit:
+            name, *extra = explicit if isinstance(explicit, (list, tuple)) else (explicit,)
+            return name, tuple(self.COLOR if a == "COLOR" else a for a in extra)
+
         key = str(template_type or "").strip().lower().replace("/", " ")
+        COLOR = self.COLOR
         
         if (
             "kofun" in key
@@ -758,197 +769,243 @@ class TemplateGenerator:
             or "daijobo" in key
         ):
             if "with shugo" in key:
-                self._draw_keyhole_tomb(painter, size, m, "moat", q_color)
+                return ("_draw_keyhole_tomb", ("moat", COLOR))
             elif "with fukiishi" in key:
-                self._draw_keyhole_tomb(painter, size, m, "fukiishi", q_color)
+                return ("_draw_keyhole_tomb", ("fukiishi", COLOR))
             elif "tsumiishizuka" in key or "tsumishizuka" in key:
-                self._draw_keyhole_tomb(painter, size, m, "tsumishizuka", q_color)
+                return ("_draw_keyhole_tomb", ("tsumishizuka", COLOR))
             elif "normal" in key:
-                self._draw_keyhole_tomb(painter, size, m, "normal", q_color)
+                return ("_draw_keyhole_tomb", ("normal", COLOR))
             elif "enpun" in key:
-                self._draw_kofun_shape(painter, size, m, "enpun", q_color)
+                return ("_draw_kofun_shape", ("enpun", COLOR))
             elif "zenpokouen" in key or "zenpokoen" in key:
-                self._draw_kofun_shape(painter, size, m, "zenpokouen", q_color)
+                return ("_draw_kofun_shape", ("zenpokouen", COLOR))
             elif "makimuku-en" in key:
-                self._draw_kofun_shape(painter, size, m, "makimuku_en", q_color)
+                return ("_draw_kofun_shape", ("makimuku_en", COLOR))
             elif "hotategai" in key:
-                self._draw_kofun_shape(painter, size, m, "hotategai", q_color)
+                return ("_draw_kofun_shape", ("hotategai", COLOR))
             elif "sohochuen" in key:
-                self._draw_kofun_shape(painter, size, m, "sohochuen", q_color)
+                return ("_draw_kofun_shape", ("sohochuen", COLOR))
             elif "zenpokoho" in key:
-                self._draw_kofun_shape(painter, size, m, "zenpokoho", q_color)
+                return ("_draw_kofun_shape", ("zenpokoho", COLOR))
             elif "makimuku-ho" in key:
-                self._draw_kofun_shape(painter, size, m, "makimuku_ho", q_color)
+                return ("_draw_kofun_shape", ("makimuku_ho", COLOR))
             elif "yosumi" in key:
-                self._draw_kofun_shape(painter, size, m, "yosumi", q_color)
+                return ("_draw_kofun_shape", ("yosumi", COLOR))
             elif "daijobo" in key:
-                self._draw_kofun_shape(painter, size, m, "daijobo", q_color)
+                return ("_draw_kofun_shape", ("daijobo", COLOR))
             elif "hofun" in key:
-                self._draw_kofun_shape(painter, size, m, "hofun", q_color)
+                return ("_draw_kofun_shape", ("hofun", COLOR))
             else:
-                self._draw_keyhole_tomb(painter, size, m, "normal", q_color)
+                return ("_draw_keyhole_tomb", ("normal", COLOR))
         elif "keyhole tomb" in key or "shugo" in key or "fukiishi" in key or "tsumishizuka" in key:
             if "moat" in key or "shugo" in key:
-                self._draw_keyhole_tomb(painter, size, m, "moat", q_color)
+                return ("_draw_keyhole_tomb", ("moat", COLOR))
             elif "fukiishi" in key:
-                self._draw_keyhole_tomb(painter, size, m, "fukiishi", q_color)
+                return ("_draw_keyhole_tomb", ("fukiishi", COLOR))
             elif "tsumishizuka" in key:
-                self._draw_keyhole_tomb(painter, size, m, "tsumishizuka", q_color)
+                return ("_draw_keyhole_tomb", ("tsumishizuka", COLOR))
             elif "makinokuchi" in key:
-                self._draw_keyhole_tomb(painter, size, m, "makinokuchi", q_color)
+                return ("_draw_keyhole_tomb", ("makinokuchi", COLOR))
             elif "stepped" in key:
-                self._draw_keyhole_tomb(painter, size, m, "stepped", q_color)
+                return ("_draw_keyhole_tomb", ("stepped", COLOR))
             else:
-                self._draw_keyhole_tomb(painter, size, m, "normal", q_color)
+                return ("_draw_keyhole_tomb", ("normal", COLOR))
         elif "bronze dagger-axe" in key:
-            self._draw_bronze_weapon_symbol(painter, size, m, "dagger_axe", q_color)
+            return ("_draw_bronze_weapon_symbol", ("dagger_axe", COLOR))
         elif "bronze spear" in key:
-            self._draw_bronze_weapon_symbol(painter, size, m, "spear", q_color)
+            return ("_draw_bronze_weapon_symbol", ("spear", COLOR))
         elif "bronze sword" in key:
-            self._draw_bronze_weapon_symbol(painter, size, m, "sword", q_color)
+            return ("_draw_bronze_weapon_symbol", ("sword", COLOR))
         elif "bronze dagger" in key or "bronze sword" in key:
             if "liaoning" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "liaoning", q_color)
+                return ("_draw_bronze_dagger_typology", ("liaoning", COLOR))
             elif "ordos" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "ordos", q_color)
+                return ("_draw_bronze_dagger_typology", ("ordos", COLOR))
             elif "antenna" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "antenna", q_color)
+                return ("_draw_bronze_dagger_typology", ("antenna", COLOR))
             elif "slender" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "slender", q_color)
+                return ("_draw_bronze_dagger_typology", ("slender", COLOR))
             elif "tao" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "tao", q_color)
+                return ("_draw_bronze_dagger_typology", ("tao", COLOR))
             elif "type ia" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "type_ia", q_color)
+                return ("_draw_bronze_dagger_typology", ("type_ia", COLOR))
             elif "type ib" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "type_ib", q_color)
+                return ("_draw_bronze_dagger_typology", ("type_ib", COLOR))
             elif "medium" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "medium", q_color)
+                return ("_draw_bronze_dagger_typology", ("medium", COLOR))
             elif "flat" in key:
-                self._draw_bronze_dagger_typology(painter, size, m, "flat", q_color)
+                return ("_draw_bronze_dagger_typology", ("flat", COLOR))
             else:
-                self._draw_bronze_dagger_typology(painter, size, m, "other", q_color)
+                return ("_draw_bronze_dagger_typology", ("other", COLOR))
         elif "projectile point" in key or "side-notched" in key or "corner-notched" in key:
             if "leaf" in key:
-                self._draw_projectile_point_typology(painter, size, m, "leaf")
+                return ("_draw_projectile_point_typology", ("leaf",))
             elif "side" in key:
-                self._draw_projectile_point_typology(painter, size, m, "side_notched")
+                return ("_draw_projectile_point_typology", ("side_notched",))
             elif "corner" in key or "dead cedar" in key:
-                self._draw_projectile_point_typology(painter, size, m, "corner_notched")
+                return ("_draw_projectile_point_typology", ("corner_notched",))
             elif "stemmed" in key or "elko" in key:
-                self._draw_projectile_point_typology(painter, size, m, "stemmed")
+                return ("_draw_projectile_point_typology", ("stemmed",))
             elif "triangular" in key:
-                self._draw_projectile_point_typology(painter, size, m, "triangular")
+                return ("_draw_projectile_point_typology", ("triangular",))
             else:
-                self._draw_projectile_point_typology(painter, size, m, "leaf")
+                return ("_draw_projectile_point_typology", ("leaf",))
         elif "rim sherd" in key:
-            self._draw_pottery_sherd_section(painter, size, m, "rim", q_color)
+            return ("_draw_pottery_sherd_section", ("rim", COLOR))
         elif "base sherd" in key:
-            self._draw_pottery_sherd_section(painter, size, m, "base", q_color)
+            return ("_draw_pottery_sherd_section", ("base", COLOR))
         elif "body sherd" in key:
-            self._draw_pottery_sherd_section(painter, size, m, "body", q_color)
+            return ("_draw_pottery_sherd_section", ("body", COLOR))
         elif "pottery" in key:
-            self._draw_pottery(painter, size, m)
+            return ("_draw_pottery", ())
         elif "stone tool" in key or "arrowhead" in key or "scraper" in key:
-            self._draw_stone_tool(painter, size, m)
+            return ("_draw_stone_tool", ())
         elif "bronze" in key:
-            self._draw_bronze(painter, size, m)
+            return ("_draw_bronze", ())
         elif "iron" in key or "chisel" in key:
-            self._draw_iron(painter, size, m)
+            return ("_draw_iron", ())
         elif "ornament" in key or "bead" in key or "bracelet" in key or "ring" in key:
-            self._draw_ornament(painter, size, m)
+            return ("_draw_ornament", ())
         elif "coin" in key or "seal" in key or "stamp" in key or "spindle" in key:
-            self._draw_coin(painter, size, m, q_color)
+            return ("_draw_coin", (COLOR,))
         elif "bone" in key or "needle" in key or "pin" in key or "animal remains" in key:
-            self._draw_bone_tool(painter, size, m)
+            return ("_draw_bone_tool", ())
         elif "weapon" in key or "blade" in key or "arrow shaft" in key:
-            self._draw_weapon(painter, size, m)
+            return ("_draw_weapon", ())
         elif "fortress" in key or "castle" in key or "gate" in key or "tower" in key:
             if "gate" in key:
-                self._draw_gate(painter, size, m)
+                return ("_draw_gate", ())
             elif "tower" in key:
-                self._draw_tower(painter, size, m)
+                return ("_draw_tower", ())
             else:
-                self._draw_fortress(painter, size, m)
+                return ("_draw_fortress", ())
         elif "dwelling" in key or "house" in key or "workshop" in key:
             if "workshop" in key:
-                self._draw_workshop(painter, size, m)
+                return ("_draw_workshop", ())
             else:
-                self._draw_dwelling(painter, size, m)
+                return ("_draw_dwelling", ())
         elif "road" in key or "pavement" in key:
-            self._draw_road(painter, size, m, q_color)
+            return ("_draw_road", (COLOR,))
         elif "bridge" in key:
-            self._draw_bridge(painter, size, m, q_color)
+            return ("_draw_bridge", (COLOR,))
         elif "terrace" in key:
-            self._draw_terrace(painter, size, m, q_color)
+            return ("_draw_terrace", (COLOR,))
         elif "wall" in key or "rampart" in key:
-            self._draw_wall(painter, size, m)
+            return ("_draw_wall", ())
         elif "posthole" in key:
-            self._draw_posthole(painter, size, m, q_color)
+            return ("_draw_posthole", (COLOR,))
         elif "test pit" in key:
-            self._draw_test_pit(painter, size, m, q_color)
+            return ("_draw_test_pit", (COLOR,))
         elif "pit" in key:
-            self._draw_pit(painter, size, m, q_color)
+            return ("_draw_pit", (COLOR,))
         elif "ash layer" in key:
-            self._draw_ash_layer(painter, size, m, q_color)
+            return ("_draw_ash_layer", (COLOR,))
         elif "burnt" in key:
-            self._draw_burnt_area(painter, size, m, q_color)
+            return ("_draw_burnt_area", (COLOR,))
         elif "canal" in key or "water channel" in key:
-            self._draw_canal(painter, size, m, q_color)
+            return ("_draw_canal", (COLOR,))
         elif "ditch" in key or "moat" in key:
-            self._draw_ditch(painter, size, m, q_color)
+            return ("_draw_ditch", (COLOR,))
         elif "standing stone" in key:
-            self._draw_standing_stone(painter, size, m, q_color)
+            return ("_draw_standing_stone", (COLOR,))
         elif "stone align" in key:
-            self._draw_stone_alignment(painter, size, m)
+            return ("_draw_stone_alignment", ())
         elif "trench" in key:
-            self._draw_trench(painter, size, m, q_color)
+            return ("_draw_trench", (COLOR,))
         elif "grid corner" in key:
-            self._draw_grid_corner(painter, size, m, q_color)
+            return ("_draw_grid_corner", (COLOR,))
         elif "excavation" in key:
-            self._draw_excavation(painter, size, m, q_color)
+            return ("_draw_excavation", (COLOR,))
         elif "north arrow" in key:
-            self._draw_north_arrow(painter, size, m, q_color)
+            return ("_draw_north_arrow", (COLOR,))
         elif "scale bar" in key:
-            self._draw_scale_bar(painter, size, m, q_color)
+            return ("_draw_scale_bar", (COLOR,))
         elif "harris matrix" in key or "harris context" in key:
-            self._draw_harris_matrix_context(painter, size, m, q_color)
+            return ("_draw_harris_matrix_context", (COLOR,))
         elif "stratigraphic unit" in key:
-            self._draw_stratigraphic_unit(painter, size, m, q_color)
+            return ("_draw_stratigraphic_unit", (COLOR,))
         elif "datum" in key:
-            self._draw_datum_point(painter, size, m, q_color)
+            return ("_draw_datum_point", (COLOR,))
         elif "photo point" in key:
-            self._draw_photo_point(painter, size, m, q_color)
+            return ("_draw_photo_point", (COLOR,))
         elif "survey" in key:
-            self._draw_survey_point(painter, size, m, q_color)
+            return ("_draw_survey_point", (COLOR,))
         elif "sample location" in key:
-            self._draw_sample_location(painter, size, m, q_color)
+            return ("_draw_sample_location", (COLOR,))
         elif "find" in key:
-            self._draw_find_spot(painter, size, m, q_color)
+            return ("_draw_find_spot", (COLOR,))
         elif "tomb" in key or "barrow" in key or ("mound" in key and "shell" not in key and "midden" not in key):
-            self._draw_tomb(painter, size, m)
+            return ("_draw_tomb", ())
         elif "temple" in key or "shrine" in key:
-            self._draw_temple(painter, size, m, q_color)
+            return ("_draw_temple", (COLOR,))
         elif "kiln" in key or "furnace" in key:
-            self._draw_kiln(painter, size, m)
+            return ("_draw_kiln", ())
         elif "well" in key:
-            self._draw_well(painter, size, m, q_color)
+            return ("_draw_well", (COLOR,))
         elif "human" in key or "skull" in key or "skeleton" in key:
-            self._draw_skull(painter, size, m, q_color)
+            return ("_draw_skull", (COLOR,))
         elif "burial" in key or "cremation" in key:
-            self._draw_burial(painter, size, m, q_color)
+            return ("_draw_burial", (COLOR,))
         elif "hearth" in key or "fire" in key:
-            self._draw_hearth(painter, size, m, q_color)
+            return ("_draw_hearth", (COLOR,))
         elif "midden" in key or "shell" in key:
-            self._draw_midden(painter, size, m)
+            return ("_draw_midden", ())
         elif "dolmen" in key:
-            self._draw_dolmen(painter, size, m)
+            return ("_draw_dolmen", ())
         elif "rock art" in key:
-            self._draw_rock_art(painter, size, m, q_color)
+            return ("_draw_rock_art", (COLOR,))
         else:
-            painter.drawEllipse(m, m, size - 2*m, size - 2*m)
-            
-        painter.end()
+            return (None, ())
+
+    def _create_placeholder_svg(self, template_type, color, size=256):
+        """Draw a built-in template into an SVG document and return its text."""
+        buffer = QBuffer()
+        buffer.open(QIODevice.WriteOnly)
+        generator = QSvgGenerator()
+        generator.setOutputDevice(buffer)
+        generator.setSize(QSize(size, size))
+        generator.setViewBox(QRect(0, 0, size, size))
+        generator.setTitle(str(template_type))
+
+        painter = QPainter(generator)
+        try:
+            self._paint_template(painter, template_type, color, size)
+        finally:
+            painter.end()
+        buffer.close()
+        return bytes(buffer.data()).decode("utf-8", "replace")
+
+    def _create_placeholder(self, template_type, color, size=256):
+        """Raster fallback of the same drawing (preview and legacy callers)."""
+        image = QImage(size, size, QImage.Format_ARGB32_Premultiplied)
+        image.fill(Qt.transparent)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.Antialiasing)
+        try:
+            self._paint_template(painter, template_type, color, size)
+        finally:
+            painter.end()
         return image
+
+    def _paint_template(self, painter, template_type, color, size=256):
+        """Shared painting used by both the SVG and raster placeholder paths."""
+        q_color = QColor(color)
+        painter.setBrush(q_color)
+        painter.setPen(QPen(q_color.darker(130), 2.0))
+        m = 25  # margin
+
+        name, extra = self._resolve_draw(template_type)
+        if not name:
+            painter.drawEllipse(m, m, size - 2 * m, size - 2 * m)
+            return
+        method = getattr(self, name, None)
+        if method is None:
+            painter.drawEllipse(m, m, size - 2 * m, size - 2 * m)
+            return
+        args = tuple(q_color if a is self.COLOR else a for a in extra)
+        method(painter, size, m, *args)
+
 
     # ═══════════════════════════════════════════════════════
     #  Drawing methods — Artifacts
@@ -1072,7 +1129,7 @@ class TemplateGenerator:
         """Circular pendant with hole."""
         om = m + 20
         painter.drawEllipse(om, om, s - 2*om, s - 2*om)
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         hs = 30
         painter.drawEllipse(int(s/2 - hs/2), int(m + 40), hs, hs)
 
@@ -1292,7 +1349,7 @@ class TemplateGenerator:
             old_brush = painter.brush()
             old_pen = painter.pen()
             moat_width = 8.0 if variant == "moat" else 5.0
-            moat_pen = QPen(QColor(106, 143, 168), moat_width)
+            moat_pen = QPen(color.lighter(135), moat_width)
             painter.setPen(moat_pen)
             painter.setBrush(Qt.NoBrush)
 
@@ -1426,7 +1483,7 @@ class TemplateGenerator:
             inner = int(side * 0.46)
             inner_x = int(cx - inner / 2)
             inner_y = int(cx - inner / 2)
-            painter.setBrush(QColor(152, 210, 176))
+            painter.setBrush(color.lighter(125))
             painter.drawRect(inner_x, inner_y, inner, inner)
         else:
             self._draw_keyhole_tomb(painter, s, m, "normal", color)
@@ -1458,7 +1515,7 @@ class TemplateGenerator:
         p.closeSubpath()
         painter.drawPath(p)
         # Gate
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         gw, gh = 30, 45
         painter.drawRect(int(s/2 - gw/2), int(s - m - gh), gw, gh)
 
@@ -1478,7 +1535,7 @@ class TemplateGenerator:
         p.closeSubpath()
         painter.drawPath(p)
         # Door
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         dw, dh = 28, 40
         painter.drawRect(int(cx - dw/2), int(s - m - dh), dw, dh)
 
@@ -1531,7 +1588,7 @@ class TemplateGenerator:
         p.closeSubpath()
         painter.drawPath(p)
         # Opening
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         ow, oh = 35, 30
         painter.drawEllipse(int(s/2 - ow/2), int(s - m - oh - 5), ow, oh)
 
@@ -1589,7 +1646,7 @@ class TemplateGenerator:
         for i in range(5):
             if i % 2 == 0:
                 painter.drawRect(x + i * crenel_w, y - 14, crenel_w, 14)
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         painter.drawRect(x + 32, y + 32, 16, 18)
         painter.drawRect(x + 32, y + 66, 16, 18)
         painter.drawRect(x + 30, y + h - 42, 20, 28)
@@ -1639,7 +1696,7 @@ class TemplateGenerator:
         p2.quadTo(cx + 30, s * 0.75, cx + 35, s * 0.5)
         painter.drawPath(p2)
         # Eyes
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         ew, eh = 22, 20
         painter.drawEllipse(int(cx - 28), int(s * 0.32), ew, eh)
         painter.drawEllipse(int(cx + 6), int(s * 0.32), ew, eh)
@@ -1922,7 +1979,7 @@ class TemplateGenerator:
             if i % 2 == 0:
                 painter.setBrush(color)
             else:
-                painter.setBrush(Qt.white)
+                painter.setBrush(Qt.NoBrush)
             painter.drawRect(x0 + i * seg_w, y0, seg_w, bar_h)
         painter.setBrush(Qt.NoBrush)
         painter.drawLine(x0, y0 + bar_h + 2, x0 + seg_w * 4, y0 + bar_h + 2)
@@ -2003,7 +2060,7 @@ class TemplateGenerator:
         p.closeSubpath()
         painter.drawPath(p)
         # Inner circle
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         ir = 20
         painter.drawEllipse(int(cx - ir), int(s * 0.28), ir * 2, ir * 2)
 
@@ -2040,7 +2097,7 @@ class TemplateGenerator:
             QPointF(left, base),
         ])
         painter.drawPolygon(tri)
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(int(cx - 8), int(s / 2 - 8), 16, 16)
         painter.setBrush(Qt.NoBrush)
         x_pen = QPen(color.darker(145), 1.4)
@@ -2059,7 +2116,7 @@ class TemplateGenerator:
         body_w = int(s * 0.32)
         body_h = int(s * 0.22)
         painter.drawRect(body_x, body_y, body_w, body_h)
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(int(s / 2 - 16), int(body_y + 12), 32, 32)
         painter.drawRect(int(body_x + 8), int(body_y - 10), 18, 10)
         cone_pen = QPen(color.darker(150), 1.2, Qt.DotLine)
@@ -2106,7 +2163,7 @@ class TemplateGenerator:
         tube.lineTo(cx - 8, s - m - 34)
         tube.closeSubpath()
         painter.drawPath(tube)
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(int(cx - 9), int(m + 28), 18, 18)
         painter.setBrush(old_brush)
         painter.setPen(old_pen)
@@ -2132,7 +2189,7 @@ class TemplateGenerator:
         old_brush = painter.brush()
         deck_y = int(s * 0.42)
         painter.drawRect(m + 16, deck_y, s - 2 * m - 32, 22)
-        painter.setBrush(Qt.white)
+        painter.setBrush(Qt.NoBrush)
         painter.drawArc(m + 28, deck_y + 8, int((s - 2 * m - 56) / 2), 80, 0, 180 * 16)
         painter.drawArc(int(s / 2), deck_y + 8, int((s - 2 * m - 56) / 2), 80, 0, 180 * 16)
         painter.setBrush(Qt.NoBrush)

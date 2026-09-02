@@ -1121,6 +1121,16 @@ class ArcheoGlyphDialog(QDialog):
             QMessageBox.warning(self, "Failed", "Generation returned no result.")
             return
 
+        if not result.is_vector and result.raster_png:
+            # AI backends return raster images; trace them so the symbol still
+            # reaches QGIS as a scalable, recolourable SVG marker.
+            try:
+                from ..generators.raster_vectorize import vectorize_result
+
+                vectorize_result(result, style=result.style)
+            except Exception as e:
+                result.add_warning(f"Vectorisation failed: {e}")
+
         pixmap = self._result_to_pixmap(result)
         if pixmap is None or pixmap.isNull():
             QMessageBox.warning(self, "Failed", "Generated symbol could not be rendered.")

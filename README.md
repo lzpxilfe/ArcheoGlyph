@@ -20,6 +20,7 @@ Notes:
   - Google Gemini (factual safeguards + deterministic fallback)
   - Local Stable Diffusion via Automatic1111
 - Built-in archaeological templates (artifacts, structures, remains, features, survey)
+- Vector (SVG) output with QGIS `param(fill)` / `param(outline)` recolouring
 - Direct integration with QGIS symbol library and point-layer rendering
 - Graduated size rendering by numeric field (natural breaks, equal interval, quantile)
 

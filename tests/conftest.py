@@ -56,6 +56,8 @@ def _install_qgis_stubs():
     pyqt = types.ModuleType("qgis.PyQt")
     qtcore = types.ModuleType("qgis.PyQt.QtCore")
     qtcore.QSettings = _FakeQSettings
+    for name in ("Qt", "QBuffer", "QByteArray", "QIODevice", "QPointF", "QRect", "QRectF", "QSize"):
+        setattr(qtcore, name, type(name, (), {}))
     core = types.ModuleType("qgis.core")
 
     class _QgsApplication:
@@ -72,16 +74,21 @@ def _install_qgis_stubs():
     ):
         setattr(core, name, type(name, (), {}))
     qtgui = types.ModuleType("qgis.PyQt.QtGui")
-    for name in ("QColor", "QImage", "QPixmap", "QPainter"):
+    for name in ("QColor", "QImage", "QPixmap", "QPainter", "QPainterPath", "QPolygonF", "QPen", "QFont"):
         setattr(qtgui, name, type(name, (), {}))
+    qtsvg = types.ModuleType("qgis.PyQt.QtSvg")
+    for name in ("QSvgGenerator", "QSvgRenderer"):
+        setattr(qtsvg, name, type(name, (), {}))
     qgis.PyQt = pyqt
     qgis.core = core
     pyqt.QtCore = qtcore
     pyqt.QtGui = qtgui
+    pyqt.QtSvg = qtsvg
     sys.modules["qgis"] = qgis
     sys.modules["qgis.PyQt"] = pyqt
     sys.modules["qgis.PyQt.QtCore"] = qtcore
     sys.modules["qgis.PyQt.QtGui"] = qtgui
+    sys.modules["qgis.PyQt.QtSvg"] = qtsvg
     sys.modules["qgis.core"] = core
 
 
