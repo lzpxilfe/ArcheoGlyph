@@ -28,7 +28,11 @@ from .style_control_utils import (
     STYLE_CONTROL_SYMBOLIC_LOOSENESS,
     resolve_style_controls,
 )
-from ..log import log
+from ..auth import get_api_key, set_api_key
+from ..log import log, log_exception
+from .shape_match import mask_from_png, matches_reference, painted_mask_from_png
+from .svg_sanitize import sanitize_svg
+from .symbol_result import SymbolResult
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -134,31 +138,24 @@ class GeminiGenerator:
         "- Do not add any scene/background elements (ground, sky, plants, architecture, people).\n"
     )
 
-    _DISALLOWED_SVG_TOKENS = (
-        "<image",
-        "<foreignobject",
-        "<filter",
-        "<lineargradient",
-        "<radialgradient",
-        "<pattern",
-        "<mask",
-        "<text",
-        "<clippath",
-    )
     
+    MAX_MODELS_PER_ROUTE = 3
+    MAX_RETRIES_PER_MODEL = 2
+
     def __init__(self):
         """Initialize the Gemini generator."""
         self.settings = QSettings()
-        self.api_key = self.settings.value('ArcheoGlyph/gemini_api_key', '')
+        self.api_key = get_api_key("gemini", self.settings)
         self.contour_gen = ContourGenerator()
+        self._model_list_cache = None
         
     def set_api_key(self, api_key):
-        """Save API key to settings."""
+        """Save the API key (QGIS authentication database when available)."""
         self.api_key = api_key
-        self.settings.setValue('ArcheoGlyph/gemini_api_key', api_key)
-        
+        set_api_key("gemini", api_key, self.settings)
+
     def get_api_key(self):
-        """Get API key from settings."""
+        """Get API key from storage."""
         return self.api_key
         
     def _normalize_style(self, style):
@@ -279,6 +276,8 @@ class GeminiGenerator:
         symbolic_looseness,
         exaggeration,
         output_kind="svg",
+        guide_bytes=None,
+        ink_polyline_text="",
     ):
         """Build prompt for SVG or raster Gemini generation."""
         full_prompt = (
@@ -314,29 +313,36 @@ class GeminiGenerator:
                 f"\n5. Keep the outline clean and documentary."
             )
 
-        if silhouette_bytes and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
-            full_prompt += (
-                "\n\nCRITICAL INSTRUCTION: Two images are provided.\n"
-                "Image 1: Original photo (material/color reference).\n"
-                "Image 2: Black-and-white silhouette (shape constraint).\n"
-                "Draw to match the exact shape of Image 2. "
-                "Do not invent decorative textures."
-            )
+        # Describe exactly the images that are attached, in the same order.
+        image_notes = ["Image 1: the original photograph (material and colour reference)."]
         if silhouette_bytes:
+            image_notes.append(
+                f"Image {len(image_notes) + 1}: a black-and-white silhouette. "
+                "Reproduce this outline; do not redraw the object's shape from imagination."
+            )
+        if guide_bytes:
+            image_notes.append(
+                f"Image {len(image_notes) + 1}: a line guide on a white ground - black strokes are the "
+                "real incisions, ridges and painted lines measured from the artifact, the red contour is "
+                "its outline. Draw only these strokes as internal detail; invent nothing else."
+            )
+        if len(image_notes) > 1:
+            full_prompt += "\n\nREFERENCE IMAGES (in order):\n" + "\n".join(image_notes)
+
+        if ink_polyline_text:
             full_prompt += (
-                "\n\nINK CONSTRAINT: An additional image shows factual ink centerlines "
-                "(thin dark lines on a parchment background) extracted by multi-scale "
-                "Black Top-Hat analysis. "
-                "These lines are the ACTUAL strokes and engravings present in the artifact. "
-                "Follow these line positions precisely when drawing internal structure. "
-                "Do NOT invent motifs not visible in the ink constraint image."
+                "\n\nMEASURED STROKE PATHS (image pixel coordinates, one polyline per line). "
+                "Emit these as <path> elements verbatim, then add the outline and fills around them:\n"
+                + ink_polyline_text
             )
 
         full_prompt += self._SVG_FORMAT if output_kind == "svg" else self._IMAGE_OUTPUT_RULES
         return full_prompt
 
     def _list_genai_models(self, client):
-        """List available Gemini model names from the Google GenAI SDK."""
+        """List available Gemini model names (cached for this generator)."""
+        if self._model_list_cache is not None:
+            return list(self._model_list_cache)
         names = []
         try:
             for model in client.models.list():
@@ -348,16 +354,23 @@ class GeminiGenerator:
                     continue
                 names.append(name)
         except Exception:
+            self._model_list_cache = []
             return []
 
         deduped = []
         for name in names:
             if name not in deduped:
                 deduped.append(name)
+        self._model_list_cache = list(deduped)
         return deduped
 
-    def _expand_model_candidates(self, available_names, aliases):
-        """Resolve exact or prefix matches against live model names."""
+    def _expand_model_candidates(self, available_names, aliases, image_mode=None):
+        """
+        Resolve exact or prefix matches against live model names.
+
+        ``image_mode`` restricts prefix matches to the right route, so an alias
+        like "gemini-2.5-flash" cannot pull in "gemini-2.5-flash-image".
+        """
         normalized_available = {}
         for name in list(available_names or []):
             normalized = self._normalize_model_name(name)
@@ -375,7 +388,12 @@ class GeminiGenerator:
                     chosen.append(exact)
                 continue
 
-            matches = [name for name in normalized_available if name.startswith(normalized_alias)]
+            matches = [
+                name for name in normalized_available
+                if name.startswith(normalized_alias) and not self._is_excluded_model(name)
+            ]
+            if image_mode is not None:
+                matches = [name for name in matches if self._is_image_model(name) == bool(image_mode)]
             if matches:
                 matches.sort(key=self._model_rank, reverse=True)
                 best = matches[0]
@@ -397,7 +415,7 @@ class GeminiGenerator:
             aliases.append(preferred)
         aliases.extend(route_candidates)
 
-        models_to_try = self._expand_model_candidates(available_names, aliases)
+        models_to_try = self._expand_model_candidates(available_names, aliases, image_mode=image_mode)
 
         route_pool = []
         for name in list(available_names or []):
@@ -413,13 +431,17 @@ class GeminiGenerator:
             if name not in models_to_try:
                 models_to_try.append(name)
 
-        if models_to_try:
-            return models_to_try
+        if not models_to_try:
+            models_to_try = [self._normalize_model_name(name) for name in route_candidates if name]
+        # A click must not turn into dozens of billed calls.
+        return models_to_try[:self.MAX_MODELS_PER_ROUTE]
 
-        return [self._normalize_model_name(name) for name in route_candidates if name]
-
-    def _build_genai_contents(self, sdk_types, full_prompt, image_path, image_data, silhouette_bytes, style_key, ink_constraint_bytes=None):
-        """Build modern Google GenAI content parts."""
+    def _build_genai_contents(self, sdk_types, full_prompt, image_path, image_data,
+                              silhouette_bytes=None, guide_bytes=None):
+        """
+        Assemble the request parts. The order must match the image list
+        described in the prompt: photo, silhouette, line guide.
+        """
         contents = [full_prompt]
         contents.append(
             sdk_types.Part.from_bytes(
@@ -427,21 +449,9 @@ class GeminiGenerator:
                 mime_type=self._get_mime_type(image_path),
             )
         )
-        if silhouette_bytes and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
-            contents.append(
-                sdk_types.Part.from_bytes(
-                    data=silhouette_bytes,
-                    mime_type="image/png",
-                )
-            )
-        # Ink Centerline constraint: factual stroke positions for AI to follow
-        if ink_constraint_bytes:
-            contents.append(
-                sdk_types.Part.from_bytes(
-                    data=ink_constraint_bytes,
-                    mime_type="image/png",
-                )
-            )
+        for payload in (silhouette_bytes, guide_bytes):
+            if payload:
+                contents.append(sdk_types.Part.from_bytes(data=payload, mime_type="image/png"))
         return contents
 
     def _extract_response_parts(self, response):
@@ -513,6 +523,93 @@ class GeminiGenerator:
         except Exception:
             return generated_image
 
+    SYSTEM_INSTRUCTION = (
+        "You convert archaeological artifact photographs into flat, factual point "
+        "symbols for GIS maps. A symbol must stay legible at 5-10 mm on a printed map: "
+        "one object, centred, tight bounds, no scene, no text, no shadow, no perspective. "
+        "You never invent decoration that is not visible in the reference material."
+    )
+
+    def _guide_material(self, image_path, style_key):
+        """
+        Build the reference material sent alongside the photo.
+
+        :return: (silhouette PNG or None, guide PNG or None, polyline text)
+        """
+        silhouette_bytes = None
+        guide_bytes = None
+        polyline_text = ""
+        try:
+            silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
+        except Exception as e:
+            log_exception("Silhouette extraction failed", e)
+
+        try:
+            from .ink_centerline import compose_guide_image, extract_ink_polylines, polylines_to_text
+            import cv2
+
+            bgr, mask = self.contour_gen.analyze(image_path)
+            if bgr is not None and mask is not None:
+                polylines = extract_ink_polylines(bgr, mask=mask)
+                if polylines:
+                    guide = compose_guide_image(bgr, mask, polylines)
+                    ok, buf = cv2.imencode(".png", guide)
+                    if ok:
+                        guide_bytes = bytes(buf)
+                    polyline_text = polylines_to_text(polylines, max_lines=30)
+        except Exception as e:
+            log_exception("Line guide extraction failed", e)
+
+        return silhouette_bytes, guide_bytes, polyline_text
+
+    def _validate_svg(self, svg_text, style_key, silhouette_bytes):
+        """
+        Sanitise and check a model-produced SVG.
+
+        :return: (clean svg | None, reason). ``reason`` explains a rejection.
+        """
+        clean, problems, stats = sanitize_svg(svg_text)
+        if not clean:
+            return None, "; ".join(problems[:3]) or "unusable SVG"
+
+        limit = 26 if style_key in (STYLE_COLORED, STYLE_TYPOLOGY) else 60
+        if stats["geometry"] > limit:
+            return None, f"too many shapes for a map symbol ({stats['geometry']})"
+        max_colors = 6 if style_key in (STYLE_COLORED, STYLE_TYPOLOGY) else 3
+        if stats["colors"] > max_colors:
+            return None, f"too many distinct colours ({stats['colors']})"
+
+        if silhouette_bytes:
+            reference = mask_from_png(silhouette_bytes)
+            if reference is not None:
+                height, width = reference.shape[:2]
+                rendered = self._render_svg_to_image(clean, width, height)
+                if rendered is None:
+                    return None, "the generated SVG could not be rendered"
+                png = SymbolResult.coerce(rendered).raster_png
+                painted = painted_mask_from_png(png)
+                if painted is not None:
+                    stroke_style = style_key in (STYLE_LINE, STYLE_MEASURED)
+                    ok, reason = matches_reference(
+                        reference, painted,
+                        stroke_style=stroke_style,
+                        strict=(style_key == STYLE_COLORED),
+                    )
+                    if not ok:
+                        return None, reason
+        return clean, ""
+
+    def _autotrace_fallback(self, image_path, style, color, symmetry, reason):
+        """Deterministic Auto Trace result, clearly labelled as a substitution."""
+        result = self.contour_gen.generate_result(
+            image_path=image_path, style=style, color=color, symmetry=symmetry
+        )
+        if result is None:
+            return None
+        result.source = "autotrace-fallback"
+        result.add_warning(f"Gemini output was not used ({reason}); showing an Auto Trace symbol.")
+        return result
+
     def generate(
         self,
         image_path,
@@ -523,10 +620,13 @@ class GeminiGenerator:
         factuality=None,
         symbolic_looseness=None,
         exaggeration=None,
+        cancel_check=None,
     ):
         """
         Generate a symbol from the input image using Gemini.
-        Returns SVG text or a QImage depending on the selected Gemini model path.
+
+        :param cancel_check: optional callable returning True to abort
+        :return: SymbolResult (vector SVG, or a raster image from an image model)
         """
         if not self.api_key:
             raise ValueError(
@@ -542,6 +642,9 @@ class GeminiGenerator:
                 f"Please run: pip install {GEMINI_INSTALL_PACKAGE}"
             )
 
+        def cancelled():
+            return bool(cancel_check and cancel_check())
+
         client = genai.Client(api_key=self.api_key)
 
         with open(image_path, 'rb') as f:
@@ -549,18 +652,7 @@ class GeminiGenerator:
 
         user_prompt_text = str(prompt or "").strip()
         style_key = self._normalize_style(style)
-
-        silhouette_bytes = None
-        try:
-            silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
-        except Exception as e:
-            log(f"Silhouette extraction failed: {e}")
-
-        ink_constraint_bytes = None
-        try:
-            ink_constraint_bytes = self.contour_gen.get_ink_constraint_bytes(image_path)
-        except Exception as e:
-            log(f"Ink constraint extraction failed: {e}")
+        silhouette_bytes, guide_bytes, polyline_text = self._guide_material(image_path, style_key)
 
         preferred_model = self._normalize_model_name(
             self.settings.value('ArcheoGlyph/gemini_model_id', '')
@@ -575,6 +667,8 @@ class GeminiGenerator:
         last_svg_issue = None
         quota_blocked = False
         for output_kind, image_mode in route_order:
+            if cancelled():
+                break
             models_to_try = self._resolve_models_to_try(
                 available_names=available_models,
                 preferred_model=preferred_model,
@@ -590,6 +684,8 @@ class GeminiGenerator:
                 symbolic_looseness=symbolic_looseness,
                 exaggeration=exaggeration,
                 output_kind=output_kind,
+                guide_bytes=guide_bytes,
+                ink_polyline_text=(polyline_text if output_kind == "svg" else ""),
             )
             contents = self._build_genai_contents(
                 sdk_types=genai_types,
@@ -597,20 +693,17 @@ class GeminiGenerator:
                 image_path=image_path,
                 image_data=image_data,
                 silhouette_bytes=silhouette_bytes,
-                style_key=style_key,
-                ink_constraint_bytes=ink_constraint_bytes,
+                guide_bytes=guide_bytes,
             )
+            config = self._generation_config(genai_types, image_mode)
 
             for model_name in models_to_try:
-                max_retries = 3
-                base_delay = 2
-
-                for attempt in range(max_retries + 1):
+                if cancelled():
+                    break
+                for attempt in range(self.MAX_RETRIES_PER_MODEL + 1):
+                    if cancelled():
+                        break
                     try:
-                        config = None
-                        if image_mode:
-                            config = {"response_modalities": ["IMAGE", "TEXT"]}
-
                         response = client.models.generate_content(
                             model=model_name,
                             contents=contents,
@@ -620,7 +713,7 @@ class GeminiGenerator:
                         if image_mode:
                             image = self._extract_image_from_response(response)
                             if image is not None and not image.isNull():
-                                return self._postprocess_image_result(
+                                image = self._postprocess_image_result(
                                     generated_image=image,
                                     image_path=image_path,
                                     style=style,
@@ -628,30 +721,26 @@ class GeminiGenerator:
                                     symmetry=symmetry,
                                     prompt=user_prompt_text,
                                 )
+                                result = SymbolResult.coerce(image, source="gemini", style=str(style))
+                                result.meta["model"] = model_name
+                                return result
                             break
 
                         response_text = str(getattr(response, "text", "") or "")
                         if response_text:
-                            svg_code = self._extract_svg(response_text)
+                            svg_code, issue = self._validate_svg(
+                                response_text, style_key, silhouette_bytes
+                            )
                             if svg_code:
-                                is_safe, issue = self._is_svg_documentary_safe(
-                                    svg_code,
-                                    style_key=style_key,
+                                from .autotrace.svg_builder import finalize_svg
+
+                                svg_code, info = finalize_svg(svg_code)
+                                result = SymbolResult(
+                                    svg=svg_code, source="gemini", style=str(style), meta=info
                                 )
-                                if is_safe:
-                                    if silhouette_bytes:
-                                        is_match, shape_issue = self._matches_reference_silhouette(
-                                            svg_code=svg_code,
-                                            silhouette_bytes=silhouette_bytes,
-                                            style_key=style_key,
-                                        )
-                                        if is_match:
-                                            return svg_code
-                                        last_svg_issue = shape_issue
-                                    else:
-                                        return svg_code
-                                else:
-                                    last_svg_issue = issue
+                                result.meta["model"] = model_name
+                                return result
+                            last_svg_issue = issue
                         break
 
                     except Exception as e:
@@ -662,10 +751,12 @@ class GeminiGenerator:
                             "limit: 0" in lowered or
                             "generate_content_free_tier" in lowered
                         )
+                        status = getattr(e, "code", None) or getattr(e, "status_code", None)
                         is_rate_limit = (
-                            "429" in error_str or
-                            "quota" in lowered or
-                            "resourceexhausted" in lowered
+                            status == 429 or
+                            "resourceexhausted" in lowered or
+                            "rate limit" in lowered or
+                            "too many requests" in lowered
                         )
 
                         if is_quota_exhausted:
@@ -673,47 +764,51 @@ class GeminiGenerator:
                             quota_blocked = True
                             break
 
-                        if is_rate_limit and attempt < max_retries:
+                        if is_rate_limit and attempt < self.MAX_RETRIES_PER_MODEL:
                             import random
                             import time
 
-                            delay = (base_delay * (2 ** attempt)) + random.uniform(0, 1)
-                            log(f"Gemini API rate limit hit ({model_name}). Retrying in {delay:.2f}s...")
+                            delay = (2 * (2 ** attempt)) + random.uniform(0, 1)
+                            log(f"Gemini rate limit ({model_name}); retrying in {delay:.1f}s")
                             time.sleep(delay)
                             continue
 
                         last_error = e
                         break
 
-        # Final factual fallback: deterministic contour extraction.
-        try:
-            fallback_svg = self.contour_gen.generate(
-                image_path=image_path,
-                style=style,
-                color=color,
-                symmetry=symmetry
-            )
-            if fallback_svg:
-                return fallback_svg
-        except Exception as e:
-            if not last_error:
-                last_error = e
+        if cancelled():
+            raise RuntimeError("Generation cancelled.")
 
-        # If quota is exhausted and fallback failed, raise a concise actionable error.
         if quota_blocked and last_error:
             raise Exception(
                 "Gemini quota exhausted (HTTP 429). "
-                "Auto Trace fallback also failed. "
+                "Wait for the quota to reset, or use Auto Trace in the meantime. "
                 f"Original error: {last_error}"
             )
 
+        reason = last_svg_issue or (str(last_error) if last_error else "no usable model response")
+        fallback = self._autotrace_fallback(image_path, style, color, symmetry, reason)
+        if fallback is not None:
+            return fallback
+
         if last_error:
             raise last_error
-        if last_svg_issue:
-            raise Exception(f"Gemini output rejected as non-documentary: {last_svg_issue}")
+        raise Exception(f"Failed to generate symbol: {reason}")
 
-        raise Exception("Failed to generate symbol: No suitable AI model found.")
-        
+    def _generation_config(self, sdk_types, image_mode):
+        """Build the generation config for a route, tolerating older SDKs."""
+        if image_mode:
+            return {"response_modalities": ["IMAGE", "TEXT"]}
+        options = {
+            "temperature": 0.2,
+            "max_output_tokens": 8192,
+            "system_instruction": self.SYSTEM_INSTRUCTION,
+        }
+        try:
+            return sdk_types.GenerateContentConfig(**options)
+        except Exception:
+            return options
+
     def _get_mime_type(self, file_path):
         """Get MIME type from file extension."""
         ext = os.path.splitext(file_path)[1].lower()
@@ -727,78 +822,7 @@ class GeminiGenerator:
         }
         return mime_types.get(ext, 'image/png')
         
-    def _extract_svg(self, text):
-        """Extract SVG code from response text."""
-        start = text.find('<svg')
-        end = text.find('</svg>')
-        
-        if start != -1 and end != -1:
-            return text[start:end+6]
-        return None
 
-    def _is_svg_documentary_safe(self, svg_code, style_key=None):
-        """Reject SVG outputs that look painterly or non-symbolic."""
-        if not svg_code:
-            return False, "empty SVG"
-
-        lower = svg_code.lower()
-        if "<svg" not in lower or "</svg>" not in lower:
-            return False, "invalid SVG envelope"
-        if "<path" not in lower:
-            return False, "no path geometry found"
-
-        for token in self._DISALLOWED_SVG_TOKENS:
-            if token in lower:
-                return False, f"contains disallowed element: {token}"
-
-        path_count = lower.count("<path")
-        if path_count <= 0:
-            return False, "no path elements found"
-        if style_key == STYLE_COLORED and path_count > 18:
-            return False, f"too many path elements for factual colored style ({path_count})"
-        if style_key == STYLE_TYPOLOGY and path_count > 26:
-            return False, f"too many path elements for typology style ({path_count})"
-        if style_key in (STYLE_LINE, STYLE_MEASURED) and path_count > 42:
-            return False, f"too many path elements for line/measured style ({path_count})"
-
-        # Reject overly decorative color palettes in documentary mode.
-        fills = re.findall(r'fill\s*=\s*["\']([^"\']+)["\']', svg_code, flags=re.IGNORECASE)
-        strokes = re.findall(r'stroke\s*=\s*["\']([^"\']+)["\']', svg_code, flags=re.IGNORECASE)
-        colors = set()
-        fill_colors = set()
-        for val in fills + strokes:
-            token = val.strip().lower()
-            if token in ("none", "transparent", "currentcolor", ""):
-                continue
-            colors.add(token)
-        for val in fills:
-            token = val.strip().lower()
-            if token in ("none", "transparent", "currentcolor", ""):
-                continue
-            fill_colors.add(token)
-
-        if style_key == STYLE_COLORED and len(colors) > 6:
-            return False, f"too many distinct colors ({len(colors)})"
-        if style_key == STYLE_TYPOLOGY and len(colors) > 5:
-            return False, f"too many distinct colors for typology style ({len(colors)})"
-        if style_key == STYLE_TYPOLOGY and len(fill_colors) < 2:
-            return False, "typology output too flat: expected at least 2 distinct fill tones"
-        if style_key in (STYLE_LINE, STYLE_MEASURED):
-            for c in colors:
-                if c in ("#000", "#000000", "black", "#111", "#111111", "#222", "#222222"):
-                    continue
-                if re.fullmatch(r'#[0-9a-f]{6}', c):
-                    try:
-                        r = int(c[1:3], 16)
-                        g = int(c[3:5], 16)
-                        b = int(c[5:7], 16)
-                        if abs(r - g) <= 10 and abs(g - b) <= 10:
-                            continue
-                    except Exception:
-                        pass
-                return False, f"non-monochrome color detected in line/measured mode: {c}"
-
-        return True, ""
 
     def _render_svg_to_image(self, svg_code, width, height):
         """Render SVG into a fixed-size transparent image."""
@@ -831,64 +855,3 @@ class GeminiGenerator:
         painter.end()
         return image
 
-    def _matches_reference_silhouette(self, svg_code, silhouette_bytes, style_key=None):
-        """Validate generated SVG silhouette against contour-derived reference mask."""
-        if not silhouette_bytes:
-            return True, ""
-
-        ref_mask = QImage()
-        if not ref_mask.loadFromData(silhouette_bytes):
-            return True, ""
-
-        rendered = self._render_svg_to_image(svg_code, ref_mask.width(), ref_mask.height())
-        if rendered is None:
-            return False, "failed to rasterize SVG for silhouette check"
-
-        inter = 0
-        union = 0
-        ref_count = 0
-        pred_count = 0
-
-        h = min(ref_mask.height(), rendered.height())
-        w = min(ref_mask.width(), rendered.width())
-        for y in range(h):
-            for x in range(w):
-                rp = ref_mask.pixelColor(x, y)
-                ref_inside = (rp.red() < 90 and rp.green() < 90 and rp.blue() < 90)
-
-                gp = rendered.pixelColor(x, y)
-                pred_inside = (
-                    gp.alpha() > 16 and
-                    not (gp.red() > 248 and gp.green() > 248 and gp.blue() > 248 and gp.alpha() > 220)
-                )
-
-                if ref_inside:
-                    ref_count += 1
-                if pred_inside:
-                    pred_count += 1
-                if ref_inside and pred_inside:
-                    inter += 1
-                if ref_inside or pred_inside:
-                    union += 1
-
-        if ref_count < 40:
-            return True, ""
-        if union <= 0 or pred_count <= 0:
-            return False, "empty rendered geometry against reference silhouette"
-
-        iou = float(inter) / float(union)
-        recall = float(inter) / float(ref_count)
-        precision = float(inter) / float(pred_count)
-
-        if style_key == STYLE_COLORED:
-            ok = (iou >= 0.72 and recall >= 0.84 and precision >= 0.72)
-        elif style_key == STYLE_TYPOLOGY:
-            ok = (iou >= 0.66 and recall >= 0.80 and precision >= 0.66)
-        elif style_key == STYLE_LINE:
-            ok = (iou >= 0.42 and recall >= 0.66)
-        else:
-            ok = (iou >= 0.50 and recall >= 0.72)
-
-        if ok:
-            return True, ""
-        return False, f"silhouette mismatch (IoU={iou:.2f}, recall={recall:.2f}, precision={precision:.2f})"

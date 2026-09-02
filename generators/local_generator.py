@@ -9,7 +9,9 @@ import base64
 from qgis.PyQt.QtGui import QImage
 from qgis.PyQt.QtCore import QSettings
 
+from ..log import log_exception
 from .style_control_utils import resolve_style_controls, style_controls_prompt_hint
+from .symbol_result import SymbolResult
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -118,7 +120,7 @@ class LocalGenerator:
         :param image_path: Path to the input artifact image
         :param style: Style preset name
         :param color: Optional hex color for the symbol
-        :return: QImage of generated symbol or None on failure
+        :return: SymbolResult carrying the generated raster
         """
         if not self.test_connection():
             raise ConnectionError(
@@ -145,9 +147,34 @@ class LocalGenerator:
                 "Only Automatic1111 backend is currently supported. "
                 "Please use an Automatic1111 server URL in settings."
             )
-        return self._generate_a1111(image_path, base_prompt)
+
+        # Send the artifact on a clean ground with its silhouette as an inpaint
+        # mask, so the model restyles the object instead of repainting the
+        # photo's background along with it.
+        mask_b64 = None
+        try:
+            from .contour_generator import ContourGenerator
+
+            silhouette = ContourGenerator().get_silhouette_bytes(image_path)
+            if silhouette:
+                # The A1111 mask marks the region to change in white.
+                import cv2
+                import numpy as np
+
+                buf = np.frombuffer(silhouette, dtype=np.uint8)
+                image = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
+                if image is not None:
+                    inverted = cv2.bitwise_not(image)
+                    ok, encoded = cv2.imencode(".png", inverted)
+                    if ok:
+                        mask_b64 = base64.b64encode(bytes(encoded)).decode("utf-8")
+        except Exception as e:
+            log_exception("Silhouette mask for local Stable Diffusion failed", e)
+
+        image = self._generate_a1111(image_path, base_prompt, mask_b64=mask_b64)
+        return SymbolResult.coerce(image, source="local-sd", style=str(style or ""))
             
-    def _generate_a1111(self, image_path, prompt):
+    def _generate_a1111(self, image_path, prompt, mask_b64=None):
         """Generate using Automatic1111 WebUI API."""
         import requests
         # Read and encode the input image
@@ -160,11 +187,21 @@ class LocalGenerator:
             "negative_prompt": self.NEGATIVE_PROMPT,
             "steps": 30,
             "cfg_scale": 7,
-            "width": 256,
-            "height": 256,
+            # 256 px was below the training resolution of every SD model and
+            # produced mushy output; 512 is the smallest sensible size.
+            "width": 512,
+            "height": 512,
             "denoising_strength": 0.7,
-            "sampler_name": "DPM++ 2M Karras"
+            "sampler_name": "DPM++ 2M Karras",
         }
+        if mask_b64:
+            payload.update({
+                "mask": mask_b64,
+                "inpainting_fill": 1,          # keep the original pixels as the base
+                "inpaint_full_res": False,
+                "mask_blur": 4,
+                "denoising_strength": 0.55,
+            })
         
         api_url = f"{self.server_url}/sdapi/v1/img2img"
         try:

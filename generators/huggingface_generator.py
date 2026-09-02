@@ -5,18 +5,29 @@ Generates symbols using Hugging Face Inference API with evidence-first fallback.
 """
 
 import base64
+import importlib.util
+import io
 import os
+import time
 from urllib.parse import urlparse
 
-import requests
 from qgis.PyQt.QtCore import QByteArray, QBuffer, QIODevice, QSettings, Qt
 from qgis.PyQt.QtGui import QImage, QPainter
 from qgis.PyQt.QtSvg import QSvgRenderer
 
-from ..defaults import HF_DEFAULT_MODEL_ID, HF_FALLBACK_MODEL_IDS, HF_LEGACY_MODEL_ALIASES
+from ..auth import get_api_key, set_api_key
+from ..defaults import (
+    HF_DEFAULT_MODEL_ID,
+    HF_GUIDANCE_MODELS,
+    HF_IMG2IMG_MODELS,
+    HF_LEGACY_MODEL_ALIASES,
+    HF_MAX_MODELS_PER_ROUTE,
+    HF_TXT2IMG_MODELS,
+)
 from .contour_generator import ContourGenerator
 from .style_control_utils import resolve_style_controls, style_controls_prompt_hint
-from ..log import log
+from ..log import log, log_exception
+from .symbol_result import SymbolResult
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -32,23 +43,78 @@ class HuggingFaceGenerator:
     """
 
     DEFAULT_MODEL_ID = HF_DEFAULT_MODEL_ID
-    INFERENCE_URL_TEMPLATE = "https://router.huggingface.co/hf-inference/models/{model_id}"
+    LOAD_RETRIES = 2
 
     def __init__(self):
         """Initialize the Hugging Face generator."""
         self.settings = QSettings()
-        self.api_key = self.settings.value('ArcheoGlyph/huggingface_api_key', '')
+        self.api_key = get_api_key("huggingface", self.settings)
         self.model_id = self.settings.value('ArcheoGlyph/hf_model_id', self.DEFAULT_MODEL_ID)
         self.contour_gen = ContourGenerator()
 
     def set_api_key(self, api_key):
-        """Save API key to settings."""
+        """Save the API key (QGIS authentication database when available)."""
         self.api_key = api_key
-        self.settings.setValue('ArcheoGlyph/huggingface_api_key', api_key)
+        set_api_key("huggingface", api_key, self.settings)
 
     def get_api_key(self):
-        """Get API key from settings."""
+        """Get API key from storage."""
         return self.api_key
+
+    @staticmethod
+    def hub_available():
+        """True when huggingface_hub is importable."""
+        return importlib.util.find_spec("huggingface_hub") is not None
+
+    def _client(self):
+        """
+        Inference client with automatic provider routing.
+
+        The old code called the ``hf-inference`` provider directly, but the
+        default and fallback models are served by third-party providers
+        through the router, which is why every request returned 404/403.
+        """
+        if not self.hub_available():
+            raise ImportError(
+                "The 'huggingface_hub' package is required for Hugging Face generation. "
+                "Install it with: pip install huggingface_hub"
+            )
+        from huggingface_hub import InferenceClient
+
+        return InferenceClient(api_key=(self.api_key or "").strip(), provider="auto", timeout=90)
+
+    @staticmethod
+    def _pil_to_qimage(image):
+        """Convert a PIL image returned by the hub client into a QImage."""
+        if image is None:
+            return None
+        if isinstance(image, (bytes, bytearray)):
+            payload = bytes(image)
+        else:
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG")
+            payload = buffer.getvalue()
+        result = QImage()
+        return result if result.loadFromData(payload) else None
+
+    def _call_model(self, client, model, prompt, image_bytes=None, steps=None, guidance=None):
+        """
+        One inference call. Instruction-edit models get only the prompt and the
+        image; guidance and negative prompts go to models that support them.
+        """
+        parameters = {}
+        if steps:
+            parameters["num_inference_steps"] = int(steps)
+        if guidance and model in HF_GUIDANCE_MODELS:
+            parameters["guidance_scale"] = float(guidance)
+            parameters["negative_prompt"] = self._negative_prompt()
+
+        if image_bytes is not None:
+            from PIL import Image
+
+            source = Image.open(io.BytesIO(bytes(image_bytes))).convert("RGB")
+            return client.image_to_image(source, prompt=prompt, model=model, **parameters)
+        return client.text_to_image(prompt, model=model, **parameters)
 
     def _normalize_model_id(self, model_id):
         """
@@ -866,68 +932,60 @@ class HuggingFaceGenerator:
 
     def _try_models(
         self,
+        client,
         models_to_try,
-        headers,
-        payload,
+        prompt,
         error_logs,
-        timeout=60,
+        image_bytes=None,
+        steps=None,
+        guidance=None,
         image_path=None,
         symmetry=False,
         style=None,
         color=None,
         prompt_influence=0.0,
         used_contour_seed=False,
+        cancel_check=None,
     ):
-        """Try a payload across model list and return first valid QImage."""
-        for model in models_to_try:
+        """Try each model in turn; return the first usable QImage."""
+        for model in models_to_try[:HF_MAX_MODELS_PER_ROUTE]:
+            if cancel_check and cancel_check():
+                return None
             if not model or len(model) < 3:
                 continue
 
-            api_url = self.INFERENCE_URL_TEMPLATE.format(model_id=model)
+            for attempt in range(self.LOAD_RETRIES + 1):
+                try:
+                    raw = self._call_model(
+                        client, model, prompt, image_bytes=image_bytes, steps=steps, guidance=guidance
+                    )
+                except Exception as exc:
+                    message = str(exc)
+                    lowered = message.lower()
+                    loading = "503" in message or "loading" in lowered or "currently loading" in lowered
+                    if loading and attempt < self.LOAD_RETRIES:
+                        delay = 5.0 * (attempt + 1)
+                        log(f"Model {model} is loading; retrying in {delay:.0f}s")
+                        time.sleep(delay)
+                        continue
+                    error_logs.append(f"Model {model}: {message[:220]}")
+                    break
 
-            try:
-                response = requests.post(api_url, headers=headers, json=payload, timeout=timeout)
-            except requests.RequestException as exc:
-                error_logs.append(f"Model {model}: request failed - {exc}")
-                continue
-
-            if response.status_code == 200:
-                image = QImage()
-                if image.loadFromData(response.content):
-                    if image_path and os.path.exists(image_path):
-                        return self._apply_reference_mask(
-                            generated_image=image,
-                            image_path=image_path,
-                            symmetry=symmetry,
-                            style=style,
-                            color=color,
-                            prompt_influence=prompt_influence,
-                            used_contour_seed=used_contour_seed,
-                        )
-                    return image
-
-                detail = self._get_error_detail(response)
-                if detail:
-                    error_logs.append(f"Model {model}: invalid image response - {detail[:220]}")
-                else:
-                    error_logs.append(f"Model {model}: invalid image response")
-                continue
-
-            detail = self._get_error_detail(response)
-            suffix = f" - {detail[:220]}" if detail else ""
-
-            if response.status_code == 401:
-                error_logs.append(f"Model {model}: AUTH ERROR (401){suffix}")
-            elif response.status_code == 403:
-                error_logs.append(f"Model {model}: FORBIDDEN (403){suffix}")
-            elif response.status_code == 404:
-                error_logs.append(f"Model {model}: NOT FOUND (404){suffix}")
-            elif response.status_code == 410:
-                error_logs.append(f"Model {model}: GONE (410){suffix}")
-            elif response.status_code == 503:
-                error_logs.append(f"Model {model}: LOADING (503){suffix}")
-            else:
-                error_logs.append(f"Model {model}: HTTP {response.status_code}{suffix}")
+                image = self._pil_to_qimage(raw)
+                if image is None or image.isNull():
+                    error_logs.append(f"Model {model}: response was not a usable image")
+                    break
+                if image_path and os.path.exists(image_path):
+                    return self._apply_reference_mask(
+                        generated_image=image,
+                        image_path=image_path,
+                        symmetry=symmetry,
+                        style=style,
+                        color=color,
+                        prompt_influence=prompt_influence,
+                        used_contour_seed=used_contour_seed,
+                    )
+                return image
 
         return None
 
@@ -941,37 +999,37 @@ class HuggingFaceGenerator:
         factuality=None,
         symbolic_looseness=None,
         exaggeration=None,
+        cancel_check=None,
     ):
         """
-        Generate symbol image using HF API.
+        Generate a symbol with the Hugging Face inference providers.
 
         :param prompt: Text prompt
         :param style: style text
         :param color: optional override color
         :param image_path: optional reference image path
         :param symmetry: optional symmetry hint
-        :return: QImage
+        :param cancel_check: optional callable returning True to abort
+        :return: SymbolResult
         """
         api_key = (self.api_key or "").strip()
         if not api_key:
             raise ValueError("Hugging Face API token is missing. Please set it in Settings.")
 
         self.model_id = self._normalize_model_id(self.model_id)
-        if "flat-design-icons" in self.model_id:
-            self.model_id = self.DEFAULT_MODEL_ID
-        self.settings.setValue('ArcheoGlyph/hf_model_id', self.model_id)
+        # Settings are owned by the GUI thread; the worker only reads them.
+        client = self._client()
 
-        models_to_try = [self.model_id]
-        for fallback in HF_FALLBACK_MODEL_IDS:
-            normalized = self._normalize_model_id(fallback)
-            if normalized not in models_to_try:
-                models_to_try.append(normalized)
+        def _route(preferred, pool):
+            models = [preferred] if preferred in pool else []
+            for candidate in pool:
+                normalized = self._normalize_model_id(candidate)
+                if normalized not in models:
+                    models.append(normalized)
+            return models
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "image/png",
-        }
+        txt2img_models = _route(self.model_id, HF_TXT2IMG_MODELS)
+        img2img_models = _route(self.model_id, HF_IMG2IMG_MODELS)
 
         error_logs = []
         prompt_influence = self._prompt_influence_score(prompt)
@@ -1044,15 +1102,14 @@ class HuggingFaceGenerator:
                 if contour_seed is not None:
                     contour_seed_b64 = self._qimage_to_base64_png(contour_seed)
 
-            # Ink Centerline constraint image for img2img prompt enrichment
-            ink_constraint_b64 = None
+            # Line guide: black strokes measured from the artifact on white.
+            # For stroke styles this *is* the structure we want redrawn, so it
+            # is sent as the input image rather than described in the prompt.
+            guide_bytes = None
             try:
-                ink_bytes = self.contour_gen.get_ink_constraint_bytes(image_path)
-                if ink_bytes:
-                    import base64 as _b64
-                    ink_constraint_b64 = _b64.b64encode(ink_bytes).decode("utf-8")
-            except Exception:
-                pass
+                guide_bytes = self.contour_gen.get_ink_constraint_bytes(image_path)
+            except Exception as e:
+                log_exception("Line guide extraction failed", e)
 
             if not reference_hex:
                 silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
@@ -1063,8 +1120,17 @@ class HuggingFaceGenerator:
 
         if has_reference:
             try:
-                if contour_seed_b64:
-                    image_b64 = contour_seed_b64
+                if style_key in (STYLE_LINE, STYLE_MEASURED) and guide_bytes:
+                    input_bytes = guide_bytes
+                    img2img_prompt = (
+                        f"{base_prompt}, the input image already shows the artifact's measured strokes "
+                        "in black on white; keep every stroke in place and redraw them as a clean "
+                        "archaeological line symbol, add nothing new"
+                    )
+                    img_strength = 0.2
+                    source_tag = "line_guide"
+                elif contour_seed_b64:
+                    input_bytes = base64.b64decode(contour_seed_b64)
                     img2img_prompt = (
                         f"{base_prompt}, "
                         "input image is an archaeological contour seed, preserve its exact silhouette and proportions, "
@@ -1076,17 +1142,12 @@ class HuggingFaceGenerator:
                     source_tag = "contour_seed"
                 else:
                     with open(image_path, 'rb') as f:
-                        image_b64 = base64.b64encode(f.read()).decode('utf-8')
+                        input_bytes = f.read()
                     img2img_prompt = (
                         f"{base_prompt}, preserve measured silhouette and proportions from the reference photo, "
                         "retain observed engraved motifs and relief zones as simplified factual linework, "
                         "do not invent motifs, allow stylistic simplification into a readable archaeological symbol icon"
                     )
-                    if ink_constraint_b64:
-                        img2img_prompt += (
-                            ", STRICT: follow the ink centerline constraint image — "
-                            "thin dark lines show real artifact strokes; match their position and direction"
-                        )
                     img_strength = 0.28 + (0.18 * float(prompt_influence))
                     source_tag = "reference_photo"
 
@@ -1101,67 +1162,46 @@ class HuggingFaceGenerator:
                 except Exception:
                     pass
 
-                img2img_models = []
-                for mid in list(HF_FALLBACK_MODEL_IDS) + models_to_try:
-                    normalized = self._normalize_model_id(mid)
-                    if normalized not in img2img_models:
-                        img2img_models.append(normalized)
-
-                img2img_payload = {
-                    "inputs": image_b64,
-                    "parameters": {
-                        "prompt": img2img_prompt,
-                        "negative_prompt": self._negative_prompt(),
-                        "num_inference_steps": img_steps,
-                        "guidance_scale": img_guidance,
-                        "strength": img_strength,
-                    }
-                }
-
                 result = self._try_models(
+                    client=client,
                     models_to_try=img2img_models,
-                    headers=headers,
-                    payload=img2img_payload,
+                    prompt=img2img_prompt,
                     error_logs=error_logs,
-                    timeout=75,
+                    image_bytes=input_bytes,
+                    steps=img_steps,
+                    guidance=img_guidance,
                     image_path=image_path,
                     symmetry=symmetry,
                     style=style,
                     color=color,
                     prompt_influence=prompt_influence,
                     used_contour_seed=(source_tag == "contour_seed"),
+                    cancel_check=cancel_check,
                 )
                 if result:
-                    return result
+                    return SymbolResult.coerce(result, source="huggingface", style=str(style or ""))
             except Exception as exc:
                 error_logs.append(f"Reference img2img setup failed: {exc}")
 
         # 2) In reference mode we skip txt2img to avoid imaginative drift.
         # txt2img is used only when there is no photo reference.
         if not has_reference:
-            txt2img_payload = {
-                "inputs": base_prompt,
-                "parameters": {
-                    "negative_prompt": self._negative_prompt(),
-                    "num_inference_steps": 30,
-                    "guidance_scale": 5.0,
-                }
-            }
-
             result = self._try_models(
-                models_to_try=models_to_try,
-                headers=headers,
-                payload=txt2img_payload,
+                client=client,
+                models_to_try=txt2img_models,
+                prompt=base_prompt,
                 error_logs=error_logs,
-                timeout=60,
+                steps=30,
+                guidance=5.0,
                 image_path=image_path,
                 symmetry=symmetry,
                 style=style,
                 color=color,
                 prompt_influence=prompt_influence,
+                cancel_check=cancel_check,
             )
             if result:
-                return result
+                return SymbolResult.coerce(result, source="huggingface", style=str(style or ""))
 
         # 3) Final deterministic evidence fallback if all remote calls fail.
         if has_reference:
@@ -1174,21 +1214,26 @@ class HuggingFaceGenerator:
                     symmetry=symmetry
                 )
             if contour_result:
-                return contour_result
+                result = SymbolResult.coerce(
+                    contour_result, source="autotrace-fallback", style=str(style or "")
+                )
+                report = "; ".join(error_logs[:2]) if error_logs else "no model returned an image"
+                result.add_warning(f"Hugging Face output was not used ({report}); showing an Auto Trace symbol.")
+                return result
 
         report = "\n".join(error_logs[:10]) if error_logs else "No response received from any model."
         hint_lines = []
         full_log = "\n".join(error_logs)
 
-        if "AUTH ERROR (401)" in full_log:
+        if "401" in full_log or "unauthorized" in full_log.lower():
             hint_lines.append("Check token validity and ensure it has read/inference permissions.")
-        if "FORBIDDEN (403)" in full_log:
+        if "403" in full_log or "forbidden" in full_log.lower():
             hint_lines.append("Model may be gated. Accept model terms on Hugging Face or choose a public model.")
-        if "NOT FOUND (404)" in full_log:
+        if "404" in full_log or "not found" in full_log.lower():
             hint_lines.append("Model id may be invalid or not deployed on this provider.")
             hint_lines.append(f"Try '{HF_DEFAULT_MODEL_ID}' or 'Qwen/Qwen-Image'.")
-        if "GONE (410)" in full_log:
-            hint_lines.append("Legacy endpoint is retired. Use router.huggingface.co/hf-inference/models/... endpoint.")
+        if "gated" in full_log.lower():
+            hint_lines.append("Accept the model's licence on huggingface.co, or pick an ungated model.")
         if image_path:
             hint_lines.append("Reference photo mode was enabled, but no valid remote image was returned.")
 
