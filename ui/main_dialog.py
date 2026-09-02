@@ -5,13 +5,13 @@ ArcheoGlyph - Main Dialog UI
 
 import os
 from qgis.PyQt.QtCore import Qt, QSize, pyqtSignal, QThread, QRectF, QSettings
-from qgis.PyQt.QtGui import QPixmap, QImage, QColor, QDragEnterEvent, QDropEvent
+from qgis.PyQt.QtGui import QPixmap, QColor, QDragEnterEvent, QDropEvent
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QSpinBox, QGroupBox, QRadioButton, QButtonGroup,
     QFileDialog, QColorDialog, QProgressBar, QMessageBox,
     QFrame, QWidget, QScrollArea, QCheckBox, QSizePolicy,
-    QLineEdit, QTabWidget, QSlider
+    QLineEdit, QTabWidget, QSlider, QInputDialog
 )
 from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
 
@@ -22,6 +22,7 @@ from ..defaults import (
     PLUGIN_VERSION,
 )
 from ..generators.style_utils import STYLE_LEGEND, STYLE_OPTIONS
+from ..generators.symbol_result import SymbolResult
 from ..generators.style_control_utils import (
     STYLE_CONTROL_DEFAULTS,
     STYLE_CONTROL_MAX,
@@ -36,20 +37,23 @@ from ..generators.style_control_utils import (
 
 
 class GenerationThread(QThread):
-    """Thread for running generation tasks."""
-    finished = pyqtSignal(object, str) # result (QPixmap), error_message
+    """Runs a generator off the GUI thread and emits a SymbolResult."""
+    result_ready = pyqtSignal(object, str)  # SymbolResult or None, error_message
 
-    def __init__(self, generator_func, **kwargs):
+    def __init__(self, generator_func, source_label="", style_label="", **kwargs):
         super().__init__()
         self.generator_func = generator_func
+        self.source_label = source_label
+        self.style_label = style_label
         self.kwargs = kwargs
 
     def run(self):
         try:
-            result = self.generator_func(**self.kwargs)
-            self.finished.emit(result, "")
+            raw = self.generator_func(**self.kwargs)
+            result = SymbolResult.coerce(raw, source=self.source_label, style=self.style_label)
+            self.result_ready.emit(result, "")
         except Exception as e:
-            self.finished.emit(None, str(e))
+            self.result_ready.emit(None, str(e))
 
 
 class ImageDropArea(QLabel):
@@ -248,6 +252,7 @@ class ArcheoGlyphDialog(QDialog):
         self.plugin_version = PLUGIN_VERSION
         self.current_color = QColor("#8B4513")  # Default brown for artifacts
         self.generation_thread = None
+        self.current_result = None
         
         self.setup_ui()
 
@@ -970,6 +975,7 @@ class ArcheoGlyphDialog(QDialog):
         
         try:
             target_func = None
+            source_label = "unknown"
             kwargs = {}
             prompt = self.prompt_input.text().strip()
             selected_color = self.current_color.name() if self.override_color_check.isChecked() else None
@@ -978,7 +984,8 @@ class ArcheoGlyphDialog(QDialog):
             if self.autotrace_radio.isChecked():
                 from ..generators.contour_generator import ContourGenerator
                 self._current_generator = ContourGenerator()
-                target_func = self._current_generator.generate
+                target_func = self._current_generator.generate_result
+                source_label = "autotrace"
                 detail_mode = str(
                     self.autotrace_detail_mode_combo.currentData() or "fast"
                 ).strip().lower()
@@ -1005,6 +1012,7 @@ class ArcheoGlyphDialog(QDialog):
                 from ..generators.gemini_generator import GeminiGenerator
                 self._current_generator = GeminiGenerator()
                 target_func = self._current_generator.generate
+                source_label = "gemini"
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'prompt': prompt,
@@ -1020,6 +1028,7 @@ class ArcheoGlyphDialog(QDialog):
                 from ..generators.huggingface_generator import HuggingFaceGenerator
                 self._current_generator = HuggingFaceGenerator()
                 target_func = self._current_generator.generate
+                source_label = "huggingface"
 
                 if prompt:
                     self.mode_info_label.setText(
@@ -1046,6 +1055,7 @@ class ArcheoGlyphDialog(QDialog):
                 from ..generators.local_generator import LocalGenerator
                 self._current_generator = LocalGenerator()
                 target_func = self._current_generator.generate
+                source_label = "local-sd"
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'prompt': prompt,
@@ -1059,6 +1069,7 @@ class ArcheoGlyphDialog(QDialog):
                 from ..generators.template_generator import TemplateGenerator
                 self._current_generator = TemplateGenerator(self.plugin_dir)
                 target_func = self._current_generator.generate
+                source_label = "template"
                 template_name = self.template_combo.currentText()
                 if not template_name or template_name == "No templates match current filter":
                     QMessageBox.warning(self, "No Template", "Adjust template filters and select a valid template.")
@@ -1072,8 +1083,10 @@ class ArcheoGlyphDialog(QDialog):
                 }
             
             if target_func:
-                self.generation_thread = GenerationThread(target_func, **kwargs)
-                self.generation_thread.finished.connect(self.on_generation_finished)
+                self.generation_thread = GenerationThread(
+                    target_func, source_label, self.style_combo.currentText(), **kwargs
+                )
+                self.generation_thread.result_ready.connect(self.on_generation_finished)
                 self.generation_thread.start()
             
         except Exception as e:
@@ -1104,32 +1117,40 @@ class ArcheoGlyphDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Generation failed: {message}")
             return
             
-        if result:
-            # If result is a string (SVG code from Gemini), render to QPixmap on main thread
-            if isinstance(result, str):
-                pixmap = self._svg_to_pixmap(result)
-                if pixmap:
-                    self.preview_label.set_preview(pixmap)
-                    self.save_btn.setEnabled(True)
-                    self.apply_btn.setEnabled(True)
-                else:
-                    QMessageBox.warning(self, "Failed", "Generated SVG code was invalid.")
-            else:
-                # Result is already a QPixmap (from template or local SD)
-                # OR it is a QImage (after thread safety fix)
-                if isinstance(result, QImage):
-                    pixmap = QPixmap.fromImage(result)
-                    self.preview_label.set_preview(pixmap)
-                else:
-                    self.preview_label.set_preview(result)
-
-                self.save_btn.setEnabled(True)
-                self.apply_btn.setEnabled(True)
-        else:
+        if result is None or result.is_empty:
             QMessageBox.warning(self, "Failed", "Generation returned no result.")
+            return
 
-    def _svg_to_pixmap(self, svg_code):
-        """Render SVG code to QPixmap (must be called on the main/GUI thread)."""
+        pixmap = self._result_to_pixmap(result)
+        if pixmap is None or pixmap.isNull():
+            QMessageBox.warning(self, "Failed", "Generated symbol could not be rendered.")
+            return
+
+        self.current_result = result
+        self.preview_label.set_preview(pixmap)
+        self.save_btn.setEnabled(True)
+        self.apply_btn.setEnabled(True)
+
+        kind = "vector SVG" if result.is_vector else "raster PNG"
+        info = f"Result: {kind} from {result.source}"
+        if result.warnings:
+            info += " | " + "; ".join(result.warnings[:3])
+        self._set_mode_info_with_controls(show_controls=False, base_text=info)
+
+    def _result_to_pixmap(self, result):
+        """Render a SymbolResult for the preview (GUI thread only)."""
+        if result.is_vector:
+            pixmap = self._svg_to_pixmap(result.svg)
+            if pixmap is not None:
+                return pixmap
+        if result.raster_png:
+            pixmap = QPixmap()
+            if pixmap.loadFromData(result.raster_png, "PNG"):
+                return pixmap
+        return None
+
+    def _svg_to_pixmap(self, svg_code, size=512):
+        """Render SVG code to a square QPixmap (must be called on the main/GUI thread)."""
         from qgis.PyQt.QtCore import QByteArray
         from qgis.PyQt.QtSvg import QSvgRenderer
         from qgis.PyQt.QtGui import QPainter
@@ -1140,7 +1161,7 @@ class ArcheoGlyphDialog(QDialog):
             return None
 
         renderer.setAspectRatioMode(Qt.KeepAspectRatio)
-        pixmap = QPixmap(256, 256)
+        pixmap = QPixmap(int(size), int(size))
         pixmap.fill(Qt.transparent)
 
         view_box = renderer.viewBoxF()
@@ -1149,40 +1170,43 @@ class ArcheoGlyphDialog(QDialog):
             if default_size.isValid() and default_size.width() > 0 and default_size.height() > 0:
                 view_box = QRectF(0, 0, float(default_size.width()), float(default_size.height()))
             else:
-                view_box = QRectF(0, 0, 256.0, 256.0)
+                view_box = QRectF(0, 0, float(size), float(size))
 
-        scale = min(256.0 / view_box.width(), 256.0 / view_box.height())
+        side = float(size)
+        scale = min(side / view_box.width(), side / view_box.height())
         target_w = view_box.width() * scale
         target_h = view_box.height() * scale
-        target_x = (256.0 - target_w) * 0.5
-        target_y = (256.0 - target_h) * 0.5
+        target_x = (side - target_w) * 0.5
+        target_y = (side - target_h) * 0.5
         target_rect = QRectF(target_x, target_y, target_w, target_h)
 
         painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
         renderer.render(painter, target_rect)
         painter.end()
 
         return pixmap
             
     def save_to_library(self):
-        """Save generated symbol to QGIS symbol library."""
-        if not self.preview_label.generated_image:
+        """Save generated symbol to the QGIS symbol library."""
+        if self.current_result is None:
             QMessageBox.warning(self, "No Symbol", "Please generate a symbol first.")
             return
-            
-        from ..symbol_manager import SymbolManager
-        
-        manager = SymbolManager()
-        success = manager.save_to_library(
-            self.preview_label.generated_image,
-            name="ArchaeoGlyph Symbol"
+
+        name, ok = QInputDialog.getText(
+            self, "Save to Library", "Symbol name:", text="ArchaeoGlyph Symbol"
         )
-        
-        if success:
-            QMessageBox.information(self, "Saved", "Symbol saved to QGIS library!")
+        if not ok:
+            return
+
+        from ..symbol_manager import SymbolManager
+
+        final_name = SymbolManager().save_to_library(self.current_result, name=name)
+        if final_name:
+            QMessageBox.information(self, "Saved", f"Symbol saved to QGIS library as '{final_name}'.")
         else:
-            QMessageBox.warning(self, "Error", "Failed to save symbol.")
-            
+            QMessageBox.warning(self, "Error", "Failed to save symbol. See the ArchaeoGlyph message log.")
+
     def apply_to_layer(self):
         """Apply generated symbol to current layer."""
         layer = self._get_selected_layer()
@@ -1191,7 +1215,7 @@ class ArcheoGlyphDialog(QDialog):
             QMessageBox.warning(self, "No Layer", "Please choose a point layer in Target Layer.")
             return
             
-        if not self.preview_label.generated_image:
+        if self.current_result is None:
             QMessageBox.warning(self, "No Symbol", "Please generate a symbol first.")
             return
             
@@ -1208,7 +1232,7 @@ class ArcheoGlyphDialog(QDialog):
 
         success = manager.apply_to_layer(
             layer=layer,
-            symbol_image=self.preview_label.generated_image,
+            result=self.current_result,
             size_mode=size_mode,
             min_size=min_size,
             max_size=max_size,
@@ -1220,7 +1244,7 @@ class ArcheoGlyphDialog(QDialog):
             QMessageBox.information(self, "Applied", f"Symbol applied to layer: {layer.name()}")
             layer.triggerRepaint()
         else:
-            QMessageBox.warning(self, "Error", "Failed to apply symbol to layer.")
+            QMessageBox.warning(self, "Error", "Failed to apply symbol to layer. See the ArchaeoGlyph message log.")
             
     def open_settings(self):
         """Open the settings dialog."""

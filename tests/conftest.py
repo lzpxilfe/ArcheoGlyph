@@ -64,12 +64,24 @@ def _install_qgis_stubs():
             return str(ROOT / ".pytest_qgis_profile") + "/"
 
     core.QgsApplication = _QgsApplication
+    # Placeholder classes so QGIS-facing modules import; tests never call them.
+    for name in (
+        "QgsGraduatedSymbolRenderer", "QgsMarkerSymbol", "QgsRasterMarkerSymbolLayer",
+        "QgsRendererRange", "QgsSingleSymbolRenderer", "QgsStyle", "QgsSvgMarkerSymbolLayer",
+        "QgsUnitTypes", "QgsProject", "QgsVectorLayer", "QgsWkbTypes",
+    ):
+        setattr(core, name, type(name, (), {}))
+    qtgui = types.ModuleType("qgis.PyQt.QtGui")
+    for name in ("QColor", "QImage", "QPixmap", "QPainter"):
+        setattr(qtgui, name, type(name, (), {}))
     qgis.PyQt = pyqt
     qgis.core = core
     pyqt.QtCore = qtcore
+    pyqt.QtGui = qtgui
     sys.modules["qgis"] = qgis
     sys.modules["qgis.PyQt"] = pyqt
     sys.modules["qgis.PyQt.QtCore"] = qtcore
+    sys.modules["qgis.PyQt.QtGui"] = qtgui
     sys.modules["qgis.core"] = core
 
 

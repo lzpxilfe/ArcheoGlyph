@@ -942,6 +942,23 @@ class ContourGenerator:
         svg_output.append("</svg>")
         return "".join(svg_output)
 
+    def generate_result(self, image_path, **kwargs):
+        """
+        Run ``generate`` and return a SymbolResult whose SVG is cropped to the
+        object, squared, and parametrised for QGIS (param(fill)/param(outline)).
+        """
+        from .symbol_result import SymbolResult
+        from .autotrace.svg_builder import finalize_svg
+
+        svg = self.generate(image_path, **kwargs)
+        svg, info = finalize_svg(svg)
+        result = SymbolResult(svg=svg, source="autotrace", style=str(kwargs.get("style") or ""), meta=info)
+        if info.get("empty"):
+            result.add_warning("No object silhouette was found in the image.")
+        if info.get("parse_error"):
+            result.add_warning(f"SVG could not be post-processed: {info['parse_error']}")
+        return result
+
     def _clamp(self, value, lower, upper):
         """Clamp numeric value into [lower, upper]."""
         return max(lower, min(upper, value))

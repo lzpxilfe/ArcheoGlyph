@@ -1,23 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-ArcheoGlyph - Symbol Manager
-Manages saving, loading, and applying symbols to QGIS layers.
+ArchaeoGlyph - Symbol Manager
+Stores generated symbols in the QGIS user profile and applies them to layers
+or the symbol library as SVG (preferred) or raster marker layers.
 """
 
-import os
 import math
+import os
 import re
-import tempfile
 
-from .log import log_exception
-from .symbol_breaks import compute_breaks
+from qgis.PyQt.QtGui import QColor
 from qgis.core import (
+    QgsApplication,
+    QgsGraduatedSymbolRenderer,
     QgsMarkerSymbol,
-    QgsRasterMarkerSymbolLayer, QgsSingleSymbolRenderer,
-    QgsGraduatedSymbolRenderer, QgsRendererRange,
-    QgsStyle, QgsUnitTypes
+    QgsRasterMarkerSymbolLayer,
+    QgsRendererRange,
+    QgsSingleSymbolRenderer,
+    QgsStyle,
+    QgsSvgMarkerSymbolLayer,
+    QgsUnitTypes,
 )
-import time as import_time
 
 from .defaults import (
     DEFAULT_GRADUATED_CLASSES,
@@ -25,114 +28,126 @@ from .defaults import (
     DEFAULT_MAX_SYMBOL_SIZE_MM,
     DEFAULT_MIN_SYMBOL_SIZE_MM,
 )
+from .generators.symbol_result import SymbolResult
+from .log import log, log_exception
+from .symbol_breaks import compute_breaks
+
+STORE_SUBDIR = os.path.join("archeoglyph", "symbols")
+
+
+def symbol_store_dir():
+    """
+    Directory that holds generated symbol files.
+
+    Lives inside the active QGIS user profile, so it survives plugin updates,
+    is writable on system-wide installs, and is never cleaned up behind a
+    project that references it.
+    """
+    base = QgsApplication.qgisSettingsDirPath() or os.path.expanduser("~")
+    path = os.path.join(base, STORE_SUBDIR)
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 class SymbolManager:
     """Manager for symbol operations in QGIS."""
-    
+
     def __init__(self):
-        """Initialize the symbol manager."""
-        self.symbol_dir = self._get_symbol_directory()
-        
-    def _get_symbol_directory(self):
-        """Get or create the symbol storage directory."""
-        base_dir = os.path.join(
-            os.path.dirname(__file__),
-            'symbols'
-        )
-        if not os.path.exists(base_dir):
-            os.makedirs(base_dir)
-        return base_dir
+        self.symbol_dir = symbol_store_dir()
 
-    def _get_runtime_cache_directory(self):
-        """Get or create a deterministic runtime cache directory for layer-applied symbols."""
-        cache_dir = os.path.join(tempfile.gettempdir(), "archeoglyph_symbols")
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
-        return cache_dir
+    # ------------------------------------------------------------------
+    # Storage
+    # ------------------------------------------------------------------
 
-    def _cleanup_runtime_cache(self, cache_dir, max_age_days=30):
-        """Remove very old cache files to avoid unbounded temp growth."""
-        try:
-            now_ts = import_time.time()
-            max_age_seconds = float(max_age_days) * 24.0 * 60.0 * 60.0
-            for name in os.listdir(cache_dir):
-                if not name.lower().startswith("archeoglyph_symbol_"):
-                    continue
-                if not name.lower().endswith(".png"):
-                    continue
-                path = os.path.join(cache_dir, name)
-                if not os.path.isfile(path):
-                    continue
-                age_seconds = now_ts - os.path.getmtime(path)
-                if age_seconds > max_age_seconds:
-                    try:
-                        os.remove(path)
-                    except Exception:
-                        continue
-        except Exception:
-            # Cache cleanup should never break symbol application.
-            return
-
-    def _layer_symbol_cache_path(self, layer):
-        """Return deterministic cache path per layer id."""
-        cache_dir = self._get_runtime_cache_directory()
-        self._cleanup_runtime_cache(cache_dir)
-
-        layer_id = ""
-        try:
-            layer_id = str(layer.id() or "")
-        except Exception:
-            layer_id = ""
-        safe_layer_id = re.sub(r"[^A-Za-z0-9_\-\.]", "_", layer_id).strip("._")
-        if not safe_layer_id:
-            safe_layer_id = f"tmp_{int(import_time.time() * 1000)}"
-        return os.path.join(cache_dir, f"archeoglyph_symbol_{safe_layer_id}.png")
-        
-    def save_to_library(self, pixmap, name="ArcheoGlyph Symbol"):
+    def store(self, result):
         """
-        Save a symbol to QGIS style library.
-        
-        :param pixmap: QPixmap of the symbol
-        :param name: Name for the symbol
-        :return: True if successful
+        Write ``result`` (SymbolResult or legacy QPixmap/QImage/str) to the
+        store and return ``(path, result)``. Files are content-addressed, so
+        the same symbol is never written twice and old references stay valid.
+        """
+        result = SymbolResult.coerce(result)
+        if result is None or result.is_empty:
+            raise ValueError("No symbol content to store.")
+        path = os.path.join(self.symbol_dir, f"{result.content_hash()}.{result.extension}")
+        if not os.path.exists(path):
+            with open(path, "wb") as stream:
+                stream.write(result.payload_bytes())
+        return path, result
+
+    def _make_symbol_layer(self, path, result, size_mm):
+        """Build an SVG or raster marker layer for a stored symbol file."""
+        size_mm = float(size_mm)
+        if path.lower().endswith(".svg"):
+            layer = QgsSvgMarkerSymbolLayer(path)
+            meta = result.meta if result is not None else {}
+            fill = meta.get("fill")
+            outline = meta.get("outline")
+            if fill:
+                layer.setFillColor(QColor(str(fill)))
+            if outline:
+                layer.setStrokeColor(QColor(str(outline)))
+            width_units = meta.get("outline_width")
+            viewbox = meta.get("viewbox")
+            if width_units and viewbox and len(viewbox) == 4 and float(viewbox[2]) > 0:
+                # Convert the SVG's own stroke width into millimetres at this size.
+                width_mm = float(width_units) * size_mm / float(viewbox[2])
+                layer.setStrokeWidth(max(0.05, width_mm))
+                layer.setStrokeWidthUnit(QgsUnitTypes.RenderMillimeters)
+        else:
+            layer = QgsRasterMarkerSymbolLayer(path)
+        layer.setSize(size_mm)
+        layer.setSizeUnit(QgsUnitTypes.RenderMillimeters)
+        return layer
+
+    def _make_symbol(self, path, result, size_mm):
+        symbol = QgsMarkerSymbol.createSimple({})
+        symbol.deleteSymbolLayer(0)
+        symbol.appendSymbolLayer(self._make_symbol_layer(path, result, size_mm))
+        return symbol
+
+    # ------------------------------------------------------------------
+    # Library
+    # ------------------------------------------------------------------
+
+    def save_to_library(self, result, name="ArchaeoGlyph Symbol"):
+        """
+        Save a symbol to the QGIS default style database.
+
+        :return: the final (unique) symbol name, or None on failure
         """
         try:
-            # Save the pixmap to a file
-            file_path = os.path.join(self.symbol_dir, f"{name}.png")
-            pixmap.save(file_path, "PNG")
-            
-            # Create a marker symbol with the image
-            symbol = QgsMarkerSymbol.createSimple({})
-            symbol.deleteSymbolLayer(0)
-            
-            raster_layer = QgsRasterMarkerSymbolLayer(file_path)
-            raster_layer.setSize(DEFAULT_LIBRARY_SYMBOL_SIZE_MM)
-            symbol.appendSymbolLayer(raster_layer)
-            
-            # Add to QGIS default style
+            path, result = self.store(result)
+            symbol = self._make_symbol(path, result, DEFAULT_LIBRARY_SYMBOL_SIZE_MM)
+
             style = QgsStyle.defaultStyle()
-            
-            # Generate unique name if exists
-            final_name = name
+            base_name = re.sub(r"\s+", " ", str(name or "ArchaeoGlyph Symbol")).strip() or "ArchaeoGlyph Symbol"
+            final_name = base_name
             counter = 1
-            while style.symbolNames().count(final_name) > 0:
-                final_name = f"{name}_{counter}"
+            existing = set(style.symbolNames())
+            while final_name in existing:
+                final_name = f"{base_name} {counter}"
                 counter += 1
-                
-            style.addSymbol(final_name, symbol)
-            style.saveSymbol(final_name, symbol, True, [])
-            
-            return True
-            
+
+            if not style.addSymbol(final_name, symbol, True):
+                log(f"QgsStyle refused symbol '{final_name}'", level="warning")
+                return None
+            try:
+                style.tagSymbol(QgsStyle.SymbolEntity, final_name, ["ArchaeoGlyph"])
+            except Exception as e:  # tagging is cosmetic
+                log_exception("Could not tag symbol", e)
+            return final_name
         except Exception as e:
             log_exception("Error saving symbol", e)
-            return False
-            
+            return None
+
+    # ------------------------------------------------------------------
+    # Layer rendering
+    # ------------------------------------------------------------------
+
     def apply_to_layer(
         self,
         layer,
-        symbol_image,
+        result,
         size_mode=0,
         min_size=DEFAULT_MIN_SYMBOL_SIZE_MM,
         max_size=DEFAULT_MAX_SYMBOL_SIZE_MM,
@@ -140,100 +155,52 @@ class SymbolManager:
         num_classes=DEFAULT_GRADUATED_CLASSES,
     ):
         """
-        Apply a symbol to a vector layer.
-        
-        :param layer: QgsVectorLayer to apply symbol to
-        :param symbol_image: QPixmap of the symbol
+        Apply a symbol to a point layer.
+
         :param size_mode: 0=fixed, 1=natural breaks, 2=equal interval, 3=quantile
-        :param min_size: Minimum symbol size
-        :param max_size: Maximum symbol size
-        :param size_field: Field name for graduated sizing (optional)
-        :param num_classes: Number of graduated classes (2..9 recommended)
         :return: True if successful
         """
         try:
-            # Save to a deterministic per-layer cache path.
-            # This avoids unbounded temp-file accumulation while preserving QGIS renderer references.
-            temp_path = self._layer_symbol_cache_path(layer)
-            symbol_image.save(temp_path, "PNG")
-            
-            if size_mode == 0:
-                # Fixed size - single symbol renderer
-                return self._apply_single_symbol(layer, temp_path, min_size)
-            else:
-                # Graduated size
-                return self._apply_graduated_symbol(
-                    layer, temp_path, size_mode, min_size, max_size, size_field, num_classes
-                )
-                
+            path, result = self.store(result)
+            if int(size_mode) == 0:
+                return self._apply_single_symbol(layer, path, result, min_size)
+            return self._apply_graduated_symbol(
+                layer, path, result, size_mode, min_size, max_size, size_field, num_classes
+            )
         except Exception as e:
             log_exception("Error applying symbol", e)
             return False
-            
-    def _apply_single_symbol(self, layer, image_path, size):
-        """Apply a single symbol renderer."""
-        symbol = QgsMarkerSymbol.createSimple({})
-        symbol.deleteSymbolLayer(0)
-        
-        raster_layer = QgsRasterMarkerSymbolLayer(image_path)
-        raster_layer.setSize(float(size))
-        raster_layer.setSizeUnit(QgsUnitTypes.RenderMillimeters)
-        symbol.appendSymbolLayer(raster_layer)
-        
-        renderer = QgsSingleSymbolRenderer(symbol)
-        layer.setRenderer(renderer)
-        
+
+    def _apply_single_symbol(self, layer, path, result, size):
+        symbol = self._make_symbol(path, result, size)
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
         return True
-        
+
     def _apply_graduated_symbol(
-        self,
-        layer,
-        image_path,
-        size_mode,
-        min_size,
-        max_size,
-        size_field=None,
+        self, layer, path, result, size_mode, min_size, max_size, size_field=None,
         num_classes=DEFAULT_GRADUATED_CLASSES,
     ):
-        """Apply a graduated symbol renderer based on data count."""
-        # If no field specified, try to use feature count or first numeric field
+        """Graduated-size renderer driven by a numeric attribute."""
+        fallback_size = (float(min_size) + float(max_size)) / 2.0
+
         if not size_field:
-            # Find first numeric field
-            fields = layer.fields()
-            for field in fields:
+            for field in layer.fields():
                 if field.isNumeric():
                     size_field = field.name()
                     break
-                    
         if not size_field:
-            # Fallback to single symbol if no numeric field
-            return self._apply_single_symbol(layer, image_path, (min_size + max_size) / 2)
-            
-        # Create base symbol
-        base_symbol = QgsMarkerSymbol.createSimple({})
-        base_symbol.deleteSymbolLayer(0)
-        
-        raster_layer = QgsRasterMarkerSymbolLayer(image_path)
-        raster_layer.setSizeUnit(QgsUnitTypes.RenderMillimeters)
-        base_symbol.appendSymbolLayer(raster_layer)
-        
-        # Get field statistics
+            return self._apply_single_symbol(layer, path, result, fallback_size)
+
         idx = layer.fields().indexOf(size_field)
         values = self._extract_numeric_values(layer, idx)
-        if not values:
-            return self._apply_single_symbol(layer, image_path, (min_size + max_size) / 2)
+        if not values or min(values) == max(values):
+            return self._apply_single_symbol(layer, path, result, fallback_size)
 
-        min_val = float(min(values))
-        max_val = float(max(values))
-        if min_val == max_val:
-            return self._apply_single_symbol(layer, image_path, (min_size + max_size) / 2)
-
-        # Create ranges based on selected size mode.
         class_count = int(num_classes) if num_classes is not None else DEFAULT_GRADUATED_CLASSES
         class_count = max(2, min(class_count, len(values)))
-        breaks = self._compute_breaks(values, class_count, size_mode)
+        breaks = compute_breaks(values, class_count, size_mode)
         if len(breaks) < 2:
-            return self._apply_single_symbol(layer, image_path, (min_size + max_size) / 2)
+            return self._apply_single_symbol(layer, path, result, fallback_size)
 
         ranges = []
         break_count = len(breaks) - 1
@@ -242,23 +209,14 @@ class SymbolManager:
             upper = float(breaks[i + 1])
             if upper <= lower:
                 continue
-
-            size = min_size + (max_size - min_size) * ((i + 0.5) / max(1.0, float(break_count)))
-
-            range_symbol = base_symbol.clone()
-            range_layer = range_symbol.symbolLayer(0)
-            range_layer.setSize(float(size))
-            range_layer.setSizeUnit(QgsUnitTypes.RenderMillimeters)
-
-            label = f"{lower:.2f} - {upper:.2f}"
-            ranges.append(QgsRendererRange(lower, upper, range_symbol, label))
+            size = float(min_size) + (float(max_size) - float(min_size)) * ((i + 0.5) / float(break_count))
+            range_symbol = self._make_symbol(path, result, size)
+            ranges.append(QgsRendererRange(lower, upper, range_symbol, f"{lower:.2f} - {upper:.2f}"))
 
         if not ranges:
-            return self._apply_single_symbol(layer, image_path, (min_size + max_size) / 2)
-            
-        renderer = QgsGraduatedSymbolRenderer(size_field, ranges)
-        layer.setRenderer(renderer)
-        
+            return self._apply_single_symbol(layer, path, result, fallback_size)
+
+        layer.setRenderer(QgsGraduatedSymbolRenderer(size_field, ranges))
         return True
 
     def _extract_numeric_values(self, layer, field_index):
@@ -270,25 +228,20 @@ class SymbolManager:
                 if value is None:
                     continue
                 numeric_value = float(value)
-                if not math.isfinite(numeric_value):
-                    continue
-                values.append(numeric_value)
-            except Exception:
+                if math.isfinite(numeric_value):
+                    values.append(numeric_value)
+            except (TypeError, ValueError):
                 continue
         return values
 
-    def _compute_breaks(self, values, num_classes, size_mode):
-        """Delegate to the QGIS-free implementation in symbol_breaks."""
-        return compute_breaks(values, num_classes, size_mode)
-
     def get_saved_symbols(self):
-        """Get list of saved symbols in the library."""
+        """List symbol files in the store."""
         symbols = []
         if os.path.exists(self.symbol_dir):
-            for f in os.listdir(self.symbol_dir):
-                if f.lower().endswith('.png'):
+            for name in sorted(os.listdir(self.symbol_dir)):
+                if name.lower().endswith((".svg", ".png")):
                     symbols.append({
-                        'name': os.path.splitext(f)[0],
-                        'path': os.path.join(self.symbol_dir, f)
+                        "name": os.path.splitext(name)[0],
+                        "path": os.path.join(self.symbol_dir, name),
                     })
         return symbols
