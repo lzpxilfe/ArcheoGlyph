@@ -300,6 +300,60 @@ def serialize_svg(root: ET.Element) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
+def describe_provenance(meta) -> str:
+    """
+    One-line, human-readable record of how a symbol was produced, for the SVG
+    <desc>. Keys are taken from a SymbolResult's meta dictionary.
+    """
+    fields = [
+        ("source", "generator"),
+        ("style", "style"),
+        ("model", "model"),
+        ("input", "input image"),
+        ("input_kind", "input type"),
+        ("plugin_version", "ArchaeoGlyph"),
+        ("created", "created"),
+    ]
+    parts = []
+    for key, label in fields:
+        value = str((meta or {}).get(key, "")).strip()
+        if value:
+            parts.append(f"{label}: {value}")
+    return "; ".join(parts)
+
+
+def add_provenance(svg_text: str, meta) -> str:
+    """
+    Add <title> and <desc> describing how the symbol was made.
+
+    Archaeological symbols end up in published maps, so a reader (or the
+    author, months later) should be able to tell whether a symbol was traced
+    from a photograph, drawn by a model, or taken from a template. Existing
+    title/desc elements are replaced, and the text is XML-escaped by the
+    serialiser.
+    """
+    description = describe_provenance(meta)
+    if not description:
+        return svg_text
+    try:
+        root = parse_svg(svg_text)
+    except (ET.ParseError, ValueError):
+        return svg_text
+
+    for tag in ("title", "desc"):
+        for existing in root.findall(f"{{{SVG_NS}}}{tag}"):
+            root.remove(existing)
+
+    title = ET.Element(f"{{{SVG_NS}}}title")
+    name = str((meta or {}).get("title", "")).strip()
+    title.text = name or "ArchaeoGlyph symbol"
+    desc = ET.Element(f"{{{SVG_NS}}}desc")
+    desc.text = description
+    root.insert(0, desc)
+    root.insert(0, title)
+    return serialize_svg(root)
+
+
 def finalize_svg(
     svg_text: str,
     bbox: Optional[Tuple[float, float, float, float]] = None,

@@ -72,3 +72,42 @@ def test_finalize_handles_svg_without_namespace():
     root = ET.fromstring(out)
     assert root.tag == f"{NS}svg"
     assert root.find(f"{NS}circle").attrib["fill"] == "param(fill) #f00"
+
+
+def test_provenance_is_embedded_and_replaces_previous_entries():
+    from archeoglyph.generators.autotrace import svg_builder as sb
+
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><title>old</title><path d="M0,0 L1,1"/></svg>'
+    meta = {
+        "source": "autotrace", "style": "Measured", "input": "sherd_012.jpg",
+        "input_kind": "drawing", "plugin_version": "0.2.0", "created": "2026-09-02",
+    }
+    out = sb.add_provenance(svg, meta)
+    root = ET.fromstring(out)
+    titles = root.findall(f"{NS}title")
+    descs = root.findall(f"{NS}desc")
+    assert len(titles) == 1 and len(descs) == 1
+    assert titles[0].text == "ArchaeoGlyph symbol"
+    text = descs[0].text
+    for expected in ("generator: autotrace", "style: Measured", "input image: sherd_012.jpg",
+                     "input type: drawing", "ArchaeoGlyph: 0.2.0", "created: 2026-09-02"):
+        assert expected in text
+    # Geometry survives.
+    assert root.findall(f"{NS}path")
+
+
+def test_provenance_is_skipped_when_there_is_nothing_to_record():
+    from archeoglyph.generators.autotrace import svg_builder as sb
+
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0,0"/></svg>'
+    assert sb.add_provenance(svg, {}) == svg
+    assert sb.add_provenance("not svg", {"source": "x"}) == "not svg"
+
+
+def test_provenance_keeps_only_the_file_name_of_the_source_image():
+    from archeoglyph.generators.symbol_result import SymbolResult
+
+    result = SymbolResult(source="autotrace", style="Line")
+    result.record_provenance(image_path="/home/someone/private/dig 2026/sherd.jpg")
+    assert result.meta["input"] == "sherd.jpg"
+    assert "private" not in str(result.meta)

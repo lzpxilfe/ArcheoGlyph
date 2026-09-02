@@ -40,6 +40,27 @@ class SymbolResult:
         if text and text not in self.warnings:
             self.warnings.append(text)
 
+    def record_provenance(self, image_path=None, **fields) -> "SymbolResult":
+        """
+        Record how this symbol was produced (source image, style, model, ...).
+
+        Only the file name of ``image_path`` is kept: the full path can expose
+        a directory layout that has nothing to do with the symbol.
+        """
+        import datetime
+        import os
+
+        meta = {
+            "source": self.source,
+            "style": self.style,
+            "created": datetime.datetime.now().strftime("%Y-%m-%d"),
+        }
+        if image_path:
+            meta["input"] = os.path.basename(str(image_path))
+        meta.update({k: v for k, v in fields.items() if v not in (None, "")})
+        self.meta.update({k: v for k, v in meta.items() if v not in (None, "")})
+        return self
+
     def content_hash(self) -> str:
         """Stable short hash of the payload, used for on-disk file names."""
         h = hashlib.sha1()

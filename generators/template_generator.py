@@ -615,7 +615,8 @@ class TemplateGenerator:
         :return: SymbolResult carrying parametrised SVG (plus a raster preview)
         """
         from .symbol_result import SymbolResult
-        from .autotrace.svg_builder import finalize_svg
+        from .autotrace.svg_builder import add_provenance, finalize_svg
+        from ..defaults import PLUGIN_VERSION
 
         template_type = self._normalize_template_type(template_type)
         template_info = self.TEMPLATE_INFO.get(template_type)
@@ -634,8 +635,9 @@ class TemplateGenerator:
 
         if svg_data:
             svg, info = finalize_svg(svg_data)
-            result.svg = svg
             result.meta.update(info)
+            result.record_provenance(title=str(template_type), plugin_version=PLUGIN_VERSION)
+            result.svg = add_provenance(svg, result.meta)
         image = self._create_placeholder(template_type, color)
         if image is not None and not image.isNull():
             png = SymbolResult.coerce(image).raster_png

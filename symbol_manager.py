@@ -33,6 +33,49 @@ from .log import log, log_exception
 from .symbol_breaks import compute_breaks
 
 STORE_SUBDIR = os.path.join("archeoglyph", "symbols")
+SVG_SEARCH_PATH_SETTING = "svg/searchPathsForSVG"
+
+
+def merge_search_paths(existing, new_path):
+    """
+    Add ``new_path`` to a list of QGIS SVG search paths, without duplicates.
+
+    Returns the new list, or None when nothing needs to change. Kept separate
+    from QSettings so it can be tested directly.
+    """
+    target = os.path.normpath(str(new_path))
+    paths = []
+    if isinstance(existing, str):
+        candidates = existing.split("|") if "|" in existing else [existing]
+    else:
+        candidates = list(existing or [])
+    for candidate in candidates:
+        text = str(candidate).strip()
+        if text:
+            paths.append(text)
+    if any(os.path.normpath(p) == target for p in paths):
+        return None
+    return paths + [target]
+
+
+def register_svg_search_path(directory=None):
+    """
+    Make the symbol store one of QGIS's SVG search paths.
+
+    QGIS writes SVG marker paths into a project relative to its search paths,
+    so a project saved here still finds its symbols on another machine that
+    has the plugin installed. Without this, projects carry absolute paths.
+    """
+    from qgis.PyQt.QtCore import QSettings
+
+    directory = directory or symbol_store_dir()
+    settings = QSettings()
+    updated = merge_search_paths(settings.value(SVG_SEARCH_PATH_SETTING, []), directory)
+    if updated is None:
+        return False
+    settings.setValue(SVG_SEARCH_PATH_SETTING, updated)
+    log(f"Registered the ArchaeoGlyph symbol folder as a QGIS SVG search path: {directory}")
+    return True
 
 
 def symbol_store_dir():

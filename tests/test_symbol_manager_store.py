@@ -31,3 +31,25 @@ def test_store_rejects_empty_result(tmp_path, monkeypatch):
         pass
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_merge_search_paths_adds_once_and_preserves_existing():
+    from archeoglyph.symbol_manager import merge_search_paths
+
+    existing = ["/opt/qgis/svg", "/home/user/my svgs"]
+    updated = merge_search_paths(existing, "/home/user/profile/archeoglyph/symbols")
+    assert updated == existing + ["/home/user/profile/archeoglyph/symbols"]
+
+    # Already present (even spelled with a trailing slash or "..") -> no change.
+    assert merge_search_paths(updated, "/home/user/profile/archeoglyph/symbols/") is None
+    assert merge_search_paths(updated, "/home/user/profile/other/../archeoglyph/symbols") is None
+
+
+def test_merge_search_paths_accepts_qgis_string_and_empty_forms():
+    from archeoglyph.symbol_manager import merge_search_paths
+
+    assert merge_search_paths("", "/a/b") == ["/a/b"]
+    assert merge_search_paths(None, "/a/b") == ["/a/b"]
+    # QGIS sometimes stores the list as a single pipe-separated string.
+    assert merge_search_paths("/opt/svg|/srv/svg", "/a/b") == ["/opt/svg", "/srv/svg", "/a/b"]
+    assert merge_search_paths("/opt/svg|/a/b", "/a/b") is None

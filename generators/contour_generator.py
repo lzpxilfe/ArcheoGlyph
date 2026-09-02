@@ -193,9 +193,18 @@ class ContourGenerator:
         from .symbol_result import SymbolResult
         from .autotrace.svg_builder import finalize_svg
 
+        from .autotrace.svg_builder import add_provenance
+        from ..defaults import PLUGIN_VERSION
+
         svg = self.generate(image_path, **kwargs)
         svg, info = finalize_svg(svg)
         result = SymbolResult(svg=svg, source="autotrace", style=str(kwargs.get("style") or ""), meta=info)
+        result.record_provenance(
+            image_path=image_path,
+            input_kind=kwargs.get("input_kind"),
+            plugin_version=PLUGIN_VERSION,
+        )
+        result.svg = add_provenance(result.svg, result.meta)
         if info.get("empty"):
             result.add_warning("No object silhouette was found in the image.")
         if info.get("parse_error"):

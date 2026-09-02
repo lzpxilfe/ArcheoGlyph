@@ -10,6 +10,7 @@ from qgis.PyQt.QtWidgets import QAction
 
 from .ui.main_dialog import ArcheoGlyphDialog
 from .defaults import HF_DEFAULT_MODEL_ID, HF_LEGACY_MODEL_ALIASES, PLUGIN_VERSION
+from .log import log_exception
 
 
 class ArcheoGlyph:
@@ -38,12 +39,25 @@ class ArcheoGlyph:
             QCoreApplication.installTranslator(self.translator)
 
         self.actions = []
+        self._register_symbol_search_path()
         self.menu = self.tr('&ArchaeoGlyph')
         self.toolbar = self.iface.addToolBar('ArchaeoGlyph')
         self.toolbar.setObjectName('ArchaeoGlyph')
         
         self.dialog = None
         self._migrate_settings()
+
+    def _register_symbol_search_path(self):
+        """
+        Let QGIS resolve generated symbols by name, so saved projects keep
+        working when they are opened on another machine.
+        """
+        try:
+            from .symbol_manager import register_svg_search_path
+
+            register_svg_search_path()
+        except Exception as e:
+            log_exception("Could not register the symbol folder with QGIS", e)
 
     def _migrate_settings(self):
         """

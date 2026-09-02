@@ -12,6 +12,7 @@ from qgis.PyQt.QtGui import QImage, QPainter
 from qgis.PyQt.QtSvg import QSvgRenderer
 
 from ..defaults import (
+    PLUGIN_VERSION,
     GEMINI_EXCLUDED_KEYWORDS,
     GEMINI_IMAGE_MODEL_CANDIDATES,
     GEMINI_INSTALL_PACKAGE,
@@ -30,6 +31,7 @@ from .style_control_utils import (
 )
 from ..auth import get_api_key, set_api_key
 from ..log import log, log_exception
+from .autotrace.svg_builder import add_provenance, finalize_svg
 from .shape_match import mask_from_png, matches_reference, painted_mask_from_png
 from .svg_sanitize import sanitize_svg
 from .symbol_result import SymbolResult
@@ -722,7 +724,11 @@ class GeminiGenerator:
                                     prompt=user_prompt_text,
                                 )
                                 result = SymbolResult.coerce(image, source="gemini", style=str(style))
-                                result.meta["model"] = model_name
+                                result.record_provenance(
+                                    image_path=image_path,
+                                    model=model_name,
+                                    plugin_version=PLUGIN_VERSION,
+                                )
                                 return result
                             break
 
@@ -732,13 +738,16 @@ class GeminiGenerator:
                                 response_text, style_key, silhouette_bytes
                             )
                             if svg_code:
-                                from .autotrace.svg_builder import finalize_svg
-
                                 svg_code, info = finalize_svg(svg_code)
                                 result = SymbolResult(
                                     svg=svg_code, source="gemini", style=str(style), meta=info
                                 )
-                                result.meta["model"] = model_name
+                                result.record_provenance(
+                                    image_path=image_path,
+                                    model=model_name,
+                                    plugin_version=PLUGIN_VERSION,
+                                )
+                                result.svg = add_provenance(result.svg, result.meta)
                                 return result
                             last_svg_issue = issue
                         break

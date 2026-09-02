@@ -302,11 +302,11 @@ def vectorize_result(result, style: str = "", max_colors: int = DEFAULT_MAX_COLO
     for message in warnings:
         result.add_warning(message)
     if svg:
-        from .autotrace.svg_builder import finalize_svg
+        from .autotrace.svg_builder import add_provenance, finalize_svg
 
         svg, info = finalize_svg(svg)
-        result.svg = svg
         result.meta.update(info)
+        result.svg = add_provenance(svg, result.meta)
     else:
         result.add_warning("Kept the raster image: vectorisation did not produce a usable shape.")
     return result
