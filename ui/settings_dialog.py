@@ -380,6 +380,17 @@ class SettingsDialog(QDialog):
         self.onnx_progress.setVisible(False)
         onnx_layout.addWidget(self.onnx_progress)
 
+        diagnostics_row = QHBoxLayout()
+        self.diagnostics_btn = QPushButton("Copy diagnostics")
+        self.diagnostics_btn.setToolTip(
+            "Copy a plain-text report of versions, installed packages and models.\n"
+            "Paste it into a bug report when something does not work."
+        )
+        self.diagnostics_btn.clicked.connect(self.copy_diagnostics)
+        diagnostics_row.addWidget(self.diagnostics_btn)
+        diagnostics_row.addStretch()
+        onnx_layout.addLayout(diagnostics_row)
+
         self.onnx_status_label = QLabel("")
         self.onnx_status_label.setWordWrap(True)
         self.onnx_status_label.setStyleSheet("color: #666; font-size: 11px;")
@@ -1526,6 +1537,24 @@ class SettingsDialog(QDialog):
                 "Delete it and download again.",
             )
         self._refresh_onnx_status()
+
+    def copy_diagnostics(self):
+        """Show the runtime report and put it on the clipboard."""
+        from ..diagnostics import report_text
+
+        try:
+            text = report_text(self._profile_dir())
+        except Exception as e:
+            QMessageBox.warning(self, "Diagnostics failed", str(e))
+            return
+
+        QApplication.clipboard().setText(text)
+        message = QMessageBox(self)
+        message.setIcon(QMessageBox.Information)
+        message.setWindowTitle("Diagnostics copied")
+        message.setText("The report was copied to the clipboard.")
+        message.setDetailedText(text)
+        message.exec_()
 
     def _refresh_sam_status(self):
         """Update SAM readiness status text."""
