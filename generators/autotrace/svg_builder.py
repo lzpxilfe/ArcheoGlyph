@@ -181,6 +181,56 @@ def _iter_drawables(root: ET.Element):
         stack.extend(list(el))
 
 
+def smooth_closed_path(points, corner_deg=38.0, tension=1.0, precision=2):
+    """
+    SVG path data for a closed outline: Catmull-Rom style cubic Beziers
+    through the vertices, except at sharp corners (turning angle above
+    ``corner_deg``) which stay as hard vertices. Keeps flint edges crisp while
+    rendering ovals, discs and vessel profiles as smooth curves.
+    """
+    import math
+
+    pts = [(float(p[0]), float(p[1])) for p in points]
+    if len(pts) >= 2 and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    n = len(pts)
+    if n < 3:
+        return ""
+    fmt = "{:.%df}" % precision
+
+    def f(v):
+        text = fmt.format(v)
+        return text.rstrip("0").rstrip(".") if "." in text else text
+
+    def sharp(i):
+        a, b, c = pts[i - 1], pts[i], pts[(i + 1) % n]
+        v1 = (b[0] - a[0], b[1] - a[1])
+        v2 = (c[0] - b[0], c[1] - b[1])
+        n1 = math.hypot(*v1)
+        n2 = math.hypot(*v2)
+        if n1 < 1e-9 or n2 < 1e-9:
+            return True
+        cos = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2)))
+        return math.degrees(math.acos(cos)) > corner_deg
+
+    corner = [sharp(i) for i in range(n)]
+    parts = [f"M {f(pts[0][0])},{f(pts[0][1])}"]
+    for i in range(n):
+        p0 = pts[i - 1]
+        p1 = pts[i]
+        p2 = pts[(i + 1) % n]
+        p3 = pts[(i + 2) % n]
+        if corner[i] and corner[(i + 1) % n]:
+            parts.append(f"L {f(p2[0])},{f(p2[1])}")
+            continue
+        k = tension / 6.0
+        c1 = p1 if corner[i] else (p1[0] + (p2[0] - p0[0]) * k, p1[1] + (p2[1] - p0[1]) * k)
+        c2 = p2 if corner[(i + 1) % n] else (p2[0] - (p3[0] - p1[0]) * k, p2[1] - (p3[1] - p1[1]) * k)
+        parts.append(f"C {f(c1[0])},{f(c1[1])} {f(c2[0])},{f(c2[1])} {f(p2[0])},{f(p2[1])}")
+    parts.append("Z")
+    return " ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Parametrisation
 # ---------------------------------------------------------------------------

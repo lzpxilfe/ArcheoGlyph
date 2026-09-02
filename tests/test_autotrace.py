@@ -139,16 +139,11 @@ def test_oval_keeps_its_outline_instead_of_a_circle():
     import cv2
     cv2.ellipse(img, (200, 200), (150, 110), 0, 0, 360, (60, 90, 140), -1)  # aspect 0.73 -> roundish
     svg = _run(img, style="Line")
+    from archeoglyph.generators.autotrace import svg_builder
     body = ET.fromstring(svg).find(".//{http://www.w3.org/2000/svg}path").attrib["d"]
-    xs, ys = [], []
-    for tok in body.replace("M", "").replace("Z", "").split("L"):
-        tok = tok.strip()
-        if tok:
-            x, y = tok.split(",")
-            xs.append(float(x))
-            ys.append(float(y))
-    width = max(xs) - min(xs)
-    height = max(ys) - min(ys)
+    x0, y0, x1, y1 = svg_builder._path_bbox(body)
+    width = x1 - x0
+    height = y1 - y0
     assert 0.65 < height / width < 0.82
 
 

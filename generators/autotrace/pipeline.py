@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from ..ink_centerline import extract_ink_polylines, looks_like_drawing, simplify_polyline
+from .svg_builder import smooth_closed_path
 from ..style_control_utils import (
     STYLE_CONTROL_EXAGGERATION,
     STYLE_CONTROL_FACTUALITY,
@@ -202,7 +203,19 @@ def run_autotrace(bgr, options, mask_provider):
         solidity = contour_area / max(1.0, hull_area)
     # Replace the traced outline by a perfect circle only when the object
     # really is one; ovals, chipped coins and rings keep their true contour.
-    use_circle_outline = bool(is_roundish and contour_circularity >= 0.90 and solidity >= 0.95)
+    circle_iou = 0.0
+    if is_roundish:
+        (ccx, ccy), cr = cv2.minEnclosingCircle(main_contour)
+        circle_canvas = np.zeros(target_mask.shape[:2], dtype=np.uint8)
+        cv2.circle(circle_canvas, (int(round(ccx)), int(round(ccy))), int(round(cr)), 255, -1)
+        contour_canvas = np.zeros_like(circle_canvas)
+        cv2.drawContours(contour_canvas, [main_contour], -1, 255, -1)
+        inter = float(np.count_nonzero(cv2.bitwise_and(circle_canvas, contour_canvas)))
+        union = float(np.count_nonzero(cv2.bitwise_or(circle_canvas, contour_canvas)))
+        circle_iou = inter / max(1.0, union)
+    use_circle_outline = bool(
+        is_roundish and (circle_iou >= 0.94 or (contour_circularity >= 0.90 and solidity >= 0.95))
+    )
     # Schematic template lines for round artifacts are opt-in.
     fast_round_structural = bool(
         synthetic and
@@ -257,11 +270,8 @@ def run_autotrace(bgr, options, mask_provider):
                     final_points.append(final_points[0])
 
             if len(final_points) > 2:
-                start = final_points[0]
-                path_data = f"M {start[0]},{start[1]} "
-                for pt in final_points[1:]:
-                    path_data += f"L {pt[0]},{pt[1]} "
-                path_data += "Z"
+                # Smooth curves between gentle vertices, hard corners kept.
+                path_data = smooth_closed_path(final_points, corner_deg=38.0)
 
     profile_lines = estimate_profile_bands(target_mask, max_lines=max(1, profile_count))
     round_lines = estimate_round_bands(
@@ -295,7 +305,14 @@ def run_autotrace(bgr, options, mask_provider):
             erode_px = max(2, int(round(0.015 * min(target_mask.shape[:2]))))
             ink_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * erode_px + 1, 2 * erode_px + 1))
             ink_mask = cv2.erode(target_mask, ink_kernel)
-            ink_source = processing_bgr if is_drawing else detail_bgr
+            ink_source = (processing_bgr if is_drawing else detail_bgr).copy()
+            if not is_drawing:
+                # Flatten the background to the object tone so the silhouette
+                # edge itself does not read as a dark stroke.
+                inside = target_mask > 0
+                if inside.any():
+                    fill_value = np.median(ink_source[inside].reshape(-1, 3), axis=0).astype(np.uint8)
+                    ink_source[~inside] = fill_value
             ink_lines = [
                 [[int(x), int(y)] for x, y in simplify_polyline(pline, epsilon=1.2)]
                 for pline in extract_ink_polylines(
@@ -728,6 +745,17 @@ def run_autotrace(bgr, options, mask_provider):
         # Drawings: the ink strokes *are* the content; keep them (longest first).
         drawing_limit = 80 if is_mono else max(3, line_detail_count + 2)
         internal_lines = [list(pl) for pl in ink_lines[:drawing_limit]]
+    elif is_mono and is_roundish and ink_lines:
+        # Round photographs: real strokes (rings, incised motifs) come first,
+        # motif-extractor candidates only fill the remaining budget.
+        ink_cap = max(6, texture_count)
+        internal_lines = merge_distinct_lines(
+            [list(pl) for pl in ink_lines[:ink_cap]],
+            list(internal_lines),
+            min_center_sep=3.0,
+            max_lines=max(8, ink_cap + 4),
+            min_arc_len=6.0,
+        )
 
     if is_typology:
         palette_seeds = list(material_palette[:4]) if material_palette else [final_color]
