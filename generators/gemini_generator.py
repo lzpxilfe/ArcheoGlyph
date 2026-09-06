@@ -35,6 +35,7 @@ from .autotrace.svg_builder import add_provenance, finalize_svg
 from .shape_match import mask_from_png, matches_reference, painted_mask_from_png
 from .svg_sanitize import sanitize_svg
 from .symbol_result import SymbolResult
+from .subject_terms import subject_hint
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -297,6 +298,11 @@ class GeminiGenerator:
                 "\nUSER NOTE (respect if consistent with factual evidence): "
                 + user_prompt_text
             )
+            # A Korean note names the type in Korean, which the model cannot
+            # act on. The catalogue knows the English equivalent.
+            hint = subject_hint(user_prompt_text)
+            if hint:
+                full_prompt += "\n" + hint
 
         if symmetry:
             full_prompt += (

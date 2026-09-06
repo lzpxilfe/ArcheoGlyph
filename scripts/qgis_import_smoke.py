@@ -27,6 +27,7 @@ QGIS_FREE_MODULES = [
     "generators.image_ops",
     "generators.style_utils",
     "generators.template_catalog",
+    "generators.subject_terms",
     "generators.style_control_utils",
     "generators.autotrace.options",
     "generators.autotrace.io",

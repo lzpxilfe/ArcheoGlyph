@@ -180,3 +180,69 @@ def test_auth_module_falls_back_to_settings_without_qgis_auth(service):
     assert auth.get_api_key(service, settings) == "secret-token"
     auth.clear_api_key(service, settings)
     assert auth.get_api_key(service, settings) == ""
+
+
+# ------------------------------------------------------- Korean subject terms
+
+def _gemini_prompt(note):
+    """The Gemini prompt for a user note, with everything else neutral."""
+    generator = _gemini()
+    generator.settings = None
+    return generator._build_prompt(
+        style_key="Simple Symbol",
+        user_prompt_text=note,
+        color=None,
+        symmetry=False,
+        silhouette_bytes=None,
+        factuality=50,
+        symbolic_looseness=50,
+        exaggeration=0,
+    )
+
+
+def _hf_prompt(note):
+    generator = _hf()
+    generator.settings = None
+    return generator._build_prompt(note, style="Simple Symbol")
+
+
+def test_a_korean_note_tells_gemini_what_the_artifact_is():
+    """
+    The note reaches the model verbatim, and the English type name is added
+    beside it - the model cannot act on "빗살무늬토기" on its own.
+    """
+    prompt = _gemini_prompt("빗살무늬토기 조각입니다")
+
+    assert "빗살무늬토기 조각입니다" in prompt, "the user's own words must survive"
+    assert "Comb-pattern Pottery" in prompt
+    assert "photograph does not show" in prompt, "the caution must travel with it"
+
+
+def test_a_korean_note_tells_hugging_face_what_the_artifact_is():
+    prompt = _hf_prompt("세형동검 실측도")
+
+    assert "세형동검 실측도" in prompt
+    assert "the artifact is a Bronze Dagger (Slender)" in prompt
+
+
+@pytest.mark.parametrize("builder", [_gemini_prompt, _hf_prompt])
+def test_nothing_is_added_when_no_type_is_named(builder):
+    """An English or vague note must not gain an invented subject."""
+    plain = builder("make the outline cleaner")
+    assert "SUBJECT" not in plain
+    assert "the artifact is a" not in plain
+
+
+@pytest.mark.parametrize("builder", [_gemini_prompt, _hf_prompt])
+def test_an_empty_note_is_unchanged(builder):
+    assert "SUBJECT" not in builder("")
+    assert "the artifact is a" not in builder(None)
+
+
+def test_the_specific_type_is_named_rather_than_the_generic_one():
+    """
+    "돌화살촉" must not reach the model as "Arrowhead": the shapes differ, and
+    a generic subject is worse than none.
+    """
+    prompt = _gemini_prompt("돌화살촉 사진")
+    assert "Stone Arrowhead" in prompt

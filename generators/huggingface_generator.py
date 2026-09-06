@@ -31,6 +31,7 @@ import numpy as np
 from ..log import log, log_exception
 from . import image_ops
 from .symbol_result import SymbolResult
+from .subject_terms import find_subjects
 from .style_utils import (
     STYLE_COLORED,
     STYLE_LINE,
@@ -220,6 +221,12 @@ class HuggingFaceGenerator:
         )
         if prompt:
             parts.append(prompt)
+            # The prompt is a phrase list here, so name the type rather than
+            # appending the sentence Gemini gets.
+            subjects = find_subjects(prompt)
+            if subjects:
+                named = " and ".join(english for _korean, english in subjects[:3])
+                parts.append(f"the artifact is a {named}")
         return ", ".join(parts)
 
     def _negative_prompt(self):
