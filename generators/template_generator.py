@@ -1454,12 +1454,23 @@ class TemplateGenerator:
 
         elif variant == "pit_house_twin":
             # 呂자형: a main room and a smaller front room, joined.
-            painter.drawRect(QRectF(m + 12, m + 4, s - 2 * m - 24, 92))
-            painter.drawRect(QRectF(m + 34, s - m - 96, s - 2 * m - 68, 92))
-            painter.setPen(thin)
-            painter.drawLine(int(cx - 20), int(m + 96), int(cx - 20), int(s - m - 96))
-            painter.drawLine(int(cx + 20), int(m + 96), int(cx + 20), int(s - m - 96))
-            painter.setPen(edge)
+            # Drawn as one outline: two rooms joined by a neck, which is what
+            # the 呂 shape is. Two separate rectangles read as two dwellings.
+            twin = QPainterPath()
+            twin.moveTo(m + 12, m + 4)
+            twin.lineTo(s - m - 12, m + 4)
+            twin.lineTo(s - m - 12, m + 96)
+            twin.lineTo(cx + 26, m + 96)
+            twin.lineTo(cx + 26, s - m - 96)
+            twin.lineTo(s - m - 34, s - m - 96)
+            twin.lineTo(s - m - 34, s - m - 4)
+            twin.lineTo(m + 34, s - m - 4)
+            twin.lineTo(m + 34, s - m - 96)
+            twin.lineTo(cx - 26, s - m - 96)
+            twin.lineTo(cx - 26, m + 96)
+            twin.lineTo(m + 12, m + 96)
+            twin.closeSubpath()
+            painter.drawPath(twin)
             hearth(cx, m + 50)
 
         elif variant == "raised_floor":
@@ -1679,15 +1690,22 @@ class TemplateGenerator:
             painter.setPen(edge)
 
         elif variant == "encircling_ditch":
-            # 환호: concentric ditches ringing a settlement.
-            painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(color.darker(150), 4.0))
-            painter.drawEllipse(QRectF(m, m, s - 2 * m, s - 2 * m))
-            painter.drawEllipse(QRectF(m + 26, m + 26, s - 2 * m - 52, s - 2 * m - 52))
-            painter.setPen(thin)
+            # 환호: a broad cut ditch ringing a settlement, with its entrance.
+            # Two thin circles and a few dots read as a shirt button, so the
+            # ditch is drawn as a filled band and the houses as buildings.
+            outer = QPainterPath()
+            outer.addEllipse(QRectF(m - 2, m - 2, s - 2 * m + 4, s - 2 * m + 4))
+            inner = QPainterPath()
+            inner.addEllipse(QRectF(m + 26, m + 26, s - 2 * m - 52, s - 2 * m - 52))
+            entrance = QPainterPath()
+            entrance.addRect(QRectF(cx - 26, m - 8, 52, 42))
+            painter.setBrush(fill)
+            painter.setPen(edge)
+            painter.drawPath(outer.subtracted(inner).subtracted(entrance))
             painter.setBrush(solid)
-            for dx, dy in ((-26, -18), (24, -22), (-18, 26), (26, 22), (0, 0)):
-                painter.drawEllipse(QRectF(cx + dx - 11, cy + dy - 11, 22, 22))
+            painter.setPen(thin)
+            for dx, dy in ((-30, -14), (26, -20), (-16, 30), (30, 24)):
+                painter.drawRect(QRectF(cx + dx - 15, cy + dy - 13, 30, 26))
             painter.setPen(edge)
 
         elif variant == "beacon":
@@ -2429,17 +2447,20 @@ class TemplateGenerator:
         body = QPainterPath()
 
         if variant == "gogok":
-            # 곡옥: the comma-shaped jade, perforated through the head.
-            body.moveTo(cx + 18, top + 6)
-            body.quadTo(cx + 86, cy - 20, cx + 30, bottom - 20)
-            body.quadTo(cx - 66, bottom + 10, cx - 62, cy + 6)
-            body.quadTo(cx - 58, top + 12, cx + 18, top + 6)
+            # 곡옥: a fat perforated head with a tail that hooks back under
+            # it. Drawn as a crescent - a head circle alone reads as a bean.
+            hx, hy, r = cx - 4, top + 48, 42
+            body.moveTo(hx - r, hy)
+            body.quadTo(hx - r, hy - r * 1.35, hx + 6, hy - r)
+            body.quadTo(hx + r * 1.5, hy - r * 0.5, hx + r * 1.25, hy + r * 0.9)
+            body.quadTo(hx + r * 0.95, bottom - 18, hx - r * 0.9, bottom - 10)
+            body.quadTo(hx - r * 0.2, bottom - 46, hx + r * 0.35, hy + r * 0.75)
+            body.quadTo(hx + r * 0.5, hy + r * 0.1, hx - r, hy)
             body.closeSubpath()
             painter.drawPath(body)
             painter.setPen(thin)
             painter.setBrush(hollow)
-            painter.drawEllipse(QRectF(cx - 34, top + 34, 26, 26))
-            painter.drawEllipse(QRectF(cx - 46, top + 22, 50, 50))
+            painter.drawEllipse(QRectF(hx - 34, hy - 34, 30, 30))
 
         elif variant == "gwanok":
             # 관옥: tubular beads threaded on a cord.
@@ -2492,23 +2513,34 @@ class TemplateGenerator:
             painter.drawPath(drop)
 
         elif variant == "gold_crown":
-            # 금관: the band with its tree and antler uprights.
+            # 금관: the headband with its 出-shaped uprights. The arms have to
+            # turn upwards at their ends - drawn straight they read as
+            # scaffolding rather than a crown.
             painter.setBrush(solid)
-            painter.drawRect(QRectF(m + 6, bottom - 46, s - 2 * m - 12, 34))
-            painter.setPen(QPen(color.darker(150), 8.0))
+            painter.drawRect(QRectF(m + 2, bottom - 44, s - 2 * m - 4, 32))
+            painter.setPen(QPen(color.darker(150), 7.0))
             painter.setBrush(Qt.NoBrush)
-            for offset in (-62, 0, 62):
+            for offset, height in ((-64, 118), (0, 146), (64, 118)):
+                stem = cx + offset
+                foot = bottom - 44
                 upright = QPainterPath()
-                upright.moveTo(cx + offset, bottom - 46)
-                upright.lineTo(cx + offset, top + 16)
+                upright.moveTo(stem, foot)
+                upright.lineTo(stem, foot - height)
                 painter.drawPath(upright)
-                for i, y in enumerate((bottom - 96, bottom - 146)):
-                    painter.drawLine(int(cx + offset - 26), int(y),
-                                     int(cx + offset + 26), int(y))
+                for step, reach in enumerate((26, 20)):
+                    arm_y = foot - 44 - step * 40
+                    if arm_y < foot - height:
+                        continue
+                    for side in (-1, 1):
+                        arm = QPainterPath()
+                        arm.moveTo(stem, arm_y)
+                        arm.lineTo(stem + side * reach, arm_y)
+                        arm.lineTo(stem + side * reach, arm_y - 24)
+                        painter.drawPath(arm)
             painter.setPen(thin)
             painter.setBrush(solid)
-            for offset in (-84, -20, 44):
-                painter.drawEllipse(QRectF(cx + offset, bottom - 8, 20, 20))
+            for offset in (-86, -18, 50):
+                painter.drawEllipse(QRectF(cx + offset, bottom - 6, 18, 18))
 
         elif variant == "belt_fitting":
             # 대금구: the buckle, the strap plates and a pendant.
