@@ -620,6 +620,107 @@ class TemplateGenerator:
             "default_color": "#8B7D6B",
             "category": "structures"
         },
+        # -- Korean settlement, production and defence features -----------
+        "Pit Dwelling (Round)": {
+            "draw": ("_draw_korean_feature", "pit_house_round", "COLOR"),
+            "default_color": "#A0764B",
+            "category": "structures"
+        },
+        "Pit Dwelling (Square)": {
+            "draw": ("_draw_korean_feature", "pit_house_square", "COLOR"),
+            "default_color": "#A0764B",
+            "category": "structures"
+        },
+        "Pit Dwelling (Protruding Entrance)": {
+            "draw": ("_draw_korean_feature", "pit_house_convex", "COLOR"),
+            "default_color": "#A0764B",
+            "category": "structures"
+        },
+        "Pit Dwelling (Twin-room)": {
+            "draw": ("_draw_korean_feature", "pit_house_twin", "COLOR"),
+            "default_color": "#A0764B",
+            "category": "structures"
+        },
+        "Raised-floor Building": {
+            "draw": ("_draw_korean_feature", "raised_floor", "COLOR"),
+            "default_color": "#8B7355",
+            "category": "structures"
+        },
+        "Cooking Stove (Kamado)": {
+            "draw": ("_draw_korean_feature", "kamado", "COLOR"),
+            "default_color": "#B4531F",
+            "category": "features"
+        },
+        "Ondol Heating Flue": {
+            "draw": ("_draw_korean_feature", "ondol", "COLOR"),
+            "default_color": "#B4531F",
+            "category": "features"
+        },
+        "Pottery Kiln": {
+            "draw": ("_draw_korean_feature", "pottery_kiln", "COLOR"),
+            "default_color": "#C1440E",
+            "category": "structures"
+        },
+        "Roof Tile Kiln": {
+            "draw": ("_draw_korean_feature", "tile_kiln", "COLOR"),
+            "default_color": "#C1440E",
+            "category": "structures"
+        },
+        "Iron Smelting Feature": {
+            "draw": ("_draw_korean_feature", "iron_smelting", "COLOR"),
+            "default_color": "#5A5A5A",
+            "category": "structures"
+        },
+        "Charcoal Kiln": {
+            "draw": ("_draw_korean_feature", "charcoal_kiln", "COLOR"),
+            "default_color": "#4A4A4A",
+            "category": "structures"
+        },
+        "Paddy Field": {
+            "draw": ("_draw_korean_feature", "paddy_field", "COLOR"),
+            "default_color": "#6B8E23",
+            "category": "features"
+        },
+        "Dry Field": {
+            "draw": ("_draw_korean_feature", "dry_field", "COLOR"),
+            "default_color": "#8B7B3A",
+            "category": "features"
+        },
+        "Earthen Rampart Fortress": {
+            "draw": ("_draw_korean_feature", "earthen_rampart", "COLOR"),
+            "default_color": "#7B6A4F",
+            "category": "structures"
+        },
+        "Stone Rampart Fortress": {
+            "draw": ("_draw_korean_feature", "stone_rampart", "COLOR"),
+            "default_color": "#778899",
+            "category": "structures"
+        },
+        "Mountain Fortress": {
+            "draw": ("_draw_korean_feature", "mountain_fortress", "COLOR"),
+            "default_color": "#6B705C",
+            "category": "structures"
+        },
+        "Palisade": {
+            "draw": ("_draw_korean_feature", "palisade", "COLOR"),
+            "default_color": "#8B6F47",
+            "category": "structures"
+        },
+        "Encircling Ditch": {
+            "draw": ("_draw_korean_feature", "encircling_ditch", "COLOR"),
+            "default_color": "#708090",
+            "category": "features"
+        },
+        "Beacon Station": {
+            "draw": ("_draw_korean_feature", "beacon", "COLOR"),
+            "default_color": "#C1440E",
+            "category": "structures"
+        },
+        "Water Collection Basin": {
+            "draw": ("_draw_korean_feature", "water_basin", "COLOR"),
+            "default_color": "#4682B4",
+            "category": "structures"
+        },
     }
 
     # Backward compatibility for older naming variants
@@ -1987,6 +2088,367 @@ class TemplateGenerator:
             painter.setBrush(solid)
             painter.setPen(edge)
             painter.drawRect(QRectF(cx - 48, ground - 44, 96, 30))
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    # ═══════════════════════════════════════════════════════
+    #  Drawing methods — Korean settlement, production and defence features
+    # ═══════════════════════════════════════════════════════
+
+    def _draw_korean_feature(self, painter, s, m, variant, color):
+        """
+        Settlement, production and defence features as excavated plans.
+
+        Plan view for dwellings, kilns and fields — that is how they appear on
+        a site drawing — and section view for the ramparts and the basin,
+        where the profile is what identifies them.
+        """
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        fill = QColor(color.red(), color.green(), color.blue(), 110)
+        faint = QColor(color.red(), color.green(), color.blue(), 55)
+        edge = QPen(color.darker(150), 2.6)
+        thin = QPen(color.darker(165), 1.4)
+        dashed = QPen(color.darker(140), 2.0, Qt.DashLine)
+        cx, cy = s / 2.0, s / 2.0
+        ground = s - m - 34
+
+        painter.setPen(edge)
+        painter.setBrush(fill)
+
+        def postholes(points, radius=7):
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            for px, py in points:
+                painter.drawEllipse(QRectF(px - radius, py - radius, radius * 2, radius * 2))
+            painter.setPen(edge)
+            painter.setBrush(fill)
+
+        def hearth(hx, hy, radius=14):
+            painter.setPen(thin)
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 170))
+            painter.drawEllipse(QRectF(hx - radius, hy - radius, radius * 2, radius * 2))
+            painter.setPen(edge)
+            painter.setBrush(fill)
+
+        if variant == "pit_house_round":
+            # 원형 수혈주거지: a round cut with postholes and a central hearth.
+            painter.drawEllipse(QRectF(m + 4, m + 4, s - 2 * m - 8, s - 2 * m - 8))
+            r = (s - 2 * m - 8) / 2.0 - 30
+            postholes([
+                (cx - r * 0.71, cy - r * 0.71), (cx + r * 0.71, cy - r * 0.71),
+                (cx - r * 0.71, cy + r * 0.71), (cx + r * 0.71, cy + r * 0.71),
+            ])
+            hearth(cx, cy)
+
+        elif variant == "pit_house_square":
+            # 방형 수혈주거지.
+            painter.drawRect(QRectF(m + 6, m + 6, s - 2 * m - 12, s - 2 * m - 12))
+            inset = 44
+            postholes([
+                (m + inset, m + inset), (s - m - inset, m + inset),
+                (m + inset, s - m - inset), (s - m - inset, s - m - inset),
+            ])
+            hearth(cx, cy)
+
+        elif variant == "pit_house_convex":
+            # 凸자형: a square room with a short entrance passage.
+            body = QPainterPath()
+            body.moveTo(m + 6, m + 34)
+            body.lineTo(s - m - 6, m + 34)
+            body.lineTo(s - m - 6, s - m - 40)
+            body.lineTo(cx + 26, s - m - 40)
+            body.lineTo(cx + 26, s - m - 6)
+            body.lineTo(cx - 26, s - m - 6)
+            body.lineTo(cx - 26, s - m - 40)
+            body.lineTo(m + 6, s - m - 40)
+            body.closeSubpath()
+            painter.drawPath(body)
+            postholes([
+                (m + 40, m + 66), (s - m - 40, m + 66),
+                (m + 40, s - m - 68), (s - m - 40, s - m - 68),
+            ])
+            hearth(cx, cy - 10)
+
+        elif variant == "pit_house_twin":
+            # 呂자형: a main room and a smaller front room, joined.
+            painter.drawRect(QRectF(m + 12, m + 4, s - 2 * m - 24, 92))
+            painter.drawRect(QRectF(m + 34, s - m - 96, s - 2 * m - 68, 92))
+            painter.setPen(thin)
+            painter.drawLine(int(cx - 20), int(m + 96), int(cx - 20), int(s - m - 96))
+            painter.drawLine(int(cx + 20), int(m + 96), int(cx + 20), int(s - m - 96))
+            painter.setPen(edge)
+            hearth(cx, m + 50)
+
+        elif variant == "raised_floor":
+            # 굴립주건물: known only from its posthole grid.
+            painter.setBrush(faint)
+            painter.setPen(dashed)
+            painter.drawRect(QRectF(m + 4, m + 26, s - 2 * m - 8, s - 2 * m - 52))
+            grid = []
+            for row in range(3):
+                for col in range(4):
+                    grid.append((m + 30 + col * (s - 2 * m - 60) / 3.0,
+                                 m + 52 + row * (s - 2 * m - 104) / 2.0))
+            postholes(grid, radius=9)
+
+        elif variant == "kamado":
+            # 부뚜막: a clay stove body with the pot seat and the flue.
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(m + 10, cy - 52, s - 2 * m - 20, 104))
+            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setPen(thin)
+            painter.drawEllipse(QRectF(cx - 40, cy - 40, 80, 80))
+            painter.drawEllipse(QRectF(cx - 26, cy - 26, 52, 52))
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(m + 10, cy - 18, 34, 36))
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(s - m - 44, cy - 24, 34, 48))
+
+        elif variant == "ondol":
+            # 온돌: firebox, two flues under the floor, chimney at the far end.
+            painter.setBrush(solid)
+            painter.drawEllipse(QRectF(m + 6, cy - 30, 60, 60))
+            painter.setBrush(fill)
+            for offset in (-34, 22):
+                painter.drawRect(QRectF(m + 62, cy + offset, s - 2 * m - 96, 30))
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(s - m - 40, cy - 56, 34, 112))
+            painter.setPen(thin)
+            for i in range(3):
+                y = int(cy - 70 - i * 12)
+                painter.drawLine(int(s - m - 34), y, int(s - m - 12), y - 8)
+            painter.setPen(edge)
+
+        elif variant in ("pottery_kiln", "tile_kiln"):
+            # 토기가마 / 기와가마: firebox, sloping chamber, chimney.
+            body = QPainterPath()
+            top = cy - (44 if variant == "tile_kiln" else 34)
+            bottom = cy + (44 if variant == "tile_kiln" else 34)
+            body.moveTo(m + 46, top + 16)
+            body.quadTo(cx, top - 10, s - m - 46, top)
+            body.lineTo(s - m - 46, bottom)
+            body.quadTo(cx, bottom + 10, m + 46, bottom - 16)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setBrush(solid)
+            painter.drawEllipse(QRectF(m + 6, cy - 30, 58, 60))
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(s - m - 46, cy - 46, 32, 92))
+            painter.setPen(thin)
+            if variant == "tile_kiln":
+                for i in range(4):
+                    x = int(m + 74 + i * 26)
+                    painter.drawLine(x, int(top + 12), x, int(bottom - 12))
+            else:
+                for i in range(3):
+                    x = m + 84 + i * 30
+                    painter.drawEllipse(QRectF(x - 13, cy - 13, 26, 26))
+            painter.setPen(edge)
+
+        elif variant == "iron_smelting":
+            # 제철유구: the furnace with its tuyere and the slag pit beside it.
+            painter.setBrush(fill)
+            painter.drawEllipse(QRectF(cx - 58, m + 18, 116, 116))
+            painter.setBrush(solid)
+            painter.drawEllipse(QRectF(cx - 26, m + 50, 52, 52))
+            painter.setPen(edge)
+            painter.drawLine(int(m + 8), int(m + 76), int(cx - 54), int(m + 76))
+            painter.setBrush(faint)
+            painter.setPen(dashed)
+            painter.drawEllipse(QRectF(cx - 70, s - m - 84, 140, 74))
+            painter.setPen(thin)
+            painter.setBrush(solid)
+            for i in range(5):
+                painter.drawEllipse(QRectF(cx - 52 + i * 26, s - m - 62, 16, 16))
+            painter.setPen(edge)
+
+        elif variant == "charcoal_kiln":
+            # 숯가마: an oval chamber, its stoke hole, and charcoal inside.
+            painter.setBrush(fill)
+            painter.drawEllipse(QRectF(m + 10, m + 40, s - 2 * m - 20, s - 2 * m - 80))
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(cx - 22, s - m - 56, 44, 44))
+            painter.setPen(thin)
+            for row, count in ((cy - 26, 4), (cy + 6, 5), (cy + 36, 3)):
+                span = 30.0 * (count - 1)
+                for i in range(count):
+                    painter.drawEllipse(QRectF(cx - span / 2 + 30 * i - 9, row - 9, 18, 18))
+            painter.setPen(edge)
+
+        elif variant == "paddy_field":
+            # 논: level plots divided by levees, with the water inlet.
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(m, m + 14, s - 2 * m, s - 2 * m - 28))
+            painter.setPen(QPen(color.darker(150), 3.4))
+            painter.setBrush(Qt.NoBrush)
+            for i in range(1, 3):
+                y = int(m + 14 + i * (s - 2 * m - 28) / 3.0)
+                painter.drawLine(int(m), y, int(s - m), y)
+            painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 14))
+            painter.setPen(thin)
+            for i in range(3):
+                y = int(m + 34 + i * (s - 2 * m - 28) / 3.0)
+                painter.drawLine(int(m + 14), y, int(m + 74), y)
+                painter.drawLine(int(cx + 14), y, int(cx + 74), y)
+            painter.setPen(edge)
+
+        elif variant == "dry_field":
+            # 밭: ridge and furrow.
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(m, m + 20, s - 2 * m, s - 2 * m - 40))
+            painter.setPen(QPen(color.darker(155), 3.0))
+            for i in range(6):
+                x = int(m + 16 + i * (s - 2 * m - 32) / 5.0)
+                painter.drawLine(x, int(m + 26), x, int(s - m - 26))
+            painter.setPen(thin)
+            for i in range(5):
+                x = int(m + 32 + i * (s - 2 * m - 32) / 5.0)
+                painter.drawLine(x, int(m + 34), x, int(s - m - 34))
+            painter.setPen(edge)
+
+        elif variant == "earthen_rampart":
+            # 토성: a rammed-earth bank in section, with its outer ditch.
+            bank = QPainterPath()
+            bank.moveTo(m + 4, ground)
+            bank.lineTo(m + 54, m + 34)
+            bank.lineTo(s - m - 74, m + 34)
+            bank.lineTo(s - m - 30, ground)
+            bank.closeSubpath()
+            painter.drawPath(bank)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(1, 4):
+                y = m + 34 + i * (ground - m - 34) / 4.0
+                shrink = 14 * (4 - i)
+                painter.drawLine(int(m + 10 + shrink), int(y), int(s - m - 36 - shrink), int(y))
+            painter.setPen(edge)
+            painter.drawLine(int(m - 6), int(ground), int(s - m + 6), int(ground))
+            painter.setPen(dashed)
+            ditch = QPainterPath()
+            ditch.moveTo(s - m - 26, ground)
+            ditch.lineTo(s - m - 14, ground + 30)
+            ditch.lineTo(s - m, ground + 30)
+            painter.drawPath(ditch)
+
+        elif variant == "stone_rampart":
+            # 석성: a stone-faced wall in section, coursed.
+            wall = QPainterPath()
+            wall.moveTo(m + 10, ground)
+            wall.lineTo(m + 40, m + 30)
+            wall.lineTo(s - m - 40, m + 30)
+            wall.lineTo(s - m - 10, ground)
+            wall.closeSubpath()
+            painter.drawPath(wall)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            courses = 5
+            for i in range(1, courses):
+                y = m + 30 + i * (ground - m - 30) / courses
+                inset = 30 - i * 4
+                painter.drawLine(int(m + inset), int(y), int(s - m - inset), int(y))
+            painter.setBrush(solid)
+            for i in range(4):
+                painter.drawRect(QRectF(m + 46 + i * 42, m + 12, 30, 18))
+            painter.setPen(edge)
+            painter.drawLine(int(m - 6), int(ground), int(s - m + 6), int(ground))
+
+        elif variant == "mountain_fortress":
+            # 산성: a wall line following the ridge, over contour lines.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(thin)
+            for i in range(3):
+                inset = 16 + i * 26
+                contour = QPainterPath()
+                contour.moveTo(m + inset, s - m - 10)
+                contour.quadTo(cx, m + 10 + i * 34, s - m - inset, s - m - 10)
+                painter.drawPath(contour)
+            painter.setPen(QPen(color.darker(150), 4.0))
+            wall = QPainterPath()
+            wall.moveTo(m + 6, s - m - 10)
+            wall.quadTo(cx, m - 12, s - m - 6, s - m - 10)
+            painter.drawPath(wall)
+            painter.setPen(thin)
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(cx - 16, m + 24, 32, 26))
+            painter.setPen(edge)
+
+        elif variant == "palisade":
+            # 목책: a line of pointed timbers with its tie beam.
+            painter.setBrush(solid)
+            painter.setPen(edge)
+            count = 6
+            step = (s - 2 * m - 24) / (count - 1.0)
+            for i in range(count):
+                x = m + 12 + step * i
+                post = QPainterPath()
+                post.moveTo(x, m + 26)
+                post.lineTo(x + 13, m + 46)
+                post.lineTo(x + 13, ground + 6)
+                post.lineTo(x - 13, ground + 6)
+                post.lineTo(x - 13, m + 46)
+                post.closeSubpath()
+                painter.drawPath(post)
+            painter.setPen(QPen(color.darker(160), 3.4))
+            painter.drawLine(int(m + 4), int(m + 80), int(s - m - 4), int(m + 80))
+            painter.setPen(thin)
+            painter.drawLine(int(m - 6), int(ground + 6), int(s - m + 6), int(ground + 6))
+            painter.setPen(edge)
+
+        elif variant == "encircling_ditch":
+            # 환호: concentric ditches ringing a settlement.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color.darker(150), 4.0))
+            painter.drawEllipse(QRectF(m, m, s - 2 * m, s - 2 * m))
+            painter.drawEllipse(QRectF(m + 26, m + 26, s - 2 * m - 52, s - 2 * m - 52))
+            painter.setPen(thin)
+            painter.setBrush(solid)
+            for dx, dy in ((-26, -18), (24, -22), (-18, 26), (26, 22), (0, 0)):
+                painter.drawEllipse(QRectF(cx + dx - 11, cy + dy - 11, 22, 22))
+            painter.setPen(edge)
+
+        elif variant == "beacon":
+            # 봉수: the stone platform and its smoke.
+            painter.setBrush(fill)
+            base = QPainterPath()
+            base.moveTo(m + 10, ground + 8)
+            base.lineTo(m + 46, cy + 6)
+            base.lineTo(s - m - 46, cy + 6)
+            base.lineTo(s - m - 10, ground + 8)
+            base.closeSubpath()
+            painter.drawPath(base)
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(cx - 32, cy - 26, 64, 32))
+            painter.setPen(QPen(color.darker(150), 3.4))
+            painter.setBrush(Qt.NoBrush)
+            smoke = QPainterPath()
+            smoke.moveTo(cx, cy - 30)
+            smoke.quadTo(cx - 34, cy - 62, cx, m + 46)
+            smoke.quadTo(cx + 34, m + 24, cx - 6, m + 6)
+            painter.drawPath(smoke)
+            painter.setPen(edge)
+
+        elif variant == "water_basin":
+            # 집수정: a timber-lined basin in section, with the water level.
+            painter.setBrush(fill)
+            basin = QPainterPath()
+            basin.moveTo(m + 6, m + 44)
+            basin.lineTo(s - m - 6, m + 44)
+            basin.lineTo(s - m - 40, ground + 10)
+            basin.lineTo(m + 40, ground + 10)
+            basin.closeSubpath()
+            painter.drawPath(basin)
+            painter.setPen(QPen(color.darker(150), 3.0))
+            painter.setBrush(Qt.NoBrush)
+            for i in range(3):
+                y = int(m + 74 + i * 26)
+                inset = 16 + i * 10
+                painter.drawLine(int(m + inset), y, int(s - m - inset), y)
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(m + 6, m + 30, s - 2 * m - 12, 18))
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
