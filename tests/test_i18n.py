@@ -15,6 +15,7 @@ import pytest
 
 from archeoglyph import i18n
 from archeoglyph.generators.style_utils import STYLE_OPTIONS
+from archeoglyph.generators.template_catalog import TEMPLATE_INFO
 from archeoglyph.i18n_ko import CATALOG
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -80,16 +81,9 @@ def _class_level_ui_strings():
 def _template_names():
     """
     Template names reach tr() through template_display_name(), so they are
-    passed as a variable and cannot be found by scanning for tr("...").
+    passed as a variable and scanning for tr("...") cannot see them.
     """
-    source = (ROOT / "generators/template_generator.py").read_text(encoding="utf-8-sig")
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
-            if "TEMPLATE_INFO" in targets:
-                return [k.value for k in node.value.keys if isinstance(k, ast.Constant)]
-    raise AssertionError("TEMPLATE_INFO not found")
+    return list(TEMPLATE_INFO)
 
 
 # -- language resolution ------------------------------------------------
