@@ -182,6 +182,8 @@ class RecordingPainter:
 
     def __init__(self):
         self.points = []
+        self.brushes = []
+        self.fills = []          # the brush in effect at each draw call
         self.operations = 0
         self._pen = FakePen()
         self._brush = None
@@ -198,6 +200,7 @@ class RecordingPainter:
 
     def setBrush(self, brush):
         self._brush = brush
+        self.brushes.append(brush)
 
     def setRenderHint(self, *_args):
         pass
@@ -205,6 +208,7 @@ class RecordingPainter:
     # -- drawing -------------------------------------------------------
     def _record(self, *coords):
         self.operations += 1
+        self.fills.append(self._brush)
         for i in range(0, len(coords), 2):
             self.points.append((float(coords[i]), float(coords[i + 1])))
 
@@ -217,6 +221,7 @@ class RecordingPainter:
     def drawRect(self, *args):
         if len(args) == 1:
             self.operations += 1
+            self.fills.append(self._brush)
             self.points.extend(args[0].points())
         else:
             x, y, w, h = (float(v) for v in args)
@@ -230,10 +235,12 @@ class RecordingPainter:
 
     def drawPath(self, path):
         self.operations += 1
+        self.fills.append(self._brush)
         self.points.extend(path.points)
 
     def drawPolygon(self, polygon):
         self.operations += 1
+        self.fills.append(self._brush)
         self.points.extend(polygon.points)
 
     def drawText(self, x, y, _text):
@@ -307,3 +314,63 @@ def test_every_template_fills_a_usable_share_of_the_canvas(painter, name):
 def test_unknown_template_falls_back_to_a_shape(painter):
     _paint(painter, "Not A Real Template")
     assert painter.operations > 0
+
+
+BASE_RGB = (139, 69, 19)
+
+
+@pytest.mark.parametrize("name", sorted(TemplateGenerator.TEMPLATE_INFO))
+def test_fill_tones_are_opacity_not_a_different_colour(painter, name):
+    """
+    QGIS replaces every `param(fill)` with one colour, so a drawing that gets
+    its light and dark areas from different fill colours collapses into a flat
+    silhouette the moment the user recolours it. Tone has to come from the
+    alpha channel, which survives as per-element fill-opacity.
+    """
+    _paint(painter, name)
+
+    offenders = {
+        brush._rgb for brush in painter.brushes
+        if isinstance(brush, FakeColor) and brush._rgb != BASE_RGB
+    }
+    # Pure white and pure black are the conventional "knock out" and "ink"
+    # fills and are not meant to follow the symbol colour.
+    offenders -= {(255, 255, 255), (0, 0, 0)}
+    assert not offenders, (
+        f"{name} fills with colours other than the symbol colour {offenders}; "
+        "vary the alpha instead so QGIS recolouring keeps the tones"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(TemplateGenerator.TEMPLATE_INFO))
+def test_the_first_filled_shape_uses_the_symbol_colour(painter, name):
+    """
+    svg_builder.parametrize records the first solid fill in document order as
+    the symbol's fallback colour, and symbol_manager hands that colour to the
+    QGIS marker. A template whose first *drawn* shape carries some other
+    colour would give the whole symbol the wrong fallback.
+
+    The brush in effect at each draw is what reaches the SVG, so that is what
+    is recorded here rather than every setBrush call.
+    """
+    _paint(painter, name)
+    first = next(
+        (brush for brush in painter.fills if isinstance(brush, FakeColor)), None
+    )
+    assert first is None or first._rgb == BASE_RGB, (
+        f"{name} first fills with {first._rgb} instead of the symbol colour {BASE_RGB}"
+    )
+
+
+def test_no_template_fills_with_a_fully_transparent_colour():
+    """
+    A transparent colour brush still emits a solid `fill` attribute that the
+    parametriser counts as real, so it can become the symbol's fallback
+    colour. Qt.NoBrush emits fill="none" and is skipped.
+    """
+    import inspect
+
+    source = inspect.getsource(tg)
+    assert "QColor(255, 255, 255, 0)" not in source, (
+        "use Qt.NoBrush for an unfilled shape, not a fully transparent colour"
+    )

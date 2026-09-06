@@ -1449,7 +1449,22 @@ class TemplateGenerator:
         return image
 
     def _paint_template(self, painter, template_type, color, size=256):
-        """Shared painting used by both the SVG and raster placeholder paths."""
+        """
+        Shared painting used by both the SVG and raster placeholder paths.
+
+        Two rules bind every ``_draw_*`` method, because the SVG is
+        parametrised for QGIS afterwards (see svg_builder.parametrize):
+
+        * Fill only with the symbol colour. QGIS gives every ``param(fill)``
+          the same value, so a lighter or darker *colour* collapses into a
+          flat tone the moment the user recolours the symbol. Vary the alpha
+          instead — it survives as per-element ``fill-opacity``.
+        * Use ``Qt.NoBrush`` for an unfilled shape, never a transparent
+          colour: a transparent colour still emits a solid ``fill`` attribute,
+          which the parametriser can take as the symbol's fallback colour.
+
+        Both rules are enforced by tests/test_template_drawing.py.
+        """
         q_color = QColor(color)
         painter.setBrush(q_color)
         painter.setPen(QPen(q_color.darker(130), 2.0))
@@ -1943,7 +1958,8 @@ class TemplateGenerator:
             inner = int(side * 0.46)
             inner_x = int(cx - inner / 2)
             inner_y = int(cx - inner / 2)
-            painter.setBrush(color.lighter(125))
+            # Lighter through opacity, so QGIS recolouring keeps the contrast.
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 120))
             painter.drawRect(inner_x, inner_y, inner, inner)
         else:
             self._draw_keyhole_tomb(painter, s, m, "normal", color)
@@ -2230,7 +2246,7 @@ class TemplateGenerator:
             top, bottom = m + 10, s - m - 10
             painter.setBrush(fill)
             painter.drawRect(QRectF(left, top, right - left, bottom - top))
-            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setBrush(Qt.NoBrush)
             painter.setPen(thin)
             painter.drawRect(QRectF(left + 22, top + 22, right - left - 44, bottom - top - 44))
             painter.setBrush(solid)
@@ -2474,7 +2490,7 @@ class TemplateGenerator:
             # 부뚜막: a clay stove body with the pot seat and the flue.
             painter.setBrush(fill)
             painter.drawRect(QRectF(m + 10, cy - 52, s - 2 * m - 20, 104))
-            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setBrush(Qt.NoBrush)
             painter.setPen(thin)
             painter.drawEllipse(QRectF(cx - 40, cy - 40, 80, 80))
             painter.drawEllipse(QRectF(cx - 26, cy - 26, 52, 52))
@@ -2865,7 +2881,7 @@ class TemplateGenerator:
             stand.closeSubpath()
             painter.drawPath(stand)
             painter.setPen(thin)
-            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setBrush(Qt.NoBrush)
             for row, half in ((top + 98, 16), (top + 130, 26)):
                 painter.drawRect(QRectF(cx - half - 12, row, 18, 20))
                 painter.drawRect(QRectF(cx - 6 + half, row, 18, 20))
@@ -3088,7 +3104,7 @@ class TemplateGenerator:
             body.closeSubpath()
             painter.drawPath(body)
             painter.setPen(thin)
-            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setBrush(Qt.NoBrush)
             painter.drawEllipse(QRectF(cx - 40, cy - 34, 18, 18))
             painter.drawEllipse(QRectF(cx + 22, cy - 34, 18, 18))
 
@@ -3192,7 +3208,7 @@ class TemplateGenerator:
                 bx = cx + 74 * math.cos(angle)
                 by = cy + 74 * math.sin(angle)
                 painter.drawEllipse(QRectF(bx - 17, by - 17, 34, 34))
-            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setBrush(Qt.NoBrush)
             painter.setPen(thin)
             painter.drawEllipse(QRectF(cx - 16, cy - 16, 32, 32))
 
@@ -3265,7 +3281,7 @@ class TemplateGenerator:
             body.quadTo(cx, bottom + 4, cx - 44, bottom - 34)
             body.closeSubpath()
             painter.drawPath(body)
-            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setBrush(Qt.NoBrush)
             painter.setPen(thin)
             painter.drawRect(QRectF(cx - 24, top + 22, 48, 34))
             painter.setPen(QPen(color.darker(175), 2.6))
@@ -3416,7 +3432,7 @@ class TemplateGenerator:
         solid = QColor(color)
         edge = QPen(color.darker(150), 2.4)
         thin = QPen(color.darker(170), 1.3)
-        hollow = QColor(255, 255, 255, 0)
+        hollow = Qt.NoBrush   # fill="none": never picked up as the fallback colour
         cx, cy = s / 2.0, s / 2.0
         top, bottom = m + 4, s - m - 4
 
@@ -3616,7 +3632,7 @@ class TemplateGenerator:
             painter.setPen(thin)
             painter.setBrush(hollow)
             painter.drawRect(QRectF(m + 18, cy - 40, s - 2 * m - 36, 60))
-            painter.setBrush(QColor(color.darker(160)))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 235))
             painter.drawEllipse(QRectF(cx + 26, cy - 32, 56, 44))
 
         elif variant == "clay_figurine":
@@ -3746,9 +3762,12 @@ class TemplateGenerator:
         p1.quadTo(s/2, s * 0.5, s - m, s - m)
         p1.closeSubpath()
         painter.drawPath(p1)
-        # Top layer (lighter)
+        # Top layer, lightened through opacity rather than a second colour:
+        # QGIS gives every param(fill) the same value, so a lighter colour
+        # would vanish the moment the symbol is recoloured.
         old_brush = painter.brush()
-        painter.setBrush(old_brush.color().lighter(130))
+        base = old_brush.color()
+        painter.setBrush(QColor(base.red(), base.green(), base.blue(), 110))
         p2 = QPainterPath()
         p2.moveTo(m + 30, s - m - 30)
         p2.quadTo(s/2, s * 0.35, s - m - 30, s - m - 30)
@@ -4221,7 +4240,7 @@ class TemplateGenerator:
         ring_pen = QPen(color.darker(125), 2.2, Qt.DashLine)
         painter.setPen(ring_pen)
         painter.drawEllipse(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
-        painter.setBrush(color.darker(140))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 245))
         painter.setPen(QPen(color.darker(150), 1.0))
         painter.drawEllipse(int(cx - 8), int(cy - 8), 16, 16)
         for i in range(6):
