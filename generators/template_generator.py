@@ -1189,227 +1189,178 @@ class TemplateGenerator:
 
     def _draw_korean_tomb(self, painter, s, m, variant, color):
         """
-        Korean burial types as the schematic each one is recognised by.
+        Korean burial types, as the schematic each one is recognised by.
 
-        Section view for the dolmens and pit graves, plan view for the chamber
-        tombs — the same convention as an excavation report figure. Detail is
-        deliberately coarse: these have to stay readable at a 5-10 mm marker.
+        Section view for the dolmens and the mounds, plan view for the
+        chambers - the same split an excavation report uses. The section
+        types all share one ground line at y=50 and the plan types all sit in
+        the same box, so the family lines up instead of each schematic
+        picking its own horizon.
+
+        Detail is held to what separates a type from its neighbour. The
+        earlier drawings answered "piled stones" with twenty small circles
+        and "timber" with a stack of rules; at a 5-10 mm marker both turn
+        into a smudge, which is the whole reason this catalogue is being
+        rebuilt on a grid.
         """
+        g = icon_grid.Grid(s)
         old_pen, old_brush = painter.pen(), painter.brush()
         solid = QColor(color)
-        fill = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
-        faint = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
-        edge = _pen(color.darker(150), 2.6)
-        thin = _pen(color.darker(165), 1.4)
-        dashed = _pen(color.darker(140), 2.0, Qt.DashLine)
-        cx = s / 2.0
-        ground = s - m - 34
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        ground_tone = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
+        edge = _pen(color, 2.6)
+        thin = _pen(color, 1.4)
+        dashed = _pen(color, 1.8, Qt.DashLine)
+        GROUND = 50
 
         painter.setPen(edge)
         painter.setBrush(solid)
 
         if variant == "table":
-            # 탁자식: a capstone carried clear of the ground on tall slabs.
-            cap = QPainterPath()
-            cap.moveTo(m, m + 78)
-            cap.lineTo(m + 26, m + 44)
-            cap.lineTo(s - m - 26, m + 44)
-            cap.lineTo(s - m, m + 78)
-            cap.closeSubpath()
-            painter.drawPath(cap)
-            painter.setBrush(fill)
-            painter.drawRect(QRectF(m + 44, m + 78, 26, ground - (m + 78)))
-            painter.drawRect(QRectF(s - m - 70, m + 78, 26, ground - (m + 78)))
+            # 탁자식: the chamber stands clear of the ground, so the legs are
+            # tall and the capstone is a thin slab.
+            painter.drawPath(g.rect(6, 13, 52, 8))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(17, 21, 8, GROUND - 21))
+            painter.drawPath(g.rect(39, 21, 8, GROUND - 21))
             painter.setPen(thin)
-            painter.drawLine(int(m - 4), int(ground), int(s - m + 4), int(ground))
+            painter.drawPath(g.line(5, GROUND, 59, GROUND))
 
         elif variant == "go_board":
-            # 기반식: a thick capstone resting on short supports over a low mound.
-            painter.setBrush(faint)
+            # 기반식: the same capstone, thick and domed, on short supports.
+            # Against 탁자식 the difference is leg height, which is the
+            # difference in the field.
+            painter.drawPath(g.symmetric([(5, 17), (20, 24), (27, 33)], curved=True))
+            painter.setBrush(body)
+            for x in (16, 28, 40):
+                painter.drawPath(g.rect(x, 33, 8, GROUND - 33))
             painter.setPen(thin)
-            mound = QPainterPath()
-            mound.moveTo(m - 4, ground)
-            mound.quadTo(cx, ground - 46, s - m + 4, ground)
-            mound.closeSubpath()
-            painter.drawPath(mound)
-            painter.setPen(edge)
-            painter.setBrush(fill)
-            for x in (m + 40, cx - 13, s - m - 66):
-                painter.drawRect(QRectF(x, ground - 40, 26, 40))
-            painter.setBrush(solid)
-            cap = QPainterPath()
-            cap.moveTo(m - 2, ground - 46)
-            cap.quadTo(cx, ground - 92, s - m + 2, ground - 46)
-            cap.quadTo(cx, ground - 30, m - 2, ground - 46)
-            cap.closeSubpath()
-            painter.drawPath(cap)
+            painter.drawPath(g.line(5, GROUND, 59, GROUND))
 
         elif variant == "capstone":
-            # 개석식: the capstone lies on the ground over a buried cist.
-            cap = QPainterPath()
-            cap.moveTo(m - 2, ground - 20)
-            cap.quadTo(cx, ground - 74, s - m + 2, ground - 20)
-            cap.quadTo(cx, ground - 2, m - 2, ground - 20)
-            cap.closeSubpath()
-            painter.drawPath(cap)
+            # 개석식: the capstone lies on the ground and the cist is buried,
+            # so the buried half is the dashed one.
+            painter.drawPath(g.symmetric([(6, 22), (22, 28), (28, 34)], curved=True))
             painter.setPen(thin)
-            painter.drawLine(int(m - 6), int(ground - 8), int(s - m + 6), int(ground - 8))
+            painter.drawPath(g.line(5, 34, 59, 34))
             painter.setPen(dashed)
             painter.setBrush(Qt.NoBrush)
-            painter.drawRect(QRectF(cx - 44, ground + 6, 88, 40))
+            painter.drawPath(g.rect(21, 39, 22, 13))
 
         elif variant == "stone_cist":
-            # 석관묘: four slabs set on edge, drawn in plan with open corners.
-            painter.setBrush(Qt.NoBrush)
-            left, right = m + 30, s - m - 30
-            top, bottom = m + 16, s - m - 16
-            painter.setBrush(fill)
-            painter.drawRect(QRectF(left + 12, top, right - left - 24, 16))
-            painter.drawRect(QRectF(left + 12, bottom - 16, right - left - 24, 16))
-            painter.drawRect(QRectF(left, top + 12, 16, bottom - top - 24))
-            painter.drawRect(QRectF(right - 16, top + 12, 16, bottom - top - 24))
+            # 석관묘: four slabs set on edge. The open corners are what says
+            # slabs rather than a built wall.
+            painter.setBrush(body)
+            painter.drawPath(g.rect(18, 11, 28, 7))
+            painter.drawPath(g.rect(18, 46, 28, 7))
+            painter.drawPath(g.rect(11, 18, 7, 28))
+            painter.drawPath(g.rect(46, 18, 7, 28))
 
         elif variant == "stone_lined":
-            # 석곽묘: a chamber walled with piled stones, drawn in plan.
-            left, right = m + 22, s - m - 22
-            top, bottom = m + 10, s - m - 10
-            painter.setBrush(fill)
-            painter.drawRect(QRectF(left, top, right - left, bottom - top))
-            painter.setBrush(Qt.NoBrush)
-            painter.setPen(thin)
-            painter.drawRect(QRectF(left + 22, top + 22, right - left - 44, bottom - top - 44))
+            # 석곽묘: a wall built of piled stone, so it is a continuous band
+            # rather than four slabs - drawn as one thick outline with its
+            # courses ticked, not as a ring of twenty pebbles.
+            painter.setBrush(body)
+            painter.drawPath(g.rect(9, 12, 46, 40))
             painter.setBrush(solid)
-            step = (bottom - top - 24) / 5.0
-            for i in range(5):
-                y = top + 12 + step * i
-                painter.drawEllipse(QRectF(left + 5, y, 12, 12))
-                painter.drawEllipse(QRectF(right - 17, y, 12, 12))
-            step = (right - left - 24) / 5.0
-            for i in range(5):
-                x = left + 12 + step * i
-                painter.drawEllipse(QRectF(x, top + 5, 12, 12))
-                painter.drawEllipse(QRectF(x, bottom - 17, 12, 12))
+            painter.drawPath(g.rect(17, 20, 30, 24))
 
-        elif variant in ("wooden_coffin", "wooden_chamber"):
-            # 목관묘 / 목곽묘: the grave pit dashed, the timber solid inside it.
-            painter.setBrush(faint)
+        elif variant == "wooden_coffin":
+            # 목관묘: the grave pit dashed, one timber coffin inside it.
+            painter.setBrush(ground_tone)
             painter.setPen(dashed)
-            painter.drawRect(QRectF(m + 6, m + 2, s - 2 * m - 12, s - 2 * m - 4))
+            painter.drawPath(g.rect(9, 10, 46, 44))
             painter.setPen(edge)
-            if variant == "wooden_chamber":
-                painter.setBrush(fill)
-                painter.drawRect(QRectF(m + 26, m + 20, s - 2 * m - 52, s - 2 * m - 40))
-                painter.setBrush(solid)
-                painter.drawRect(QRectF(m + 48, m + 42, s - 2 * m - 96, s - 2 * m - 84))
-            else:
-                painter.setBrush(solid)
-                painter.drawRect(QRectF(m + 36, m + 24, s - 2 * m - 72, s - 2 * m - 48))
-            painter.setPen(thin)
-            for i in range(3):
-                y = int(m + 60 + i * 34)
-                painter.drawLine(int(m + 58), y, int(s - m - 58), y)
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(21, 20, 22, 24))
+
+        elif variant == "wooden_chamber":
+            # 목곽묘: the same pit with a chamber around the coffin. One ring
+            # more than 목관묘 - which is exactly the distinction.
+            painter.setBrush(ground_tone)
+            painter.setPen(dashed)
+            painter.drawPath(g.rect(9, 10, 46, 44))
+            painter.setPen(edge)
+            painter.setBrush(body)
+            painter.drawPath(g.rect(16, 17, 32, 30))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(25, 26, 14, 12))
 
         elif variant == "jar_coffin":
-            # 옹관묘: two jars set mouth to mouth.
-            painter.setBrush(fill)
-            for direction in (1, -1):
-                jar = QPainterPath()
-                mouth = cx + direction * 8
-                tip = cx + direction * (s / 2.0 - m)
-                jar.moveTo(mouth, s / 2.0 - 46)
-                jar.quadTo(mouth + direction * 46, s / 2.0 - 60, tip, s / 2.0 - 20)
-                jar.quadTo(tip + direction * 8, s / 2.0, tip, s / 2.0 + 20)
-                jar.quadTo(mouth + direction * 46, s / 2.0 + 60, mouth, s / 2.0 + 46)
-                jar.closeSubpath()
-                painter.drawPath(jar)
+            # 옹관묘: two jars set mouth to mouth. Drawn upright rather than
+            # laid down, because at 64 units a horizontal pair reads as one
+            # bean and an upright pair reads as two pots.
+            painter.setBrush(body)
+            # Two jars of the same size read as one peanut. A small lid jar
+            # over a large body jar is both what 합구식 옹관 actually is and
+            # what makes the pair legible at marker size.
+            painter.drawPath(g.symmetric(
+                [(5, 10), (10, 15), (11, 23), (11, 30)], curved=True))
+            painter.drawPath(g.symmetric(
+                [(11, 32), (15, 39), (14, 49), (6, 55)], curved=True))
             painter.setPen(thin)
-            painter.drawLine(int(cx), int(s / 2.0 - 48), int(cx), int(s / 2.0 + 48))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(20, 31, 44, 31))
 
         elif variant == "stone_mound_chamber":
-            # 적석목곽분: a stone pile heaped over a timber chamber.
-            painter.setBrush(fill)
-            mound = QPainterPath()
-            mound.moveTo(m - 2, ground)
-            mound.quadTo(cx, m + 4, s - m + 2, ground)
-            mound.closeSubpath()
-            painter.drawPath(mound)
+            # 적석목곽분: a stone pile heaped over a timber chamber. Three
+            # stones say pile; fifteen said noise.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.symmetric([(4, 16), (17, 28), (28, GROUND)],
+                                         curved=True))
             painter.setBrush(solid)
             painter.setPen(thin)
-            for row, count in ((ground - 96, 3), (ground - 64, 5), (ground - 32, 7)):
-                span = 22.0 * (count - 1)
-                for i in range(count):
-                    painter.drawEllipse(QRectF(cx - span / 2 + 22 * i - 8, row - 8, 16, 16))
+            for cx, cy in ((22, 33), (32, 29), (42, 33)):
+                painter.drawPath(g.circle(cx, cy, 4.5))
             painter.setPen(edge)
             painter.setBrush(Qt.NoBrush)
-            painter.drawRect(QRectF(cx - 46, ground - 26, 92, 26))
-            painter.setPen(thin)
-            painter.drawLine(int(m - 6), int(ground), int(s - m + 6), int(ground))
+            painter.drawPath(g.rect(23, 39, 18, 11))
 
         elif variant == "corridor_chamber":
-            # 횡혈식석실분: a chamber reached by a corridor, drawn in plan
-            # inside the mound.
-            painter.setBrush(faint)
+            # 횡혈식석실분: the chamber and the passage that reaches it, in
+            # plan, inside the mound.
+            painter.setBrush(ground_tone)
             painter.setPen(dashed)
-            painter.drawEllipse(QRectF(m - 4, m - 4, s - 2 * m + 8, s - 2 * m + 8))
+            painter.drawPath(g.circle(32, 32, 26))
             painter.setPen(edge)
-            painter.setBrush(fill)
-            painter.drawRect(QRectF(cx - 52, m + 26, 104, 88))
-            painter.drawRect(QRectF(cx - 20, m + 114, 40, s - m - 20 - (m + 114)))
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRect(QRectF(cx - 34, m + 40, 68, 60))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(22, 15, 20, 19))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(28, 34, 8, 17))
 
         elif variant == "earthen_mound":
-            # 봉토분: an earthen mound with its build-up layers.
-            painter.setBrush(fill)
-            mound = QPainterPath()
-            mound.moveTo(m - 4, ground)
-            mound.quadTo(cx, m - 4, s - m + 4, ground)
-            mound.closeSubpath()
+            # 봉토분: a plain earthen mound, built up in tiers. No chamber
+            # and no stones, which is what tells it from 적석목곽분.
+            mound = g.symmetric([(4, 16), (17, 28), (28, GROUND)], curved=True)
+            painter.setBrush(body)
             painter.drawPath(mound)
+            _clip_detail(painter, mound)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            for shrink in (26, 52):
-                layer = QPainterPath()
-                layer.moveTo(m - 4 + shrink, ground)
-                layer.quadTo(cx, m - 4 + shrink * 1.6, s - m + 4 - shrink, ground)
-                painter.drawPath(layer)
-            painter.setPen(edge)
-            painter.drawLine(int(m - 8), int(ground), int(s - m + 8), int(ground))
+            painter.drawPath(g.line(12, 38, 52, 38))
+            painter.drawPath(g.line(18, 29, 46, 29))
+            painter.restore()
 
         elif variant == "ditch_encircled":
-            # 주구묘: an open ditch ring around a central grave.
-            painter.setBrush(fill)
-            painter.setPen(thin)
-            outer = QPainterPath()
-            outer.addRect(QRectF(m - 2, m - 2, s - 2 * m + 4, s - 2 * m + 4))
-            inner = QPainterPath()
-            inner.addRect(QRectF(m + 24, m + 24, s - 2 * m - 48, s - 2 * m - 48))
-            ring = outer.subtracted(inner)
-            gap = QPainterPath()
-            gap.addRect(QRectF(cx - 22, m - 6, 44, 40))
-            gap.addRect(QRectF(cx - 22, s - m - 34, 44, 40))
-            painter.drawPath(ring.subtracted(gap))
+            # 주구묘: a grave inside its ring ditch. The ditch is the stroke,
+            # so it stays a ditch instead of turning into a frame.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 3.0))
+            painter.drawPath(g.rect(9, 9, 46, 46))
             painter.setPen(edge)
             painter.setBrush(solid)
-            painter.drawRect(QRectF(cx - 26, s / 2.0 - 44, 52, 88))
+            painter.drawPath(g.rect(25, 22, 14, 20))
 
         elif variant == "pit_grave":
-            # 토광묘: a plain earth-cut pit, in section.
-            painter.setBrush(fill)
-            pit = QPainterPath()
-            pit.moveTo(m + 6, ground - 96)
-            pit.lineTo(s - m - 6, ground - 96)
-            pit.lineTo(s - m - 26, ground)
-            pit.lineTo(m + 26, ground)
-            pit.closeSubpath()
-            painter.drawPath(pit)
-            painter.setPen(thin)
-            painter.drawLine(int(m - 8), int(ground - 96), int(m + 6), int(ground - 96))
-            painter.drawLine(int(s - m - 6), int(ground - 96), int(s - m + 8), int(ground - 96))
+            # 토광묘: a plain earth-cut pit in section, the body laid in it.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.poly([(9, 20), (55, 20), (48, GROUND),
+                                     (16, GROUND)]))
             painter.setBrush(solid)
-            painter.setPen(edge)
-            painter.drawRect(QRectF(cx - 48, ground - 44, 96, 30))
+            painter.drawPath(g.rect(21, 34, 22, 10))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(5, 20, 59, 20))
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)

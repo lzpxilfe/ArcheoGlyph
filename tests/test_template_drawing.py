@@ -151,8 +151,6 @@ def test_no_template_fills_with_a_fully_transparent_colour():
 MARK_CAP = 10
 REPETITION_IS_THE_TYPE = {
     "Lamellar Armour": "the field of laced scales is what names it",
-    "Stone-mounded Wooden Chamber Tomb": "the stone pile over the chamber",
-    "Stone-lined Tomb": "the walling stones around the chamber",
     "Gold Crown": "three uprights, each with its own branching arms",
     "Comb-pattern Pottery": "the comb impressions are the ware",
     "Midden / Shell Mound": "a shell mound is a mass of shells",
@@ -201,12 +199,16 @@ def test_the_repetition_allowlist_has_no_stale_entries(painter):
 GRID_NATIVE = sorted(
     [name for name in TemplateGenerator.TEMPLATE_INFO
      if name.startswith(("Bronze Dagger (", "Projectile Point (",
-                         "Kofun (", "Keyhole Tomb ("))]
+                         "Kofun (", "Keyhole Tomb (", "Dolmen ("))]
     + ["Comb-pattern Pottery", "Plain Coarse Pottery", "Red Burnished Pottery",
        "Black Burnished Long-necked Jar", "Soft Grey Pottery (Wajil)",
        "Hard Grey Stoneware (Gyeongjil)", "Mounted Dish (Gobae)",
        "Storage Jar (Ho)", "Steamer (Siru)", "Celadon", "Buncheong Ware",
-       "White Porcelain", "Onggi Jar"]
+       "White Porcelain", "Onggi Jar",
+       "Stone Cist Tomb", "Stone-lined Tomb", "Wooden Coffin Tomb",
+       "Wooden Chamber Tomb", "Jar Coffin Tomb",
+       "Stone-mounded Wooden Chamber Tomb", "Corridor-style Stone Chamber Tomb",
+       "Earthen Mounded Tomb", "Ditch-encircled Tomb", "Earthen Pit Tomb"]
 )
 
 
