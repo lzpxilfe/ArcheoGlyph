@@ -139,3 +139,56 @@ def test_no_template_fills_with_a_fully_transparent_colour():
     assert "QColor(255, 255, 255, 0)" not in source, (
         "use Qt.NoBrush for an unfilled shape, not a fully transparent colour"
     )
+
+
+# A symbol whose identity IS repetition - scales, piled stones, a posthole
+# grid - needs more marks than one that is a silhouette. Everything else has
+# to stay under the cap, with the reason recorded here.
+MARK_CAP = 10
+REPETITION_IS_THE_TYPE = {
+    "Lamellar Armour": "the field of laced scales is what names it",
+    "Kofun (Tsumiishizuka)": "a cairn is its piled stones",
+    "Keyhole Tomb (Tsumishizuka)": "a cairn is its piled stones",
+    "Stone-mounded Wooden Chamber Tomb": "the stone pile over the chamber",
+    "Stone-lined Tomb": "the walling stones around the chamber",
+    "Gold Crown": "three uprights, each with its own branching arms",
+    "Comb-pattern Pottery": "the comb impressions are the ware",
+    "Midden / Shell Mound": "a shell mound is a mass of shells",
+    "Charcoal Kiln": "the charcoal inside is the point",
+    "Raised-floor Building": "the building survives only as its posthole grid",
+    "Plate Armour": "the rivets down each plate",
+    "Dry Field": "ridge and furrow is the feature",
+}
+
+
+@pytest.mark.parametrize("name", sorted(TemplateGenerator.TEMPLATE_INFO))
+def test_a_symbol_carries_only_the_marks_it_needs(painter, name):
+    """
+    Detail is what kills a map marker.
+
+    The symbols this catalogue is measured against carry one to three marks:
+    a silhouette, and at most the one thing that separates the type from its
+    neighbours. Everything beyond that turns to grey at 5-10 mm - which is the
+    size these are drawn for. A template that needs more must say why.
+    """
+    _paint(painter, name)
+    marks = len(painter.calls)
+    if name in REPETITION_IS_THE_TYPE:
+        return
+    assert marks <= MARK_CAP, (
+        f"{name} draws {marks} marks. Reduce it to the silhouette plus what "
+        f"distinguishes the type, or add it to REPETITION_IS_THE_TYPE with a "
+        f"reason."
+    )
+
+
+def test_the_repetition_allowlist_has_no_stale_entries(painter):
+    """An entry for a symbol that no longer needs it hides a real regression."""
+    stale = []
+    for name in sorted(REPETITION_IS_THE_TYPE):
+        assert name in TemplateGenerator.TEMPLATE_INFO, f"{name} is not a template"
+        recorder = qr.Painter()
+        _paint(recorder, name)
+        if len(recorder.calls) <= MARK_CAP:
+            stale.append(f"{name} is down to {len(recorder.calls)} marks")
+    assert not stale, "\n".join(stale)

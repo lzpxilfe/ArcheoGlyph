@@ -1542,76 +1542,90 @@ class TemplateGenerator:
             postholes(grid, radius=9)
 
         elif variant == "kamado":
-            # 부뚜막: a clay stove body with the pot seat and the flue.
+            # 부뚜막: the clay body seen in plan, with the pot seat cut into
+            # it and the stoke opening at the front. Drawn as one outline -
+            # a rectangle with a circle on top read as neither.
             painter.setBrush(fill)
-            painter.drawRect(QRectF(m + 10, cy - 52, s - 2 * m - 20, 104))
+            stove = QPainterPath()
+            stove.moveTo(m + 12, cy + 54)
+            stove.lineTo(m + 12, cy - 30)
+            stove.quadTo(cx, cy - 78, s - m - 12, cy - 30)
+            stove.lineTo(s - m - 12, cy + 54)
+            stove.lineTo(cx + 26, cy + 54)
+            stove.lineTo(cx + 26, cy + 18)
+            stove.lineTo(cx - 26, cy + 18)
+            stove.lineTo(cx - 26, cy + 54)
+            stove.closeSubpath()
+            painter.drawPath(stove)
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(thin)
-            painter.drawEllipse(QRectF(cx - 40, cy - 40, 80, 80))
-            painter.drawEllipse(QRectF(cx - 26, cy - 26, 52, 52))
-            painter.setPen(edge)
-            painter.setBrush(solid)
-            painter.drawRect(QRectF(m + 10, cy - 18, 34, 36))
-            painter.setBrush(fill)
-            painter.drawRect(QRectF(s - m - 44, cy - 24, 34, 48))
+            painter.setPen(_pen(color.darker(150), 2.6))
+            painter.drawEllipse(QRectF(cx - 40, cy - 44, 80, 62))
 
         elif variant == "ondol":
-            # 온돌: firebox, two flues under the floor, chimney at the far end.
-            painter.setBrush(solid)
-            painter.drawEllipse(QRectF(m + 6, cy - 30, 60, 60))
+            # 온돌: the heated floor as a long flue run - firebox at one end,
+            # chimney rising at the other. Drawn with notched flues it read as
+            # a plumbing fitting.
             painter.setBrush(fill)
-            for offset in (-34, 22):
-                painter.drawRect(QRectF(m + 62, cy + offset, s - 2 * m - 96, 30))
+            flue = QPainterPath()
+            flue.moveTo(m + 8, cy + 34)
+            flue.lineTo(m + 8, cy - 34)
+            flue.lineTo(s - m - 62, cy - 34)
+            flue.lineTo(s - m - 62, m + 10)
+            flue.lineTo(s - m - 8, m + 10)
+            flue.lineTo(s - m - 8, cy + 34)
+            flue.closeSubpath()
+            painter.drawPath(flue)
+            _clip_detail(painter, flue)
+            painter.setPen(_pen(color.darker(150), 2.0))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(m + 30), int(cy), int(s - m - 40), int(cy))
+            painter.restore()
             painter.setBrush(solid)
-            painter.drawRect(QRectF(s - m - 40, cy - 56, 34, 112))
-            painter.setPen(thin)
-            for i in range(3):
-                y = int(cy - 70 - i * 12)
-                painter.drawLine(int(s - m - 34), y, int(s - m - 12), y - 8)
             painter.setPen(edge)
+            painter.drawEllipse(QRectF(m + 2, cy - 26, 52, 52))
 
         elif variant in ("pottery_kiln", "tile_kiln"):
-            # 토기가마 / 기와가마: firebox, sloping chamber, chimney.
-            body = QPainterPath()
-            top = cy - (44 if variant == "tile_kiln" else 34)
-            bottom = cy + (44 if variant == "tile_kiln" else 34)
-            body.moveTo(m + 46, top + 16)
-            body.quadTo(cx, top - 10, s - m - 46, top)
-            body.lineTo(s - m - 46, bottom)
-            body.quadTo(cx, bottom + 10, m + 46, bottom - 16)
-            body.closeSubpath()
-            painter.drawPath(body)
-            painter.setBrush(solid)
-            painter.drawEllipse(QRectF(m + 6, cy - 30, 58, 60))
+            # 토기가마 / 기와가마: the sloping tunnel kiln in section - the
+            # firebox low at one end, the chamber climbing to the flue at the
+            # other. The two differ by how tall the chamber is, and by colour.
+            # A tile kiln has the broader chamber; that width is what tells
+            # the two apart, since they share a colour and a profile.
+            width = 62 if variant == "tile_kiln" else 38
+            rise = 60
             painter.setBrush(fill)
-            painter.drawRect(QRectF(s - m - 46, cy - 46, 32, 92))
-            painter.setPen(thin)
-            if variant == "tile_kiln":
-                for i in range(4):
-                    x = int(m + 74 + i * 26)
-                    painter.drawLine(x, int(top + 12), x, int(bottom - 12))
-            else:
-                for i in range(3):
-                    x = m + 84 + i * 30
-                    painter.drawEllipse(QRectF(x - 13, cy - 13, 26, 26))
+            kiln = QPainterPath()
+            kiln.moveTo(m + 6, s - m - 22)
+            kiln.lineTo(m + 6, s - m - 22 - width)
+            kiln.quadTo(cx - 10, s - m - 72 - rise, s - m - 54, m + 30)
+            kiln.lineTo(s - m - 12, m + 30)
+            kiln.lineTo(s - m - 12, m + 30 + width)
+            kiln.quadTo(cx, s - m - 30 - rise * 0.5, m + 58, s - m - 22)
+            kiln.closeSubpath()
+            painter.drawPath(kiln)
+            painter.setBrush(solid)
             painter.setPen(edge)
+            painter.drawRect(QRectF(m + 2, s - m - 44, 44, 34))
 
         elif variant == "iron_smelting":
-            # 제철유구: the furnace with its tuyere and the slag pit beside it.
+            # 제철유구: the shaft furnace in section, waisted, on its wider
+            # base. Adding the slag run turned the silhouette into a boot.
             painter.setBrush(fill)
-            painter.drawEllipse(QRectF(cx - 58, m + 18, 116, 116))
+            furnace = QPainterPath()
+            furnace.moveTo(cx - 40, m + 10)
+            furnace.lineTo(cx + 40, m + 10)
+            furnace.quadTo(cx + 28, cy, cx + 46, s - m - 46)
+            furnace.lineTo(cx + 74, s - m - 10)
+            furnace.lineTo(cx - 74, s - m - 10)
+            furnace.lineTo(cx - 46, s - m - 46)
+            furnace.quadTo(cx - 28, cy, cx - 40, m + 10)
+            furnace.closeSubpath()
+            painter.drawPath(furnace)
+            _clip_detail(painter, furnace)
             painter.setBrush(solid)
-            painter.drawEllipse(QRectF(cx - 26, m + 50, 52, 52))
             painter.setPen(edge)
-            painter.drawLine(int(m + 8), int(m + 76), int(cx - 54), int(m + 76))
-            painter.setBrush(faint)
-            painter.setPen(dashed)
-            painter.drawEllipse(QRectF(cx - 70, s - m - 84, 140, 74))
-            painter.setPen(thin)
-            painter.setBrush(solid)
-            for i in range(5):
-                painter.drawEllipse(QRectF(cx - 52 + i * 26, s - m - 62, 16, 16))
-            painter.setPen(edge)
+            # The tap hole at the base of the shaft.
+            painter.drawEllipse(QRectF(cx - 22, s - m - 62, 44, 40))
+            painter.restore()
 
         elif variant == "charcoal_kiln":
             # 숯가마: an oval chamber, its stoke hole, and charcoal inside.
@@ -2028,19 +2042,26 @@ class TemplateGenerator:
                 painter.drawPath(brush_stroke)
 
         elif variant == "white_porcelain":
-            # 백자: the moon jar — almost a sphere.
-            body.moveTo(cx - 30, top + 12)
-            body.quadTo(cx - 96, top + 40, cx - 88, s * 0.54)
-            body.quadTo(cx - 74, bottom - 6, cx - 32, bottom)
+            # 백자 달항아리: nearly spherical, but the mouth and foot have to
+            # show or it reads as a plain circle.
+            body.moveTo(cx - 34, top + 16)
+            body.lineTo(cx - 30, top + 30)
+            body.quadTo(cx - 96, top + 62, cx - 88, s * 0.58)
+            body.quadTo(cx - 78, bottom - 22, cx - 36, bottom - 10)
+            body.lineTo(cx - 32, bottom)
             body.lineTo(cx + 32, bottom)
-            body.quadTo(cx + 74, bottom - 6, cx + 88, s * 0.54)
-            body.quadTo(cx + 96, top + 40, cx + 30, top + 12)
+            body.lineTo(cx + 36, bottom - 10)
+            body.quadTo(cx + 78, bottom - 22, cx + 88, s * 0.58)
+            body.quadTo(cx + 96, top + 62, cx + 30, top + 30)
+            body.lineTo(cx + 34, top + 16)
             body.closeSubpath()
             painter.drawPath(body)
+            _clip_detail(painter, body)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            painter.drawLine(int(cx - 30), int(top + 12), int(cx + 30), int(top + 12))
-            painter.drawLine(int(cx - 86), int(s * 0.52), int(cx + 86), int(s * 0.52))
+            # The seam where the two thrown halves were joined.
+            painter.drawLine(int(cx - 88), int(s * 0.56), int(cx + 88), int(s * 0.56))
+            painter.restore()
 
         elif variant == "onggi":
             # 옹기: a large storage jar under its lid.
@@ -2096,13 +2117,15 @@ class TemplateGenerator:
             body.quadTo(cx - 62, s * 0.42, cx, top)
             body.closeSubpath()
             painter.drawPath(body)
+            _clip_detail(painter, body)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            for i in range(5):
-                y = top + 34 + i * 30
-                half = 20 + i * 7
-                painter.drawLine(int(cx - half - 14), int(y), int(cx - 6), int(y - 12))
-                painter.drawLine(int(cx + half + 14), int(y), int(cx + 6), int(y - 12))
+            for i in range(2):
+                y = top + 62 + i * 54
+                half = 30 + i * 12
+                painter.drawLine(int(cx - half), int(y), int(cx - 6), int(y - 16))
+                painter.drawLine(int(cx + half), int(y), int(cx + 6), int(y - 16))
+            painter.restore()
 
         elif variant == "chopper":
             # 찍개: a cobble with one flaked working edge.
@@ -2243,46 +2266,58 @@ class TemplateGenerator:
             painter.drawArc(int(cx + 28), int(cy + 22), 30, 34, -90 * 16, 180 * 16)
 
         elif variant in ("coarse_mirror", "fine_mirror"):
-            # 다뉴조문경 / 다뉴세문경: the knobbed mirror, coarse or fine.
-            painter.drawEllipse(QRectF(m + 4, m + 4, s - 2 * m - 8, s - 2 * m - 8))
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            rings = 3 if variant == "coarse_mirror" else 6
-            for i in range(1, rings + 1):
-                inset = 14 + i * (76.0 / rings)
-                painter.drawEllipse(QRectF(m + inset, m + inset,
-                                           s - 2 * m - 2 * inset, s - 2 * m - 2 * inset))
-            spokes = 8 if variant == "coarse_mirror" else 24
+            # 다뉴조문경 / 다뉴세문경: a decorated mirror back. Concentric
+            # rings with two dots in the middle read as a shirt button, so the
+            # decoration is a saw-tooth band - coarse or fine - and the two
+            # loops sit off-centre where they really are.
             import math
+
+            painter.drawEllipse(QRectF(m + 4, m + 4, s - 2 * m - 8, s - 2 * m - 8))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color.darker(155), 2.2))
+            teeth = 10 if variant == "coarse_mirror" else 18
+            depth = 26.0 if variant == "coarse_mirror" else 16.0
             outer = (s - 2 * m) / 2.0 - 16
-            inner = outer * (0.55 if variant == "coarse_mirror" else 0.72)
-            for i in range(spokes):
-                angle = 2.0 * math.pi * i / spokes
-                painter.drawLine(
-                    int(cx + inner * math.cos(angle)), int(cy + inner * math.sin(angle)),
-                    int(cx + outer * math.cos(angle)), int(cy + outer * math.sin(angle)),
-                )
-            painter.setPen(edge)
+            band = QPainterPath()
+            for i in range(teeth * 2 + 1):
+                angle = math.pi * i / teeth
+                radius = outer if i % 2 == 0 else outer - depth
+                px, py = cx + radius * math.cos(angle), cy + radius * math.sin(angle)
+                if i == 0:
+                    band.moveTo(px, py)
+                else:
+                    band.lineTo(px, py)
+            band.closeSubpath()
+            painter.drawPath(band)
             painter.setBrush(solid)
-            for dy in (-16, 16):
-                painter.drawEllipse(QRectF(cx - 34, cy + dy - 11, 22, 22))
+            painter.setPen(edge)
+            for dx in (-20, 14):
+                painter.drawEllipse(QRectF(cx + dx, cy - 12, 22, 22))
 
         elif variant == "bronze_rattle":
-            # 청동방울: a ring of bells radiating from a disc.
+            # 청동방울 (팔주령): eight bells on one disc, so it is drawn as a
+            # single eight-lobed outline. Eight separate circles read as a
+            # loading spinner.
             import math
-            painter.setBrush(Qt.NoBrush)
-            painter.setPen(_pen(color.darker(150), 3.4))
-            painter.drawEllipse(QRectF(cx - 34, cy - 34, 68, 68))
+
             painter.setBrush(solid)
-            painter.setPen(edge)
+            star = QPainterPath()
             for i in range(8):
                 angle = 2.0 * math.pi * i / 8.0
-                bx = cx + 74 * math.cos(angle)
-                by = cy + 74 * math.sin(angle)
-                painter.drawEllipse(QRectF(bx - 17, by - 17, 34, 34))
+                nxt = 2.0 * math.pi * (i + 1) / 8.0
+                mid = (angle + nxt) / 2.0
+                lobe = 86.0
+                waist = 44.0
+                px, py = cx + lobe * math.cos(angle), cy + lobe * math.sin(angle)
+                if i == 0:
+                    star.moveTo(px, py)
+                star.quadTo(cx + waist * math.cos(mid), cy + waist * math.sin(mid),
+                            cx + lobe * math.cos(nxt), cy + lobe * math.sin(nxt))
+            star.closeSubpath()
+            painter.drawPath(star)
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(thin)
-            painter.drawEllipse(QRectF(cx - 16, cy - 16, 32, 32))
+            painter.setPen(_pen(color.darker(150), 2.6))
+            painter.drawEllipse(QRectF(cx - 30, cy - 30, 60, 60))
 
         elif variant == "bronze_bell":
             # 동탁: a bell with its suspension loop and clapper.
@@ -2538,12 +2573,8 @@ class TemplateGenerator:
             for i in range(3):
                 x = m + 18 + i * 62
                 painter.drawRect(QRectF(x, cy - 26, 54, 52))
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            for i in range(3):
-                x = m + 18 + i * 62
-                painter.drawLine(int(x), int(cy - 10), int(x + 54), int(cy - 10))
-                painter.drawLine(int(x), int(cy + 10), int(x + 54), int(cy + 10))
+            # The bore lines inside each bead were six marks nobody could see
+            # at map size; the cord through them already says "threaded".
 
         elif variant == "glass_bead":
             # 유리구슬: a strung line of small round beads.
@@ -2641,12 +2672,13 @@ class TemplateGenerator:
             body.lineTo(cx - 34, cy - 26)
             body.closeSubpath()
             painter.drawPath(body)
-            painter.setPen(_pen(color.darker(190), 3.0))
+            # A single column of ink down the slip. The five crossed marks
+            # that used to stand in for writing read as plus signs.
+            _clip_detail(painter, body)
+            painter.setPen(_pen(color.darker(190), 4.0))
             painter.setBrush(Qt.NoBrush)
-            for i in range(5):
-                y = top + 24 + i * 30
-                painter.drawLine(int(cx - 16), int(y), int(cx + 16), int(y))
-                painter.drawLine(int(cx), int(y - 8), int(cx), int(y + 8))
+            painter.drawLine(int(cx), int(top + 26), int(cx), int(bottom - 34))
+            painter.restore()
 
         elif variant == "round_roof_tile":
             # 수막새: the round tile face, lotus-petalled.
@@ -2885,17 +2917,21 @@ class TemplateGenerator:
         """Canal/water-channel with paired lines and flow arrows."""
         old_brush = painter.brush()
         old_pen = painter.pen()
+        cx = s / 2.0
+        # A channel is two banks and the direction of flow. Three small
+        # arrowheads down the middle just filled it with clutter.
         painter.setBrush(Qt.NoBrush)
-        flow_pen = _pen(color.darker(120), 2.4)
-        painter.setPen(flow_pen)
+        painter.setPen(_pen(color.darker(120), 2.6))
         painter.drawArc(m + 18, m + 30, s - 2 * m - 36, s - 2 * m - 60, 40 * 16, 270 * 16)
         painter.drawArc(m + 36, m + 48, s - 2 * m - 72, s - 2 * m - 96, 40 * 16, 270 * 16)
-        for i in range(3):
-            x = int(m + 76 + i * 44)
-            y = int(s / 2 + (i % 2) * 8)
-            painter.drawLine(x, y, x + 12, y)
-            painter.drawLine(x + 12, y, x + 7, y - 4)
-            painter.drawLine(x + 12, y, x + 7, y + 4)
+        painter.setPen(_pen(color.darker(150), 3.0))
+        arrow = QPainterPath()
+        arrow.moveTo(cx - 24, s / 2.0)
+        arrow.lineTo(cx + 22, s / 2.0)
+        arrow.moveTo(cx + 8, s / 2.0 - 13)
+        arrow.lineTo(cx + 22, s / 2.0)
+        arrow.lineTo(cx + 8, s / 2.0 + 13)
+        painter.drawPath(arrow)
         painter.setBrush(old_brush)
         painter.setPen(old_pen)
 
@@ -2949,24 +2985,28 @@ class TemplateGenerator:
 
     def _draw_rock_art(self, painter, s, m, color):
         """Rock art — spiral petroglyph."""
-        painter.setBrush(Qt.NoBrush)
-        pen = _pen(color, 3.0)
-        painter.setPen(pen)
-        cx, cy = s / 2, s / 2
         import math
-        turns = 3.5
-        points = 80
-        for i in range(1, points):
-            t0 = (i - 1) / points * turns * 2 * math.pi
-            t1 = i / points * turns * 2 * math.pi
-            r0 = 8 + (i - 1) / points * (s/2 - m - 15)
-            r1 = 8 + i / points * (s/2 - m - 15)
-            x0 = cx + r0 * math.cos(t0)
-            y0 = cy + r0 * math.sin(t0)
-            x1 = cx + r1 * math.cos(t1)
-            y1 = cy + r1 * math.sin(t1)
-            painter.drawLine(int(x0), int(y0), int(x1), int(y1))
-        painter.setBrush(color)
+
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(_pen(color, 4.0))
+        cx, cy = s / 2.0, s / 2.0
+        # One path, four quarter-turns per revolution. Eighty line segments
+        # drew the same curve but as eighty marks, which is what made it
+        # scratchy - and the joins showed at map size.
+        spiral = QPainterPath()
+        outer = s / 2.0 - m - 8
+        steps = 11
+        spiral.moveTo(cx, cy)
+        for i in range(1, steps + 1):
+            a0 = (i - 1) * math.pi / 2.0
+            a1 = i * math.pi / 2.0
+            r0 = 6 + (i - 1) / steps * outer
+            r1 = 6 + i / steps * outer
+            rm = (r0 + r1) / 2.0 * 1.22
+            am = (a0 + a1) / 2.0
+            spiral.quadTo(cx + rm * math.cos(am), cy + rm * math.sin(am),
+                          cx + r1 * math.cos(a1), cy + r1 * math.sin(a1))
+        painter.drawPath(spiral)
 
     def _draw_ash_layer(self, painter, s, m, color):
         """Ash layer as horizontal banding with dense stipple."""
@@ -2976,16 +3016,13 @@ class TemplateGenerator:
         top = int(s / 2 - band_h / 2)
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 85))
         painter.drawRect(m + 14, top, s - 2 * m - 28, band_h)
+        # Two partings read as bedding; nine rules and a stipple field read as
+        # a barcode once the symbol is map-sized.
         painter.setBrush(Qt.NoBrush)
-        stipple_pen = _pen(color.darker(150), 1.0)
-        painter.setPen(stipple_pen)
-        for i in range(9):
-            y = top + 12 + i * 12
-            painter.drawLine(m + 20, y, s - m - 20, y)
-        for i in range(28):
-            x = int(m + 24 + (i * 7))
-            y = int(top + 8 + ((i * 11) % max(12, band_h - 12)))
-            painter.drawPoint(x, y)
+        painter.setPen(_pen(color.darker(150), 1.4))
+        for fraction in (0.36, 0.68):
+            y = int(top + band_h * fraction)
+            painter.drawLine(m + 22, y, s - m - 22, y)
         painter.setBrush(old_brush)
         painter.setPen(old_pen)
 
@@ -3002,14 +3039,17 @@ class TemplateGenerator:
         p.closeSubpath()
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 95))
         painter.drawPath(p)
-        painter.setBrush(Qt.NoBrush)
-        char_pen = _pen(color.darker(160), 1.2)
-        painter.setPen(char_pen)
-        for i in range(12):
-            x = int(m + 38 + i * 13)
-            y = int(s * 0.42 + (i % 4) * 18)
-            painter.drawLine(x - 4, y - 3, x + 4, y + 3)
-            painter.drawLine(x - 3, y + 4, x + 3, y - 4)
+        # A darker core inside the scorched outline says "burnt" more
+        # plainly than a field of char marks.
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 205))
+        painter.setPen(_pen(color.darker(160), 1.2))
+        core = QPainterPath()
+        core.moveTo(m + 62, s * 0.66)
+        core.quadTo(s * 0.40, s * 0.44, s * 0.54, m + 62)
+        core.quadTo(s * 0.68, s * 0.52, s * 0.56, s * 0.74)
+        core.quadTo(s * 0.44, s * 0.80, m + 62, s * 0.66)
+        core.closeSubpath()
+        painter.drawPath(core)
         painter.setBrush(old_brush)
         painter.setPen(old_pen)
 
@@ -3302,15 +3342,19 @@ class TemplateGenerator:
         """Terrace with stepped contour bands."""
         old_pen = painter.pen()
         old_brush = painter.brush()
-        painter.setBrush(Qt.NoBrush)
-        contour_pen = _pen(color.darker(140), 2.0)
-        painter.setPen(contour_pen)
-        for i in range(4):
-            y = int(m + 36 + i * 40)
-            inset = 18 + i * 10
-            painter.drawLine(m + inset, y, s - m - inset, y)
-            painter.drawLine(m + inset, y, m + inset + 12, y - 8)
-            painter.drawLine(s - m - inset, y, s - m - inset - 12, y - 8)
+        # The stepped profile is the type; a stack of rules with ticks is not.
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 120))
+        painter.setPen(_pen(color.darker(140), 2.6))
+        steps = QPainterPath()
+        steps.moveTo(m + 4, s - m - 8)
+        for i in range(3):
+            y = s - m - 8 - i * 46
+            steps.lineTo(m + 30 + i * 54, y)
+            steps.lineTo(m + 30 + i * 54, y - 46)
+        steps.lineTo(s - m - 4, m + 12)
+        steps.lineTo(s - m - 4, s - m - 8)
+        steps.closeSubpath()
+        painter.drawPath(steps)
         painter.setBrush(old_brush)
         painter.setPen(old_pen)
 
