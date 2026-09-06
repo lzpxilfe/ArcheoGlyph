@@ -16,6 +16,8 @@ PACKAGE = "archeoglyph"
 
 QGIS_FREE_MODULES = [
     "symbol_breaks",
+    "i18n",
+    "i18n_ko",
     "diagnostics",
     "generators.symbol_result",
     "generators.svg_sanitize",
