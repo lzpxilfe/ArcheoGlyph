@@ -26,11 +26,65 @@ UNITS = 64
 MARGIN = 4
 OUTLINE = 3
 DETAIL = 2
-RADIUS = 2
+RADIUS = 3      # clamped to a quarter of the shorter side, so small parts stay crisp
 
 #: Coordinates snap to this fraction of a unit. Half a unit is fine enough for
 #: a diagonal to look intentional and coarse enough to keep the set aligned.
 SNAP = 0.5
+
+#: The tone ramp.
+#:
+#: QGIS paints every ``param(fill)`` in a symbol with the one colour the user
+#: picked, so a second *hue* would collapse the moment a symbol is recoloured.
+#: Depth has to come from opacity, which survives as per-element
+#: fill-opacity - so these are three steps of the same hue, and an icon reads
+#: as two or three related colours under whatever the user chooses.
+#:
+#: Three steps, not twenty-one: the catalogue used to carry alphas scattered
+#: from 50 to 245, which is the colour equivalent of off-grid coordinates.
+SOLID = 255     # the object itself
+MID = 165       # a body the detail sits on
+SOFT = 95       # ground, spoil, anything behind
+
+
+#: The material palette.
+#:
+#: The catalogue used to carry 110 distinct colours for 188 symbols, with
+#: saturation anywhere from 0 to 100 percent and lightness from 17 to 83 -
+#: neon blues and pure yellows sitting beside muted earths. Nothing made them
+#: a set.
+#:
+#: These thirteen are held to a narrow band of saturation and lightness and
+#: vary by hue alone, which is what lets a map full of them read as one
+#: family. They are named for the material, because that is how an
+#: archaeologist already groups finds - and it means a new template picks its
+#: colour by asking what the thing is made of.
+PALETTE = {
+    "earth":  "#A87C52",   # soil, plain wares, mounds, earthen features
+    "clay":   "#A66048",   # fired clay: red wares, kilns, burnt ground
+    "stone":  "#7E8C9A",   # stone tools, stone chambers, walling
+    "slate":  "#5F6A76",   # dark stone: capstones, roof tiles, ink stones
+    "iron":   "#4C535B",   # iron artefacts and smelting
+    "bronze": "#B08A46",   # bronze artefacts
+    "gold":   "#C2A552",   # gold and gilt ornaments
+    "jade":   "#5F9285",   # jade, celadon
+    "water":  "#5C88A2",   # glass, water, wells, ditches
+    "bone":   "#BFB39D",   # bone, antler, shell, porcelain
+    "char":   "#6D645A",   # charcoal, ash, soot
+    "field":  "#8B9557",   # paddy, dry field, vegetation
+    "mark":   "#B5564F",   # survey and recording marks
+}
+
+
+def tone(color_class, color, level):
+    """The symbol colour at one step of the ramp."""
+    return color_class(color.red(), color.green(), color.blue(), level)
+
+
+def ramp(value):
+    """Snap an opacity onto the ramp."""
+    value = int(value)
+    return min((SOFT, MID, SOLID), key=lambda step: abs(step - value))
 
 
 def snap(value):

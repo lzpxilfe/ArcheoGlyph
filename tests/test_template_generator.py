@@ -84,3 +84,47 @@ def test_generate_does_not_index_optional_catalog_keys():
     source = inspect.getsource(TemplateGenerator.generate)
     assert "template_info['file']" not in source
     assert 'template_info["file"]' not in source
+
+
+def test_every_template_takes_its_colour_from_the_palette():
+    """
+    A catalogue of 188 symbols needs a palette, not 188 opinions.
+
+    These used to carry 110 distinct colours with saturation anywhere from 0
+    to 100 percent - neon blue and pure yellow beside muted earths - which is
+    why a map full of them never looked like one set. The palette is named by
+    material, because that is how the finds are already grouped.
+    """
+    from archeoglyph.generators.icon_grid import PALETTE
+
+    allowed = set(PALETTE.values())
+    stray = sorted({
+        info.get("default_color", "")
+        for info in TemplateGenerator.TEMPLATE_INFO.values()
+        if info.get("default_color", "") not in allowed
+    })
+    assert not stray, (
+        f"colours outside the palette: {stray}. Pick the material the object "
+        f"is made of from icon_grid.PALETTE."
+    )
+
+
+def test_the_palette_stays_a_narrow_band():
+    """
+    The palette varies by hue and holds everything else, which is what lets a
+    map full of these read as one family.
+
+    What broke the old set was not grey being grey - stone and iron belong at
+    the bottom of the saturation range - but neon sitting beside earth, and
+    values running from near-black to near-white. So the ceiling on saturation
+    and the band on lightness are what is worth holding.
+    """
+    import colorsys
+
+    from archeoglyph.generators.icon_grid import PALETTE
+
+    for name, value in PALETTE.items():
+        red, green, blue = (int(value[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        _hue, light, sat = colorsys.rgb_to_hls(red, green, blue)
+        assert sat <= 0.55, f"{name} {value} is {sat:.0%} saturated - too loud for the set"
+        assert 0.30 <= light <= 0.72, f"{name} {value} sits at {light:.0%} lightness"

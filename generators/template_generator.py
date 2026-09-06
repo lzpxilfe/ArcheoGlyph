@@ -39,6 +39,56 @@ def _weight(width):
     return width * 1.3      # a deliberately heavy stroke stays heavy
 
 
+class _SoftPainter:
+    """
+    Draws every rectangle with the house corner radius.
+
+    Eighty-six of the shapes in this file are rectangles, and a sharp-cornered
+    rectangle is what makes an icon look like a diagram rather than a drawn
+    object. Rounding them here softens the whole set at once, instead of 59
+    methods each picking a radius - and the radius is clamped to a quarter of
+    the shorter side, so a scale-bar segment stays a segment while a tomb
+    chamber gets a proper corner.
+
+    Everything else is forwarded untouched.
+    """
+
+    def __init__(self, painter, grid):
+        self._painter = painter
+        self._grid = grid
+
+    def __getattr__(self, name):
+        return getattr(self._painter, name)
+
+    def drawRect(self, *args):
+        if len(args) == 1:
+            rect = args[0]
+            x, y = rect.left(), rect.top()
+            w, h = rect.width(), rect.height()
+        else:
+            x, y, w, h = (float(value) for value in args[:4])
+        unit = self._grid.unit
+        radius = min(icon_grid.RADIUS * unit, abs(w) / 4.0, abs(h) / 4.0)
+        self._painter.drawPath(_rounded_rect_path(x, y, w, h, radius))
+
+
+def _rounded_rect_path(x, y, w, h, r):
+    """A rounded rectangle as one path, in canvas pixels."""
+    x1, y1 = x + w, y + h
+    path = QPainterPath()
+    path.moveTo(x + r, y)
+    path.lineTo(x1 - r, y)
+    path.quadTo(x1, y, x1, y + r)
+    path.lineTo(x1, y1 - r)
+    path.quadTo(x1, y1, x1 - r, y1)
+    path.lineTo(x + r, y1)
+    path.quadTo(x, y1, x, y1 - r)
+    path.lineTo(x, y + r)
+    path.quadTo(x, y, x + r, y)
+    path.closeSubpath()
+    return path
+
+
 def _clip_detail(painter, *paths):
     """
     Confine internal detail to the silhouette it belongs to.
@@ -523,7 +573,7 @@ class TemplateGenerator:
             painter.drawEllipse(m, m, size - 2 * m, size - 2 * m)
             return
         args = tuple(q_color if a is self.COLOR else a for a in extra)
-        method(painter, size, m, *args)
+        method(_SoftPainter(painter, icon_grid.Grid(size)), size, m, *args)
 
 
     # ═══════════════════════════════════════════════════════
@@ -569,7 +619,7 @@ class TemplateGenerator:
         edge_pen = _pen(color.darker(145), 2.0)
         hatch_pen = _pen(color.darker(165), 1.0)
         painter.setPen(edge_pen)
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 95))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
 
         path = QPainterPath()
         if variant == "rim":
@@ -1023,7 +1073,7 @@ class TemplateGenerator:
             inner_x = int(cx - inner / 2)
             inner_y = int(cx - inner / 2)
             # Lighter through opacity, so QGIS recolouring keeps the contrast.
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 120))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
             painter.drawRect(inner_x, inner_y, inner, inner)
         else:
             self._draw_keyhole_tomb(painter, s, m, "normal", color)
@@ -1135,7 +1185,7 @@ class TemplateGenerator:
     def _draw_well(self, painter, s, m, color):
         """Well — circle with inner circle."""
         painter.drawEllipse(m + 15, m + 15, s - 2*m - 30, s - 2*m - 30)
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 80))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
         inner = 50
         painter.drawEllipse(m + inner, m + inner, s - 2*m - 2*inner, s - 2*m - 2*inner)
 
@@ -1208,7 +1258,7 @@ class TemplateGenerator:
 
     def _draw_pit(self, painter, s, m, color):
         """Pit — dashed circle."""
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 60))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
         pen = _pen(color.darker(120), 2.5, Qt.DashLine)
         painter.setPen(pen)
         painter.drawEllipse(m + 20, m + 20, s - 2*m - 40, s - 2*m - 40)
@@ -1232,8 +1282,8 @@ class TemplateGenerator:
         """
         old_pen, old_brush = painter.pen(), painter.brush()
         solid = QColor(color)
-        fill = QColor(color.red(), color.green(), color.blue(), 110)
-        faint = QColor(color.red(), color.green(), color.blue(), 55)
+        fill = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
+        faint = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
         edge = _pen(color.darker(150), 2.6)
         thin = _pen(color.darker(165), 1.4)
         dashed = _pen(color.darker(140), 2.0, Qt.DashLine)
@@ -1463,8 +1513,8 @@ class TemplateGenerator:
         """
         old_pen, old_brush = painter.pen(), painter.brush()
         solid = QColor(color)
-        fill = QColor(color.red(), color.green(), color.blue(), 110)
-        faint = QColor(color.red(), color.green(), color.blue(), 55)
+        fill = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
+        faint = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
         edge = _pen(color.darker(150), 2.6)
         thin = _pen(color.darker(165), 1.4)
         dashed = _pen(color.darker(140), 2.0, Qt.DashLine)
@@ -1484,7 +1534,7 @@ class TemplateGenerator:
 
         def hearth(hx, hy, radius=14):
             painter.setPen(thin)
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 170))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.MID))
             painter.drawEllipse(QRectF(hx - radius, hy - radius, radius * 2, radius * 2))
             painter.setPen(edge)
             painter.setBrush(fill)
@@ -2243,7 +2293,7 @@ class TemplateGenerator:
             slab.quadTo(cx, bottom + 12, cx - 78, bottom - 6)
             slab.closeSubpath()
             painter.drawPath(slab)
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 190))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.MID))
             muller = QPainterPath()
             muller.moveTo(cx - 54, cy - 16)
             muller.quadTo(cx, cy - 60, cx + 54, cy - 16)
@@ -2725,7 +2775,7 @@ class TemplateGenerator:
             face.quadTo(cx, cy + 74, m + 2, cy + 46)
             face.closeSubpath()
             painter.drawPath(face)
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 130))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
             tile = QPainterPath()
             tile.moveTo(m + 22, cy - 6)
             tile.quadTo(cx, top - 8, s - m - 22, cy - 6)
@@ -2764,12 +2814,12 @@ class TemplateGenerator:
         elif variant == "inkstone":
             # 벼루: the grinding surface, its water well and the foot.
             painter.drawRect(QRectF(m + 2, cy - 54, s - 2 * m - 4, 88))
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 150))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.MID))
             painter.drawRect(QRectF(m + 22, bottom - 40, s - 2 * m - 44, 26))
             painter.setPen(thin)
             painter.setBrush(hollow)
             painter.drawRect(QRectF(m + 18, cy - 40, s - 2 * m - 36, 60))
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 235))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOLID))
             painter.drawEllipse(QRectF(cx + 26, cy - 32, 56, 44))
 
         elif variant == "clay_figurine":
@@ -2811,7 +2861,7 @@ class TemplateGenerator:
         elif variant == "foundation_stone":
             # 초석: the base stone with its column seat, in plan.
             painter.drawRect(QRectF(m + 2, m + 2, s - 2 * m - 4, s - 2 * m - 4))
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 150))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.MID))
             painter.setPen(thin)
             painter.drawEllipse(QRectF(m + 32, m + 32, s - 2 * m - 64, s - 2 * m - 64))
             painter.setBrush(solid)
@@ -2878,7 +2928,7 @@ class TemplateGenerator:
 
     def _draw_hearth(self, painter, s, m, color):
         """Hearth — flame inside circle."""
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 50))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
         painter.drawEllipse(m + 20, m + 20, s - 2*m - 40, s - 2*m - 40)
         # Flame
         painter.setBrush(color)
@@ -2904,7 +2954,7 @@ class TemplateGenerator:
         # would vanish the moment the symbol is recoloured.
         old_brush = painter.brush()
         base = old_brush.color()
-        painter.setBrush(QColor(base.red(), base.green(), base.blue(), 110))
+        painter.setBrush(QColor(base.red(), base.green(), base.blue(), icon_grid.MID))
         p2 = QPainterPath()
         p2.moveTo(m + 30, s - m - 30)
         p2.quadTo(s/2, s * 0.35, s - m - 30, s - m - 30)
@@ -3033,7 +3083,7 @@ class TemplateGenerator:
         old_brush = painter.brush()
         band_h = int((s - 2 * m) * 0.55)
         top = int(s / 2 - band_h / 2)
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 85))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
         painter.drawRect(m + 14, top, s - 2 * m - 28, band_h)
         # Two partings read as bedding; nine rules and a stipple field read as
         # a barcode once the symbol is map-sized.
@@ -3056,11 +3106,11 @@ class TemplateGenerator:
         p.quadTo(s * 0.72, s * 0.78, s * 0.52, s - m - 12)
         p.quadTo(s * 0.34, s - m - 4, m + 30, s * 0.72)
         p.closeSubpath()
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 95))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
         painter.drawPath(p)
         # A darker core inside the scorched outline says "burnt" more
         # plainly than a field of char marks.
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 205))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.MID))
         painter.setPen(_pen(color.darker(160), 1.2))
         core = QPainterPath()
         core.moveTo(m + 62, s * 0.66)
@@ -3151,7 +3201,7 @@ class TemplateGenerator:
         old_pen = painter.pen()
         old_brush = painter.brush()
         painter.setPen(_pen(color.darker(160), 1.8))
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 70))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
 
         top = QRectF(m + 40, m + 28, s - 2 * m - 80, 36)
         mid = QRectF(m + 26, s * 0.44, s - 2 * m - 52, 40)
@@ -3362,7 +3412,7 @@ class TemplateGenerator:
         old_pen = painter.pen()
         old_brush = painter.brush()
         # The stepped profile is the type; a stack of rules with ticks is not.
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 120))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
         painter.setPen(_pen(color.darker(140), 2.6))
         steps = QPainterPath()
         steps.moveTo(m + 4, s - m - 8)
@@ -3385,11 +3435,11 @@ class TemplateGenerator:
         cx = s / 2.0
         cy = s / 2.0
         r = s / 2.0 - m - 24
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 65))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
         ring_pen = _pen(color.darker(125), 2.2, Qt.DashLine)
         painter.setPen(ring_pen)
         painter.drawEllipse(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 245))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOLID))
         painter.setPen(_pen(color.darker(150), 1.0))
         painter.drawEllipse(int(cx - 8), int(cy - 8), 16, 16)
         for i in range(6):
@@ -3407,7 +3457,7 @@ class TemplateGenerator:
         x = m + 28
         y = m + 28
         w = s - 2 * m - 56
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 55))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
         pit_pen = _pen(color.darker(130), 2.0, Qt.DashLine)
         painter.setPen(pit_pen)
         painter.drawRect(x, y, w, w)
