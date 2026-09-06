@@ -658,7 +658,7 @@ CATALOG = {
     "Terrace": "단",
     "Ash Layer": "재층",
     "Burnt Area": "소토 범위",
-    "Mound / Barrow": "봉토분",
+    "Mound / Barrow": "분구 / 봉분",
     "Standing Stone": "입석",
 
     # Survey and recording (조사·기록)
@@ -688,4 +688,18 @@ CATALOG = {
     "the onnxruntime package": "onnxruntime 패키지",
     "the model file": "모델 파일",
     " and ": "와(과) ",
+    # Korean tomb types (한국 무덤)
+    "Dolmen (Table-type)": "탁자식 지석묘",
+    "Dolmen (Go-board-type)": "기반식 지석묘",
+    "Dolmen (Capstone-type)": "개석식 지석묘",
+    "Stone Cist Tomb": "석관묘",
+    "Stone-lined Tomb": "석곽묘",
+    "Wooden Coffin Tomb": "목관묘",
+    "Wooden Chamber Tomb": "목곽묘",
+    "Jar Coffin Tomb": "옹관묘",
+    "Stone-mounded Wooden Chamber Tomb": "적석목곽분",
+    "Corridor-style Stone Chamber Tomb": "횡혈식석실분",
+    "Earthen Mounded Tomb": "봉토분",
+    "Ditch-encircled Tomb": "주구묘",
+    "Earthen Pit Tomb": "토광묘",
 }

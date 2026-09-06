@@ -1536,7 +1536,15 @@ class ArcheoGlyphDialog(QDialog):
             filtered = sorted(list((self._template_categories or {}).get(category, [])))
 
         if query:
-            filtered = [name for name in filtered if query in name.lower()]
+            # Search the shown name as well, so a Korean list is searchable in
+            # Korean while the English identifier keeps working.
+            filtered = [
+                name for name in filtered
+                if query in name.lower() or query in template_display_name(name).lower()
+            ]
+
+        # Order by what the user actually reads.
+        filtered = sorted(filtered, key=template_display_name)
 
         self.template_combo.blockSignals(True)
         self.template_combo.clear()

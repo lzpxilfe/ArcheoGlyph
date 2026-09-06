@@ -173,3 +173,19 @@ def test_every_template_name_is_translated():
     """
     missing = sorted(name for name in _template_names() if name not in CATALOG)
     assert not missing, "templates with no Korean name:\n" + "\n".join(missing)
+
+
+def test_template_display_names_are_unique():
+    """
+    Two templates sharing a Korean label are indistinguishable in the combo,
+    where only the label is shown.
+    """
+    i18n.set_language("ko")
+    seen = {}
+    clashes = []
+    for name in _template_names():
+        label = i18n.tr(name)
+        if label in seen:
+            clashes.append(f"{seen[label]} and {name} both show as {label!r}")
+        seen[label] = name
+    assert not clashes, "\n".join(clashes)

@@ -554,6 +554,72 @@ class TemplateGenerator:
             "default_color": "#4B5563",
             "category": "survey"
         },
+        # -- Korean tomb types (한국 무덤) --------------------------------
+        "Dolmen (Table-type)": {
+            "draw": ("_draw_korean_tomb", "table", "COLOR"),
+            "default_color": "#708090",
+            "category": "structures"
+        },
+        "Dolmen (Go-board-type)": {
+            "draw": ("_draw_korean_tomb", "go_board", "COLOR"),
+            "default_color": "#708090",
+            "category": "structures"
+        },
+        "Dolmen (Capstone-type)": {
+            "draw": ("_draw_korean_tomb", "capstone", "COLOR"),
+            "default_color": "#708090",
+            "category": "structures"
+        },
+        "Stone Cist Tomb": {
+            "draw": ("_draw_korean_tomb", "stone_cist", "COLOR"),
+            "default_color": "#7A8288",
+            "category": "structures"
+        },
+        "Stone-lined Tomb": {
+            "draw": ("_draw_korean_tomb", "stone_lined", "COLOR"),
+            "default_color": "#7A8288",
+            "category": "structures"
+        },
+        "Wooden Coffin Tomb": {
+            "draw": ("_draw_korean_tomb", "wooden_coffin", "COLOR"),
+            "default_color": "#8B6F47",
+            "category": "structures"
+        },
+        "Wooden Chamber Tomb": {
+            "draw": ("_draw_korean_tomb", "wooden_chamber", "COLOR"),
+            "default_color": "#8B6F47",
+            "category": "structures"
+        },
+        "Jar Coffin Tomb": {
+            "draw": ("_draw_korean_tomb", "jar_coffin", "COLOR"),
+            "default_color": "#A0522D",
+            "category": "structures"
+        },
+        "Stone-mounded Wooden Chamber Tomb": {
+            "draw": ("_draw_korean_tomb", "stone_mound_chamber", "COLOR"),
+            "default_color": "#6E7B8B",
+            "category": "structures"
+        },
+        "Corridor-style Stone Chamber Tomb": {
+            "draw": ("_draw_korean_tomb", "corridor_chamber", "COLOR"),
+            "default_color": "#778899",
+            "category": "structures"
+        },
+        "Earthen Mounded Tomb": {
+            "draw": ("_draw_korean_tomb", "earthen_mound", "COLOR"),
+            "default_color": "#9C8B6E",
+            "category": "structures"
+        },
+        "Ditch-encircled Tomb": {
+            "draw": ("_draw_korean_tomb", "ditch_encircled", "COLOR"),
+            "default_color": "#8B7355",
+            "category": "structures"
+        },
+        "Earthen Pit Tomb": {
+            "draw": ("_draw_korean_tomb", "pit_grave", "COLOR"),
+            "default_color": "#8B7D6B",
+            "category": "structures"
+        },
     }
 
     # Backward compatibility for older naming variants
@@ -1693,6 +1759,237 @@ class TemplateGenerator:
         r = 30
         painter.drawLine(int(cx - r), int(cy), int(cx + r), int(cy))
         painter.drawLine(int(cx), int(cy - r), int(cx), int(cy + r))
+
+    # ═══════════════════════════════════════════════════════
+    #  Drawing methods — Korean tomb types (한국 무덤)
+    # ═══════════════════════════════════════════════════════
+
+    def _draw_korean_tomb(self, painter, s, m, variant, color):
+        """
+        Korean burial types as the schematic each one is recognised by.
+
+        Section view for the dolmens and pit graves, plan view for the chamber
+        tombs — the same convention as an excavation report figure. Detail is
+        deliberately coarse: these have to stay readable at a 5-10 mm marker.
+        """
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        fill = QColor(color.red(), color.green(), color.blue(), 110)
+        faint = QColor(color.red(), color.green(), color.blue(), 55)
+        edge = QPen(color.darker(150), 2.6)
+        thin = QPen(color.darker(165), 1.4)
+        dashed = QPen(color.darker(140), 2.0, Qt.DashLine)
+        cx = s / 2.0
+        ground = s - m - 34
+
+        painter.setPen(edge)
+        painter.setBrush(solid)
+
+        if variant == "table":
+            # 탁자식: a capstone carried clear of the ground on tall slabs.
+            cap = QPainterPath()
+            cap.moveTo(m, m + 78)
+            cap.lineTo(m + 26, m + 44)
+            cap.lineTo(s - m - 26, m + 44)
+            cap.lineTo(s - m, m + 78)
+            cap.closeSubpath()
+            painter.drawPath(cap)
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(m + 44, m + 78, 26, ground - (m + 78)))
+            painter.drawRect(QRectF(s - m - 70, m + 78, 26, ground - (m + 78)))
+            painter.setPen(thin)
+            painter.drawLine(int(m - 4), int(ground), int(s - m + 4), int(ground))
+
+        elif variant == "go_board":
+            # 기반식: a thick capstone resting on short supports over a low mound.
+            painter.setBrush(faint)
+            painter.setPen(thin)
+            mound = QPainterPath()
+            mound.moveTo(m - 4, ground)
+            mound.quadTo(cx, ground - 46, s - m + 4, ground)
+            mound.closeSubpath()
+            painter.drawPath(mound)
+            painter.setPen(edge)
+            painter.setBrush(fill)
+            for x in (m + 40, cx - 13, s - m - 66):
+                painter.drawRect(QRectF(x, ground - 40, 26, 40))
+            painter.setBrush(solid)
+            cap = QPainterPath()
+            cap.moveTo(m - 2, ground - 46)
+            cap.quadTo(cx, ground - 92, s - m + 2, ground - 46)
+            cap.quadTo(cx, ground - 30, m - 2, ground - 46)
+            cap.closeSubpath()
+            painter.drawPath(cap)
+
+        elif variant == "capstone":
+            # 개석식: the capstone lies on the ground over a buried cist.
+            cap = QPainterPath()
+            cap.moveTo(m - 2, ground - 20)
+            cap.quadTo(cx, ground - 74, s - m + 2, ground - 20)
+            cap.quadTo(cx, ground - 2, m - 2, ground - 20)
+            cap.closeSubpath()
+            painter.drawPath(cap)
+            painter.setPen(thin)
+            painter.drawLine(int(m - 6), int(ground - 8), int(s - m + 6), int(ground - 8))
+            painter.setPen(dashed)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(QRectF(cx - 44, ground + 6, 88, 40))
+
+        elif variant == "stone_cist":
+            # 석관묘: four slabs set on edge, drawn in plan with open corners.
+            painter.setBrush(Qt.NoBrush)
+            left, right = m + 30, s - m - 30
+            top, bottom = m + 16, s - m - 16
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(left + 12, top, right - left - 24, 16))
+            painter.drawRect(QRectF(left + 12, bottom - 16, right - left - 24, 16))
+            painter.drawRect(QRectF(left, top + 12, 16, bottom - top - 24))
+            painter.drawRect(QRectF(right - 16, top + 12, 16, bottom - top - 24))
+
+        elif variant == "stone_lined":
+            # 석곽묘: a chamber walled with piled stones, drawn in plan.
+            left, right = m + 22, s - m - 22
+            top, bottom = m + 10, s - m - 10
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(left, top, right - left, bottom - top))
+            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setPen(thin)
+            painter.drawRect(QRectF(left + 22, top + 22, right - left - 44, bottom - top - 44))
+            painter.setBrush(solid)
+            step = (bottom - top - 24) / 5.0
+            for i in range(5):
+                y = top + 12 + step * i
+                painter.drawEllipse(QRectF(left + 5, y, 12, 12))
+                painter.drawEllipse(QRectF(right - 17, y, 12, 12))
+            step = (right - left - 24) / 5.0
+            for i in range(5):
+                x = left + 12 + step * i
+                painter.drawEllipse(QRectF(x, top + 5, 12, 12))
+                painter.drawEllipse(QRectF(x, bottom - 17, 12, 12))
+
+        elif variant in ("wooden_coffin", "wooden_chamber"):
+            # 목관묘 / 목곽묘: the grave pit dashed, the timber solid inside it.
+            painter.setBrush(faint)
+            painter.setPen(dashed)
+            painter.drawRect(QRectF(m + 6, m + 2, s - 2 * m - 12, s - 2 * m - 4))
+            painter.setPen(edge)
+            if variant == "wooden_chamber":
+                painter.setBrush(fill)
+                painter.drawRect(QRectF(m + 26, m + 20, s - 2 * m - 52, s - 2 * m - 40))
+                painter.setBrush(solid)
+                painter.drawRect(QRectF(m + 48, m + 42, s - 2 * m - 96, s - 2 * m - 84))
+            else:
+                painter.setBrush(solid)
+                painter.drawRect(QRectF(m + 36, m + 24, s - 2 * m - 72, s - 2 * m - 48))
+            painter.setPen(thin)
+            for i in range(3):
+                y = int(m + 60 + i * 34)
+                painter.drawLine(int(m + 58), y, int(s - m - 58), y)
+
+        elif variant == "jar_coffin":
+            # 옹관묘: two jars set mouth to mouth.
+            painter.setBrush(fill)
+            for direction in (1, -1):
+                jar = QPainterPath()
+                mouth = cx + direction * 8
+                tip = cx + direction * (s / 2.0 - m)
+                jar.moveTo(mouth, s / 2.0 - 46)
+                jar.quadTo(mouth + direction * 46, s / 2.0 - 60, tip, s / 2.0 - 20)
+                jar.quadTo(tip + direction * 8, s / 2.0, tip, s / 2.0 + 20)
+                jar.quadTo(mouth + direction * 46, s / 2.0 + 60, mouth, s / 2.0 + 46)
+                jar.closeSubpath()
+                painter.drawPath(jar)
+            painter.setPen(thin)
+            painter.drawLine(int(cx), int(s / 2.0 - 48), int(cx), int(s / 2.0 + 48))
+
+        elif variant == "stone_mound_chamber":
+            # 적석목곽분: a stone pile heaped over a timber chamber.
+            painter.setBrush(fill)
+            mound = QPainterPath()
+            mound.moveTo(m - 2, ground)
+            mound.quadTo(cx, m + 4, s - m + 2, ground)
+            mound.closeSubpath()
+            painter.drawPath(mound)
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            for row, count in ((ground - 96, 3), (ground - 64, 5), (ground - 32, 7)):
+                span = 22.0 * (count - 1)
+                for i in range(count):
+                    painter.drawEllipse(QRectF(cx - span / 2 + 22 * i - 8, row - 8, 16, 16))
+            painter.setPen(edge)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(QRectF(cx - 46, ground - 26, 92, 26))
+            painter.setPen(thin)
+            painter.drawLine(int(m - 6), int(ground), int(s - m + 6), int(ground))
+
+        elif variant == "corridor_chamber":
+            # 횡혈식석실분: a chamber reached by a corridor, drawn in plan
+            # inside the mound.
+            painter.setBrush(faint)
+            painter.setPen(dashed)
+            painter.drawEllipse(QRectF(m - 4, m - 4, s - 2 * m + 8, s - 2 * m + 8))
+            painter.setPen(edge)
+            painter.setBrush(fill)
+            painter.drawRect(QRectF(cx - 52, m + 26, 104, 88))
+            painter.drawRect(QRectF(cx - 20, m + 114, 40, s - m - 20 - (m + 114)))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(QRectF(cx - 34, m + 40, 68, 60))
+
+        elif variant == "earthen_mound":
+            # 봉토분: an earthen mound with its build-up layers.
+            painter.setBrush(fill)
+            mound = QPainterPath()
+            mound.moveTo(m - 4, ground)
+            mound.quadTo(cx, m - 4, s - m + 4, ground)
+            mound.closeSubpath()
+            painter.drawPath(mound)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for shrink in (26, 52):
+                layer = QPainterPath()
+                layer.moveTo(m - 4 + shrink, ground)
+                layer.quadTo(cx, m - 4 + shrink * 1.6, s - m + 4 - shrink, ground)
+                painter.drawPath(layer)
+            painter.setPen(edge)
+            painter.drawLine(int(m - 8), int(ground), int(s - m + 8), int(ground))
+
+        elif variant == "ditch_encircled":
+            # 주구묘: an open ditch ring around a central grave.
+            painter.setBrush(fill)
+            painter.setPen(thin)
+            outer = QPainterPath()
+            outer.addRect(QRectF(m - 2, m - 2, s - 2 * m + 4, s - 2 * m + 4))
+            inner = QPainterPath()
+            inner.addRect(QRectF(m + 24, m + 24, s - 2 * m - 48, s - 2 * m - 48))
+            ring = outer.subtracted(inner)
+            gap = QPainterPath()
+            gap.addRect(QRectF(cx - 22, m - 6, 44, 40))
+            gap.addRect(QRectF(cx - 22, s - m - 34, 44, 40))
+            painter.drawPath(ring.subtracted(gap))
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(cx - 26, s / 2.0 - 44, 52, 88))
+
+        elif variant == "pit_grave":
+            # 토광묘: a plain earth-cut pit, in section.
+            painter.setBrush(fill)
+            pit = QPainterPath()
+            pit.moveTo(m + 6, ground - 96)
+            pit.lineTo(s - m - 6, ground - 96)
+            pit.lineTo(s - m - 26, ground)
+            pit.lineTo(m + 26, ground)
+            pit.closeSubpath()
+            painter.drawPath(pit)
+            painter.setPen(thin)
+            painter.drawLine(int(m - 8), int(ground - 96), int(m + 6), int(ground - 96))
+            painter.drawLine(int(s - m - 6), int(ground - 96), int(s - m + 8), int(ground - 96))
+            painter.setBrush(solid)
+            painter.setPen(edge)
+            painter.drawRect(QRectF(cx - 48, ground - 44, 96, 30))
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     # ═══════════════════════════════════════════════════════
     #  Drawing methods — Human Remains
