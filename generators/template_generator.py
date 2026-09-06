@@ -913,6 +913,77 @@ class TemplateGenerator:
             "default_color": "#4A4A4A",
             "category": "artifacts"
         },
+        # -- Korean ornaments, tiles and other finds (장신구·기와·기타) -----
+        "Comma-shaped Jade (Gogok)": {
+            "draw": ("_draw_korean_ornament", "gogok", "COLOR"),
+            "default_color": "#4E8C7E",
+            "category": "artifacts"
+        },
+        "Tubular Jade Bead (Gwanok)": {
+            "draw": ("_draw_korean_ornament", "gwanok", "COLOR"),
+            "default_color": "#6E8B74",
+            "category": "artifacts"
+        },
+        "Glass Bead": {
+            "draw": ("_draw_korean_ornament", "glass_bead", "COLOR"),
+            "default_color": "#3C6E9C",
+            "category": "artifacts"
+        },
+        "Gold Earring": {
+            "draw": ("_draw_korean_ornament", "gold_earring", "COLOR"),
+            "default_color": "#C9A227",
+            "category": "artifacts"
+        },
+        "Gold Crown": {
+            "draw": ("_draw_korean_ornament", "gold_crown", "COLOR"),
+            "default_color": "#C9A227",
+            "category": "artifacts"
+        },
+        "Belt Fitting Set": {
+            "draw": ("_draw_korean_ornament", "belt_fitting", "COLOR"),
+            "default_color": "#B8860B",
+            "category": "artifacts"
+        },
+        "Wooden Document Slip (Mokgan)": {
+            "draw": ("_draw_korean_ornament", "mokgan", "COLOR"),
+            "default_color": "#A98B62",
+            "category": "artifacts"
+        },
+        "Round Roof-end Tile": {
+            "draw": ("_draw_korean_ornament", "round_roof_tile", "COLOR"),
+            "default_color": "#8B7355",
+            "category": "artifacts"
+        },
+        "Eaves Roof Tile": {
+            "draw": ("_draw_korean_ornament", "eaves_roof_tile", "COLOR"),
+            "default_color": "#8B7355",
+            "category": "artifacts"
+        },
+        "Floor Brick": {
+            "draw": ("_draw_korean_ornament", "floor_brick", "COLOR"),
+            "default_color": "#9C7A56",
+            "category": "artifacts"
+        },
+        "Inkstone": {
+            "draw": ("_draw_korean_ornament", "inkstone", "COLOR"),
+            "default_color": "#4A4A4A",
+            "category": "artifacts"
+        },
+        "Clay Figurine": {
+            "draw": ("_draw_korean_ornament", "clay_figurine", "COLOR"),
+            "default_color": "#A0764B",
+            "category": "artifacts"
+        },
+        "Ridge-end Roof Ornament (Chimi)": {
+            "draw": ("_draw_korean_ornament", "chimi", "COLOR"),
+            "default_color": "#7A6A56",
+            "category": "artifacts"
+        },
+        "Building Foundation Stone": {
+            "draw": ("_draw_korean_ornament", "foundation_stone", "COLOR"),
+            "default_color": "#808080",
+            "category": "structures"
+        },
     }
 
     # Backward compatibility for older naming variants
@@ -3312,6 +3383,276 @@ class TemplateGenerator:
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(int(cx), int(top + 52), int(cx), int(bottom - 52))
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    # ═══════════════════════════════════════════════════════
+    #  Drawing methods — Korean ornaments, tiles and other finds
+    # ═══════════════════════════════════════════════════════
+
+    def _draw_korean_ornament(self, painter, s, m, variant, color):
+        """
+        Ornaments, roof tiles and other finds that identify a Korean site.
+
+        Ornaments are drawn at the scale of the object itself rather than in
+        proportion to each other, so a bead and a crown both fill the tile.
+        """
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        edge = QPen(color.darker(150), 2.4)
+        thin = QPen(color.darker(170), 1.3)
+        hollow = QColor(255, 255, 255, 0)
+        cx, cy = s / 2.0, s / 2.0
+        top, bottom = m + 4, s - m - 4
+
+        painter.setPen(edge)
+        painter.setBrush(solid)
+        body = QPainterPath()
+
+        if variant == "gogok":
+            # 곡옥: the comma-shaped jade, perforated through the head.
+            body.moveTo(cx + 18, top + 6)
+            body.quadTo(cx + 86, cy - 20, cx + 30, bottom - 20)
+            body.quadTo(cx - 66, bottom + 10, cx - 62, cy + 6)
+            body.quadTo(cx - 58, top + 12, cx + 18, top + 6)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(hollow)
+            painter.drawEllipse(QRectF(cx - 34, top + 34, 26, 26))
+            painter.drawEllipse(QRectF(cx - 46, top + 22, 50, 50))
+
+        elif variant == "gwanok":
+            # 관옥: tubular beads threaded on a cord.
+            painter.setPen(QPen(color.darker(170), 2.4))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(m + 2), int(cy), int(s - m - 2), int(cy))
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            for i in range(3):
+                x = m + 18 + i * 62
+                painter.drawRect(QRectF(x, cy - 26, 54, 52))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(3):
+                x = m + 18 + i * 62
+                painter.drawLine(int(x), int(cy - 10), int(x + 54), int(cy - 10))
+                painter.drawLine(int(x), int(cy + 10), int(x + 54), int(cy + 10))
+
+        elif variant == "glass_bead":
+            # 유리구슬: a strung line of small round beads.
+            painter.setPen(QPen(color.darker(170), 2.2))
+            painter.setBrush(Qt.NoBrush)
+            cord = QPainterPath()
+            cord.moveTo(m, cy - 30)
+            cord.quadTo(cx, cy + 56, s - m, cy - 30)
+            painter.drawPath(cord)
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            for i in range(6):
+                t = i / 5.0
+                x = (1 - t) ** 2 * m + 2 * (1 - t) * t * cx + t ** 2 * (s - m)
+                y = (1 - t) ** 2 * (cy - 30) + 2 * (1 - t) * t * (cy + 56) + t ** 2 * (cy - 30)
+                painter.drawEllipse(QRectF(x - 21, y - 21, 42, 42))
+
+        elif variant == "gold_earring":
+            # 금귀걸이: the thick main ring, its link and the drop.
+            painter.setBrush(hollow)
+            painter.setPen(QPen(color.darker(150), 11.0))
+            painter.drawEllipse(QRectF(cx - 54, top + 6, 108, 96))
+            painter.setPen(QPen(color.darker(150), 5.0))
+            painter.drawEllipse(QRectF(cx - 20, top + 96, 40, 38))
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            drop = QPainterPath()
+            drop.moveTo(cx - 30, top + 136)
+            drop.lineTo(cx + 30, top + 136)
+            drop.quadTo(cx + 24, bottom - 10, cx, bottom)
+            drop.quadTo(cx - 24, bottom - 10, cx - 30, top + 136)
+            drop.closeSubpath()
+            painter.drawPath(drop)
+
+        elif variant == "gold_crown":
+            # 금관: the band with its tree and antler uprights.
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(m + 6, bottom - 46, s - 2 * m - 12, 34))
+            painter.setPen(QPen(color.darker(150), 8.0))
+            painter.setBrush(Qt.NoBrush)
+            for offset in (-62, 0, 62):
+                upright = QPainterPath()
+                upright.moveTo(cx + offset, bottom - 46)
+                upright.lineTo(cx + offset, top + 16)
+                painter.drawPath(upright)
+                for i, y in enumerate((bottom - 96, bottom - 146)):
+                    painter.drawLine(int(cx + offset - 26), int(y),
+                                     int(cx + offset + 26), int(y))
+            painter.setPen(thin)
+            painter.setBrush(solid)
+            for offset in (-84, -20, 44):
+                painter.drawEllipse(QRectF(cx + offset, bottom - 8, 20, 20))
+
+        elif variant == "belt_fitting":
+            # 대금구: the buckle, the strap plates and a pendant.
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(m + 2, cy - 34, 68, 68))
+            painter.setBrush(hollow)
+            painter.setPen(thin)
+            painter.drawRect(QRectF(m + 16, cy - 20, 40, 40))
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            for i in range(2):
+                painter.drawRect(QRectF(m + 82 + i * 60, cy - 30, 52, 60))
+            painter.setPen(QPen(color.darker(150), 4.0))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(m + 108), int(cy + 30), int(m + 108), int(cy + 60))
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            painter.drawEllipse(QRectF(m + 90, cy + 58, 36, 36))
+
+        elif variant == "mokgan":
+            # 목간: an inked wooden slip, notched for binding.
+            body.moveTo(cx - 34, top)
+            body.lineTo(cx + 34, top)
+            body.lineTo(cx + 34, cy - 26)
+            body.lineTo(cx + 24, cy - 14)
+            body.lineTo(cx + 34, cy - 2)
+            body.lineTo(cx + 34, bottom - 20)
+            body.lineTo(cx, bottom)
+            body.lineTo(cx - 34, bottom - 20)
+            body.lineTo(cx - 34, cy - 2)
+            body.lineTo(cx - 24, cy - 14)
+            body.lineTo(cx - 34, cy - 26)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(QPen(color.darker(190), 3.0))
+            painter.setBrush(Qt.NoBrush)
+            for i in range(5):
+                y = top + 24 + i * 30
+                painter.drawLine(int(cx - 16), int(y), int(cx + 16), int(y))
+                painter.drawLine(int(cx), int(y - 8), int(cx), int(y + 8))
+
+        elif variant == "round_roof_tile":
+            # 수막새: the round tile face, lotus-petalled.
+            import math
+            painter.drawEllipse(QRectF(m + 2, m + 2, s - 2 * m - 4, s - 2 * m - 4))
+            painter.setPen(thin)
+            painter.setBrush(hollow)
+            radius = (s - 2 * m) / 2.0 - 12
+            for i in range(8):
+                angle = 2.0 * math.pi * i / 8.0
+                px = cx + radius * 0.62 * math.cos(angle)
+                py = cy + radius * 0.62 * math.sin(angle)
+                painter.drawEllipse(QRectF(px - 26, py - 20, 52, 40))
+            painter.setBrush(solid)
+            painter.setPen(edge)
+            painter.drawEllipse(QRectF(cx - 22, cy - 22, 44, 44))
+
+        elif variant == "eaves_roof_tile":
+            # 암막새: the decorated eaves face over the curved tile.
+            painter.setBrush(solid)
+            face = QPainterPath()
+            face.moveTo(m + 2, cy - 6)
+            face.lineTo(s - m - 2, cy - 6)
+            face.lineTo(s - m - 2, cy + 46)
+            face.quadTo(cx, cy + 74, m + 2, cy + 46)
+            face.closeSubpath()
+            painter.drawPath(face)
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 130))
+            tile = QPainterPath()
+            tile.moveTo(m + 22, cy - 6)
+            tile.quadTo(cx, top - 8, s - m - 22, cy - 6)
+            tile.quadTo(cx, cy - 42, m + 22, cy - 6)
+            tile.closeSubpath()
+            painter.drawPath(tile)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(3):
+                x = cx - 58 + i * 58
+                scroll = QPainterPath()
+                scroll.moveTo(x - 20, cy + 34)
+                scroll.quadTo(x, cy + 2, x + 20, cy + 34)
+                painter.drawPath(scroll)
+
+        elif variant == "floor_brick":
+            # 전돌: a square brick with its stamped panel.
+            body.moveTo(m + 20, m + 8)
+            body.lineTo(s - m - 2, m + 26)
+            body.lineTo(s - m - 20, s - m - 8)
+            body.lineTo(m + 2, s - m - 26)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(hollow)
+            inner = QPainterPath()
+            inner.moveTo(m + 42, m + 34)
+            inner.lineTo(s - m - 26, m + 48)
+            inner.lineTo(s - m - 42, s - m - 34)
+            inner.lineTo(m + 26, s - m - 48)
+            inner.closeSubpath()
+            painter.drawPath(inner)
+            painter.drawLine(int(m + 34), int(cy - 4), int(s - m - 34), int(cy + 8))
+            painter.drawLine(int(cx - 8), int(m + 22), int(cx + 8), int(s - m - 22))
+
+        elif variant == "inkstone":
+            # 벼루: the grinding surface, its water well and the foot.
+            painter.drawRect(QRectF(m + 2, cy - 54, s - 2 * m - 4, 88))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 150))
+            painter.drawRect(QRectF(m + 22, bottom - 40, s - 2 * m - 44, 26))
+            painter.setPen(thin)
+            painter.setBrush(hollow)
+            painter.drawRect(QRectF(m + 18, cy - 40, s - 2 * m - 36, 60))
+            painter.setBrush(QColor(color.darker(160)))
+            painter.drawEllipse(QRectF(cx + 26, cy - 32, 56, 44))
+
+        elif variant == "clay_figurine":
+            # 토우: a simple modelled figure.
+            painter.drawEllipse(QRectF(cx - 26, top + 2, 52, 52))
+            trunk = QPainterPath()
+            trunk.moveTo(cx - 30, top + 58)
+            trunk.lineTo(cx + 30, top + 58)
+            trunk.quadTo(cx + 44, cy + 40, cx + 26, bottom)
+            trunk.lineTo(cx - 26, bottom)
+            trunk.quadTo(cx - 44, cy + 40, cx - 30, top + 58)
+            trunk.closeSubpath()
+            painter.drawPath(trunk)
+            painter.setPen(QPen(color.darker(150), 9.0))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 30), int(top + 74), int(cx - 72), int(cy + 26))
+            painter.drawLine(int(cx + 30), int(top + 74), int(cx + 72), int(cy + 26))
+            painter.setPen(thin)
+            painter.drawLine(int(cx - 12), int(top + 26), int(cx - 4), int(top + 26))
+            painter.drawLine(int(cx + 4), int(top + 26), int(cx + 12), int(top + 26))
+
+        elif variant == "chimi":
+            # 치미: the ridge-end ornament, ribbed like a tail.
+            body.moveTo(cx - 34, bottom)
+            body.lineTo(cx + 34, bottom)
+            body.quadTo(cx + 52, cy, cx + 30, top + 30)
+            body.quadTo(cx + 14, top - 2, cx - 30, top + 16)
+            body.quadTo(cx - 62, cy - 20, cx - 34, bottom)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(4):
+                rib = QPainterPath()
+                rib.moveTo(cx - 26 + i * 6, bottom - 20)
+                rib.quadTo(cx - 34 + i * 16, cy - 10, cx - 16 + i * 14, top + 26)
+                painter.drawPath(rib)
+
+        elif variant == "foundation_stone":
+            # 초석: the base stone with its column seat, in plan.
+            painter.drawRect(QRectF(m + 2, m + 2, s - 2 * m - 4, s - 2 * m - 4))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 150))
+            painter.setPen(thin)
+            painter.drawEllipse(QRectF(m + 32, m + 32, s - 2 * m - 64, s - 2 * m - 64))
+            painter.setBrush(solid)
+            painter.setPen(edge)
+            painter.drawEllipse(QRectF(cx - 34, cy - 34, 68, 68))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(cx - 20, cy - 20, 40, 40))
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
