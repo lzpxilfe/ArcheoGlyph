@@ -890,178 +890,111 @@ class TemplateGenerator:
         painter.setPen(old_pen)
 
     def _draw_keyhole_tomb(self, painter, s, m, variant, color):
-        """Keyhole-shaped tomb variants (normal / moat / stepped)."""
-        cx = s / 2.0
-        circle_y = float(m + 54)
-        circle_r = 34.0
-        join_y = circle_y + circle_r - 4.0
-        tail_bottom = float(s - m - 8)
+        """
+        The keyhole tomb, as one outline shared by every variant.
 
-        tail_top_half = 20.0
-        tail_bottom_half = 38.0
-        if variant in ("stepped", "fukiishi", "tsumishizuka"):
-            tail_top_half = 18.0
-            tail_bottom_half = 32.0
-
-        mound_path = QPainterPath()
-        mound_path.addEllipse(QRectF(cx - circle_r, circle_y - circle_r, circle_r * 2.0, circle_r * 2.0))
-
-        tail_path = QPainterPath()
-        tail_path.moveTo(cx - tail_top_half, join_y)
-        tail_path.lineTo(cx - tail_bottom_half, tail_bottom)
-        tail_path.lineTo(cx + tail_bottom_half, tail_bottom)
-        tail_path.lineTo(cx + tail_top_half, join_y)
-        tail_path.closeSubpath()
-
-        composite = QPainterPath(mound_path)
-        composite.addPath(tail_path)
+        The reference plates make the point: the variants are the same
+        silhouette in different colours, with at most a mark added. Giving
+        each one its own tail width, as this used to, only blurred the family.
+        """
+        g = icon_grid.Grid(s)
+        mound = g.keyhole(head_cy=22, head_r=13, join_y=30, foot_half=14, foot_y=57)
 
         if variant in ("moat", "makinokuchi"):
-            old_brush = painter.brush()
-            old_pen = painter.pen()
-            moat_width = 8.0 if variant == "moat" else 5.0
-            moat_pen = _pen(color.lighter(135), moat_width)
-            painter.setPen(moat_pen)
+            # 주호: the ditch ringing the mound, drawn as the same outline
+            # standing off it.
+            old_pen, old_brush = painter.pen(), painter.brush()
+            painter.setPen(_pen(color.lighter(135), 3.0))
             painter.setBrush(Qt.NoBrush)
-
-            moat_path = QPainterPath()
-            moat_path.addEllipse(QRectF(cx - (circle_r + 11.0), circle_y - (circle_r + 11.0), (circle_r + 11.0) * 2.0, (circle_r + 11.0) * 2.0))
-            moat_tail = QPainterPath()
-            moat_tail.moveTo(cx - (tail_top_half + 9.0), join_y + 1.0)
-            moat_tail.lineTo(cx - (tail_bottom_half + 11.0), tail_bottom + 8.0)
-            moat_tail.lineTo(cx + (tail_bottom_half + 11.0), tail_bottom + 8.0)
-            moat_tail.lineTo(cx + (tail_top_half + 9.0), join_y + 1.0)
-            moat_tail.closeSubpath()
-            moat_path.addPath(moat_tail)
-            painter.drawPath(moat_path)
-
-            if variant == "makinokuchi":
-                painter.setPen(_pen(old_pen.color().darker(125), 1.0))
-                painter.drawLine(int(cx - 26), int(join_y + 12), int(cx + 26), int(join_y + 12))
-                painter.drawLine(int(cx - 30), int(join_y + 24), int(cx + 30), int(join_y + 24))
-
+            painter.drawPath(
+                g.keyhole(head_cy=22, head_r=17, join_y=32, foot_half=18, foot_y=59)
+            )
             painter.setBrush(old_brush)
             painter.setPen(old_pen)
 
-        painter.drawPath(composite)
+        painter.drawPath(mound)
 
-        if variant in ("stepped", "fukiishi", "tsumishizuka"):
-            old_pen = painter.pen()
-            step_pen = _pen(old_pen.color().darker(130), 1.1)
-            painter.setPen(step_pen)
-            for i in range(3):
-                y = int(join_y + 14 + (i * 16))
-                width = int((tail_top_half + 6) + (i * 7))
-                painter.drawLine(int(cx - width), y, int(cx + width), y)
-            if variant == "tsumishizuka":
-                for i in range(10):
-                    y = int(join_y + 18 + (i * 7))
-                    x1 = int(cx - 20 - (i % 3))
-                    x2 = int(cx + 20 + (i % 3))
-                    painter.drawLine(x1, y, x1 + 6, y + 3)
-                    painter.drawLine(x2, y, x2 - 6, y + 3)
-            painter.setPen(old_pen)
-
-    # ═══════════════════════════════════════════════════════
-    #  Drawing methods — Structures
-    # ═══════════════════════════════════════════════════════
+        if variant == "fukiishi":
+            # 즙석: the stone facing, as one band across the mound.
+            _clip_detail(painter, mound)
+            painter.setPen(_pen(color.darker(150), 1.4))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(14, 40, 50, 40))
+            painter.restore()
+        elif variant in ("tsumishizuka", "makinokuchi"):
+            _clip_detail(painter, mound)
+            painter.setPen(_pen(color.darker(150), 1.4))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(16, 38, 48, 38))
+            painter.drawPath(g.line(14, 46, 50, 46))
+            painter.restore()
+        elif variant == "stepped":
+            # 단축: the mound built in tiers. A second, concentric outline
+            # says that better than more bands, and keeps it apart from the
+            # 즙석 and 적석총 marks, which are bands.
+            _clip_detail(painter, mound)
+            painter.setPen(_pen(color.darker(150), 1.4))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(
+                g.keyhole(head_cy=23, head_r=8.5, join_y=29,
+                          foot_half=9, foot_y=51)
+            )
+            painter.restore()
 
     def _draw_kofun_shape(self, painter, s, m, variant, color):
-        """Kofun plan-view variants for regional map symbols."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        painter.setPen(_pen(color.darker(160), 2.0))
+        """
+        The kofun plan series: ten silhouettes on one grid.
+
+        These are pure plan outlines - a circle, a square, a keyhole, a
+        scallop - which is exactly the case where the reference adds no
+        internal detail at all. What separates them is the shape.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
         painter.setBrush(color)
 
-        cx = s / 2.0
-        if variant == "zenpokouen":
-            self._draw_keyhole_tomb(painter, s, m, "normal", color)
-        elif variant == "makimuku_en":
-            self._draw_keyhole_tomb(painter, s, m, "normal", color)
+        if variant in ("zenpokouen", "makimuku_en"):
+            painter.drawPath(g.keyhole(head_cy=22, head_r=13, join_y=30,
+                                       foot_half=14, foot_y=57))
+        elif variant == "enpun":                        # 원분
+            painter.drawPath(g.circle(32, 32, 25))
+        elif variant == "hofun":                        # 방분
+            painter.drawPath(g.rect(9, 9, 46, 46))
+        elif variant == "hotategai":                    # 가리비형: short front
+            painter.drawPath(g.keyhole(head_cy=26, head_r=17, join_y=40,
+                                       foot_half=13, foot_y=56))
+        elif variant in ("zenpokoho", "makimuku_ho"):
+            # 전방후방분: the same mound as 전방후원분 with a square rear, so
+            # the two read as a pair. The numbers are the keyhole's, which is
+            # what puts the shoulder in the same place in both.
+            painter.drawPath(g.poly([(19, 9), (45, 9), (45, 28), (42, 30),
+                                     (46, 57), (18, 57), (22, 30), (19, 28)]))
+        elif variant == "sohochuen":                    # 쌍방중원분
+            painter.drawPath(g.spindle(r=16, waist_half=10, foot_half=7,
+                                       top_y=7, bottom_y=57))
+        elif variant == "yosumi":                       # 사우돌출형
+            # The corners are the whole point of the type, so the sides have
+            # to fall in between them. Sampling a circle, as this used to,
+            # only produced an octagon with nothing protruding.
+            painter.drawPath(g.poly([
+                (7, 7), (32, 14), (57, 7), (50, 32),
+                (57, 57), (32, 50), (7, 57), (14, 32),
+            ]))
+        elif variant == "daijobo":                      # 대상묘: a low platform
+            painter.drawPath(g.rect(7, 20, 50, 24))
+        else:
+            painter.drawPath(g.circle(32, 32, 25))
+
+        # 마키무쿠형 is the one that carries a mark: the terraces on the front.
+        if variant in ("makimuku_en", "makimuku_ho"):
             painter.setBrush(Qt.NoBrush)
             painter.setPen(_pen(color.darker(175), 1.2))
-            painter.drawLine(int(cx - 24), int(s * 0.55), int(cx + 24), int(s * 0.55))
-            painter.drawLine(int(cx - 30), int(s * 0.63), int(cx + 30), int(s * 0.63))
-        elif variant == "enpun":
-            r = s / 2.0 - m - 14
-            painter.drawEllipse(int(cx - r), int(cx - r), int(2 * r), int(2 * r))
-        elif variant == "hotategai":
-            top_r = 46.0
-            circle_y = m + 62
-            p = QPainterPath()
-            p.addEllipse(QRectF(cx - top_r, circle_y - top_r, top_r * 2, top_r * 2))
-            p.moveTo(cx - 30, circle_y + top_r - 6)
-            p.lineTo(cx - 44, s - m - 26)
-            p.lineTo(cx + 44, s - m - 26)
-            p.lineTo(cx + 30, circle_y + top_r - 6)
-            p.closeSubpath()
-            painter.drawPath(p)
-        elif variant == "sohochuen":
-            p = QPainterPath()
-            p.addEllipse(QRectF(cx - 38, m + 26, 76, 76))
-            p.addEllipse(QRectF(cx - 28, s * 0.49, 56, 92))
-            painter.drawPath(p)
-        elif variant == "hofun":
-            side = s - (2 * m) - 36
-            painter.drawRect(int(cx - side / 2), int(cx - side / 2), int(side), int(side))
-        elif variant == "zenpokoho":
-            p = QPainterPath()
-            p.addEllipse(QRectF(cx - 34, m + 24, 68, 68))
-            p.moveTo(cx - 32, s * 0.50)
-            p.lineTo(cx - 42, s - m - 20)
-            p.lineTo(cx + 42, s - m - 20)
-            p.lineTo(cx + 32, s * 0.50)
-            p.closeSubpath()
-            painter.drawPath(p)
-        elif variant == "makimuku_ho":
-            p = QPainterPath()
-            p.addEllipse(QRectF(cx - 34, m + 24, 68, 68))
-            p.moveTo(cx - 24, s * 0.50)
-            p.lineTo(cx - 44, s - m - 26)
-            p.lineTo(cx + 44, s - m - 26)
-            p.lineTo(cx + 24, s * 0.50)
-            p.closeSubpath()
-            painter.drawPath(p)
-            painter.setBrush(Qt.NoBrush)
-            painter.setPen(_pen(color.darker(178), 1.2))
-            painter.drawLine(int(cx - 30), int(s * 0.62), int(cx + 30), int(s * 0.62))
-        elif variant == "yosumi":
-            p = QPainterPath()
-            x1 = m + 34
-            y1 = m + 34
-            x2 = s - m - 34
-            y2 = s - m - 34
-            protrusion = 16
-            p.moveTo(x1, y1 - protrusion)
-            p.lineTo((x1 + x2) / 2, y1)
-            p.lineTo(x2, y1 - protrusion)
-            p.lineTo(x2 + protrusion, y1)
-            p.lineTo(x2, (y1 + y2) / 2)
-            p.lineTo(x2 + protrusion, y2)
-            p.lineTo(x2, y2 + protrusion)
-            p.lineTo((x1 + x2) / 2, y2)
-            p.lineTo(x1, y2 + protrusion)
-            p.lineTo(x1 - protrusion, y2)
-            p.lineTo(x1, (y1 + y2) / 2)
-            p.lineTo(x1 - protrusion, y1)
-            p.closeSubpath()
-            painter.drawPath(p)
-        elif variant == "daijobo":
-            side = s - (2 * m) - 30
-            x = int(cx - side / 2)
-            y = int(cx - side / 2)
-            painter.drawRect(x, y, int(side), int(side))
-            inner = int(side * 0.46)
-            inner_x = int(cx - inner / 2)
-            inner_y = int(cx - inner / 2)
-            # Lighter through opacity, so QGIS recolouring keeps the contrast.
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-            painter.drawRect(inner_x, inner_y, inner, inner)
-        else:
-            self._draw_keyhole_tomb(painter, s, m, "normal", color)
+            painter.drawPath(g.line(20, 44, 44, 44))
+            painter.drawPath(g.line(18, 50, 46, 50))
 
-        painter.setPen(old_pen)
         painter.setBrush(old_brush)
+        painter.setPen(old_pen)
 
     def _draw_fortress(self, painter, s, m):
         """Castle/fortress — crenellated rectangle."""

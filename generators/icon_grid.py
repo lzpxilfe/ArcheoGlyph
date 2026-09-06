@@ -20,6 +20,8 @@ look related without anyone tuning them to match.
 Nothing here knows about archaeology - it is the drawing surface only.
 """
 
+import math
+
 from qgis.PyQt.QtGui import QPainterPath
 
 UNITS = 64
@@ -150,18 +152,92 @@ class Grid:
         return path
 
     def circle(self, cx, cy, r):
-        """A circle as four quads, so it stays on the same command set."""
+        """
+        A circle, as arc segments on the same command set as everything else.
+
+        This used to place its own control points at ``0.74 * r``, which is a
+        quarter of the way inside where a quadratic has to reach to touch the
+        circle - so every circle in the catalogue flattened at the diagonals
+        and read as a lumpy polygon. Deferring to :meth:`arc` means there is
+        one piece of curve maths in the file rather than two.
+        """
         cx, cy, r = snap(cx), snap(cy), snap(r)
-        k = r * 0.5523
         path = QPainterPath()
-        path.moveTo(self.u(cx - r), self.u(cy))
-        for (qx, qy, ex, ey) in (
-            (cx - r, cy - k * 1.34, cx, cy - r),
-            (cx + k * 1.34, cy - r, cx + r, cy),
-            (cx + r, cy + k * 1.34, cx, cy + r),
-            (cx - k * 1.34, cy + r, cx - r, cy),
-        ):
-            path.quadTo(self.u(qx), self.u(qy), self.u(ex), self.u(ey))
+        self.arc(path, cx, cy, r, -math.pi / 2.0, 2.0 * math.pi,
+                 segments=8, move=True)
+        path.closeSubpath()
+        return path
+
+    def arc(self, path, cx, cy, r, start, sweep, segments=6, move=False):
+        """
+        Append a circular arc, as quads that actually follow the circle.
+
+        The control point sits at r / cos(half step), which is the radius that
+        makes a quadratic touch the arc at both ends - sampling the circle and
+        joining the samples with straight quads is what leaves a polygon.
+        """
+        step = sweep / segments
+        if move:
+            path.moveTo(self.u(cx + r * math.cos(start)),
+                        self.u(cy + r * math.sin(start)))
+        reach = r / math.cos(step / 2.0)
+        for index in range(segments):
+            a0 = start + step * index
+            a1 = a0 + step
+            mid = (a0 + a1) / 2.0
+            path.quadTo(self.u(cx + reach * math.cos(mid)),
+                        self.u(cy + reach * math.sin(mid)),
+                        self.u(cx + r * math.cos(a1)),
+                        self.u(cy + r * math.sin(a1)))
+        return path
+
+    def keyhole(self, head_cy, head_r, join_y, foot_half, foot_y):
+        """
+        The 전방후원분 outline: round rear mound and trapezoidal front, as one
+        shape.
+
+        Drawn as a circle plus a separate trapezoid the join shows as a seam,
+        and the two halves drift apart when either is tuned. Here the tail
+        starts exactly on the circle - the waist is derived from the join
+        height - so the outline closes on itself by construction.
+        """
+        cx = self.centre
+        offset = min(abs(join_y - head_cy), head_r)
+        waist = math.sqrt(max(0.0, head_r ** 2 - offset ** 2))
+        start = math.atan2(join_y - head_cy, waist)     # right join, y downward
+
+        path = QPainterPath()
+        path.moveTo(*self.pt(cx + waist, join_y))
+        # Right join over the top to the left join: the long way round.
+        self.arc(path, cx, head_cy, head_r, start, -(math.pi + 2.0 * start))
+        path.lineTo(*self.pt(cx - foot_half, foot_y))
+        path.lineTo(*self.pt(cx + foot_half, foot_y))
+        path.closeSubpath()
+        return path
+
+    def spindle(self, r, waist_half, foot_half, top_y, bottom_y):
+        """
+        쌍방중원분: a round mound with a trapezoidal front at either end.
+
+        The same construction as :meth:`keyhole` - the fronts start exactly on
+        the circle, so the outline closes by itself - only mirrored. Drawing
+        it as a circle with a bar laid over it, as this used to, left the
+        bar's own outline showing through the mound.
+        """
+        cx = cy = self.centre
+        waist = min(abs(waist_half), r)
+        offset = math.sqrt(max(0.0, r ** 2 - waist ** 2))
+        turn = math.atan2(offset, waist)        # the lower-right join
+
+        path = QPainterPath()
+        path.moveTo(*self.pt(cx + waist, cy + offset))
+        self.arc(path, cx, cy, r, turn, -2.0 * turn)        # right flank
+        path.lineTo(*self.pt(cx + foot_half, top_y))
+        path.lineTo(*self.pt(cx - foot_half, top_y))
+        path.lineTo(*self.pt(cx - waist, cy - offset))
+        self.arc(path, cx, cy, r, math.pi + turn, -2.0 * turn)   # left flank
+        path.lineTo(*self.pt(cx - foot_half, bottom_y))
+        path.lineTo(*self.pt(cx + foot_half, bottom_y))
         path.closeSubpath()
         return path
 
