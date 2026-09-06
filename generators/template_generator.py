@@ -787,6 +787,132 @@ class TemplateGenerator:
             "default_color": "#5B3A22",
             "category": "artifacts"
         },
+        # -- Korean stone, bronze and iron tools (석기·청동기·철기) ---------
+        "Handaxe": {
+            "draw": ("_draw_korean_tool", "handaxe", "COLOR"),
+            "default_color": "#708090",
+            "category": "artifacts"
+        },
+        "Chopper": {
+            "draw": ("_draw_korean_tool", "chopper", "COLOR"),
+            "default_color": "#7A8288",
+            "category": "artifacts"
+        },
+        "Tanged Point": {
+            "draw": ("_draw_korean_tool", "tanged_point", "COLOR"),
+            "default_color": "#708090",
+            "category": "artifacts"
+        },
+        "Microblade Core": {
+            "draw": ("_draw_korean_tool", "microblade_core", "COLOR"),
+            "default_color": "#7A8288",
+            "category": "artifacts"
+        },
+        "Polished Stone Dagger": {
+            "draw": ("_draw_korean_tool", "polished_dagger", "COLOR"),
+            "default_color": "#6E7B8B",
+            "category": "artifacts"
+        },
+        "Semi-lunar Stone Knife": {
+            "draw": ("_draw_korean_tool", "semilunar_knife", "COLOR"),
+            "default_color": "#708090",
+            "category": "artifacts"
+        },
+        "Stone Hoe": {
+            "draw": ("_draw_korean_tool", "stone_hoe", "COLOR"),
+            "default_color": "#7A8288",
+            "category": "artifacts"
+        },
+        "Grinding Slab and Muller": {
+            "draw": ("_draw_korean_tool", "grinding_slab", "COLOR"),
+            "default_color": "#8B8378",
+            "category": "artifacts"
+        },
+        "Stone Arrowhead": {
+            "draw": ("_draw_korean_tool", "stone_arrowhead", "COLOR"),
+            "default_color": "#708090",
+            "category": "artifacts"
+        },
+        "Net Sinker": {
+            "draw": ("_draw_korean_tool", "net_sinker", "COLOR"),
+            "default_color": "#7A8288",
+            "category": "artifacts"
+        },
+        "Coarse-lined Bronze Mirror": {
+            "draw": ("_draw_korean_tool", "coarse_mirror", "COLOR"),
+            "default_color": "#CD7F32",
+            "category": "artifacts"
+        },
+        "Fine-lined Bronze Mirror": {
+            "draw": ("_draw_korean_tool", "fine_mirror", "COLOR"),
+            "default_color": "#CD7F32",
+            "category": "artifacts"
+        },
+        "Bronze Rattle": {
+            "draw": ("_draw_korean_tool", "bronze_rattle", "COLOR"),
+            "default_color": "#CD7F32",
+            "category": "artifacts"
+        },
+        "Bronze Bell": {
+            "draw": ("_draw_korean_tool", "bronze_bell", "COLOR"),
+            "default_color": "#CD7F32",
+            "category": "artifacts"
+        },
+        "Iron Sword": {
+            "draw": ("_draw_korean_tool", "iron_sword", "COLOR"),
+            "default_color": "#434343",
+            "category": "artifacts"
+        },
+        "Iron Spearhead": {
+            "draw": ("_draw_korean_tool", "iron_spearhead", "COLOR"),
+            "default_color": "#434343",
+            "category": "artifacts"
+        },
+        "Iron Arrowhead": {
+            "draw": ("_draw_korean_tool", "iron_arrowhead", "COLOR"),
+            "default_color": "#4A4A4A",
+            "category": "artifacts"
+        },
+        "Iron Axe": {
+            "draw": ("_draw_korean_tool", "iron_axe", "COLOR"),
+            "default_color": "#434343",
+            "category": "artifacts"
+        },
+        "Iron Ard": {
+            "draw": ("_draw_korean_tool", "iron_ard", "COLOR"),
+            "default_color": "#4A4A4A",
+            "category": "artifacts"
+        },
+        "Iron Sickle": {
+            "draw": ("_draw_korean_tool", "iron_sickle", "COLOR"),
+            "default_color": "#434343",
+            "category": "artifacts"
+        },
+        "Plate Armour": {
+            "draw": ("_draw_korean_tool", "plate_armour", "COLOR"),
+            "default_color": "#4A4A4A",
+            "category": "artifacts"
+        },
+        "Lamellar Armour": {
+            "draw": ("_draw_korean_tool", "lamellar_armour", "COLOR"),
+            "default_color": "#4A4A4A",
+            "category": "artifacts"
+        },
+        "Horse Bit": {
+            "draw": ("_draw_korean_tool", "horse_bit", "COLOR"),
+            "default_color": "#434343",
+            "category": "artifacts"
+        },
+        "Stirrup": {
+            "draw": ("_draw_korean_tool", "stirrup", "COLOR"),
+            "default_color": "#434343",
+            "category": "artifacts"
+        },
+        "Iron Ingot": {
+            "draw": ("_draw_korean_tool", "iron_ingot", "COLOR"),
+            "default_color": "#4A4A4A",
+            "category": "artifacts"
+        },
     }
 
     # Backward compatibility for older naming variants
@@ -2762,6 +2888,430 @@ class TemplateGenerator:
             for i in range(3):
                 y = s * 0.54 + i * 20
                 painter.drawLine(int(cx - 64), int(y), int(cx + 64), int(y))
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    # ═══════════════════════════════════════════════════════
+    #  Drawing methods — Korean stone, bronze and iron tools
+    # ═══════════════════════════════════════════════════════
+
+    def _draw_korean_tool(self, painter, s, m, variant, color):
+        """
+        Stone, bronze and iron implements as typology silhouettes.
+
+        Long objects are drawn upright so they fill the tile; the surface
+        detail is limited to what distinguishes the type — flake scars, a
+        midrib, mirror bands, armour plates.
+        """
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        edge = QPen(color.darker(150), 2.4)
+        thin = QPen(color.darker(170), 1.3)
+        cx, cy = s / 2.0, s / 2.0
+        top, bottom = m + 4, s - m - 4
+
+        painter.setPen(edge)
+        painter.setBrush(solid)
+        body = QPainterPath()
+
+        if variant == "handaxe":
+            # 주먹도끼: a pointed biface, flaked all over.
+            body.moveTo(cx, top)
+            body.quadTo(cx + 62, s * 0.42, cx + 46, bottom - 26)
+            body.quadTo(cx, bottom + 6, cx - 46, bottom - 26)
+            body.quadTo(cx - 62, s * 0.42, cx, top)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(5):
+                y = top + 34 + i * 30
+                half = 20 + i * 7
+                painter.drawLine(int(cx - half - 14), int(y), int(cx - 6), int(y - 12))
+                painter.drawLine(int(cx + half + 14), int(y), int(cx + 6), int(y - 12))
+
+        elif variant == "chopper":
+            # 찍개: a cobble with one flaked working edge.
+            body.moveTo(cx - 20, top + 10)
+            body.quadTo(cx + 66, top + 22, cx + 62, cy + 10)
+            body.quadTo(cx + 50, bottom, cx - 10, bottom - 6)
+            body.quadTo(cx - 64, bottom - 30, cx - 60, cy - 20)
+            body.quadTo(cx - 58, top + 20, cx - 20, top + 10)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(QPen(color.darker(175), 2.6))
+            painter.setBrush(Qt.NoBrush)
+            zigzag = QPainterPath()
+            zigzag.moveTo(cx - 58, cy - 20)
+            for i in range(4):
+                zigzag.lineTo(cx - 34 + i * 8, cy + 6 + i * 22)
+                zigzag.lineTo(cx - 56 + i * 10, cy + 18 + i * 22)
+            painter.drawPath(zigzag)
+
+        elif variant == "tanged_point":
+            # 슴베찌르개: a blade with a tang for hafting.
+            body.moveTo(cx, top)
+            body.quadTo(cx + 32, s * 0.36, cx + 22, s * 0.62)
+            body.lineTo(cx + 12, s * 0.68)
+            body.lineTo(cx + 12, bottom)
+            body.lineTo(cx - 12, bottom)
+            body.lineTo(cx - 12, s * 0.68)
+            body.lineTo(cx - 22, s * 0.62)
+            body.quadTo(cx - 32, s * 0.36, cx, top)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx), int(top + 14), int(cx), int(s * 0.62))
+
+        elif variant == "microblade_core":
+            # 좀돌날: a wedge-shaped core with its blade scars.
+            body.moveTo(cx - 54, top + 20)
+            body.lineTo(cx + 54, top + 32)
+            body.lineTo(cx + 34, bottom - 10)
+            body.lineTo(cx - 30, bottom - 20)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(6):
+                x = cx - 44 + i * 18
+                painter.drawLine(int(x), int(top + 24), int(x - 6), int(bottom - 18))
+
+        elif variant == "polished_dagger":
+            # 간돌검: a polished blade with a midrib and a stepped hilt.
+            body.moveTo(cx, top)
+            body.lineTo(cx + 22, s * 0.30)
+            body.lineTo(cx + 16, s * 0.56)
+            body.lineTo(cx - 16, s * 0.56)
+            body.lineTo(cx - 22, s * 0.30)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.drawRect(QRectF(cx - 38, s * 0.56, 76, 14))
+            painter.drawRect(QRectF(cx - 16, s * 0.56 + 14, 32, 46))
+            painter.drawRect(QRectF(cx - 30, bottom - 22, 60, 20))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx), int(top + 12), int(cx), int(s * 0.54))
+
+        elif variant == "semilunar_knife":
+            # 반달돌칼: a half-moon harvesting knife, two-holed.
+            body.moveTo(cx - 84, cy - 22)
+            body.quadTo(cx, cy - 76, cx + 84, cy - 22)
+            body.quadTo(cx, cy + 56, cx - 84, cy - 22)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.drawEllipse(QRectF(cx - 40, cy - 34, 18, 18))
+            painter.drawEllipse(QRectF(cx + 22, cy - 34, 18, 18))
+
+        elif variant == "stone_hoe":
+            # 돌괭이: a broad blade notched for hafting.
+            body.moveTo(cx - 18, top + 6)
+            body.lineTo(cx + 18, top + 6)
+            body.lineTo(cx + 26, s * 0.34)
+            body.lineTo(cx + 62, bottom - 26)
+            body.quadTo(cx, bottom + 8, cx - 62, bottom - 26)
+            body.lineTo(cx - 26, s * 0.34)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 26), int(s * 0.34), int(cx + 26), int(s * 0.34))
+
+        elif variant == "grinding_slab":
+            # 갈판갈돌: the saddle quern with its muller resting on it.
+            slab = QPainterPath()
+            slab.moveTo(cx - 92, cy + 22)
+            slab.quadTo(cx, cy - 14, cx + 92, cy + 22)
+            slab.lineTo(cx + 78, bottom - 6)
+            slab.quadTo(cx, bottom + 12, cx - 78, bottom - 6)
+            slab.closeSubpath()
+            painter.drawPath(slab)
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 190))
+            muller = QPainterPath()
+            muller.moveTo(cx - 54, cy - 16)
+            muller.quadTo(cx, cy - 60, cx + 54, cy - 16)
+            muller.quadTo(cx, cy + 16, cx - 54, cy - 16)
+            muller.closeSubpath()
+            painter.drawPath(muller)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 70), int(cy + 34), int(cx + 70), int(cy + 34))
+
+        elif variant == "stone_arrowhead":
+            # 돌화살촉: a triangular point on a single stem.
+            body.moveTo(cx, top)
+            body.lineTo(cx + 34, s * 0.52)
+            body.lineTo(cx + 10, s * 0.52)
+            body.lineTo(cx + 10, bottom)
+            body.lineTo(cx - 10, bottom)
+            body.lineTo(cx - 10, s * 0.52)
+            body.lineTo(cx - 34, s * 0.52)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx), int(top + 16), int(cx), int(s * 0.50))
+
+        elif variant == "net_sinker":
+            # 어망추: a pebble notched at both ends for the net line.
+            body.moveTo(cx - 46, cy - 62)
+            body.quadTo(cx + 52, cy - 46, cx + 46, cy + 8)
+            body.quadTo(cx + 40, cy + 66, cx - 8, cy + 62)
+            body.quadTo(cx - 56, cy + 52, cx - 46, cy - 62)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(QPen(color.darker(180), 3.2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawArc(int(cx - 56), int(cy - 60), 30, 34, 90 * 16, 180 * 16)
+            painter.drawArc(int(cx + 28), int(cy + 22), 30, 34, -90 * 16, 180 * 16)
+
+        elif variant in ("coarse_mirror", "fine_mirror"):
+            # 다뉴조문경 / 다뉴세문경: the knobbed mirror, coarse or fine.
+            painter.drawEllipse(QRectF(m + 4, m + 4, s - 2 * m - 8, s - 2 * m - 8))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            rings = 3 if variant == "coarse_mirror" else 6
+            for i in range(1, rings + 1):
+                inset = 14 + i * (76.0 / rings)
+                painter.drawEllipse(QRectF(m + inset, m + inset,
+                                           s - 2 * m - 2 * inset, s - 2 * m - 2 * inset))
+            spokes = 8 if variant == "coarse_mirror" else 24
+            import math
+            outer = (s - 2 * m) / 2.0 - 16
+            inner = outer * (0.55 if variant == "coarse_mirror" else 0.72)
+            for i in range(spokes):
+                angle = 2.0 * math.pi * i / spokes
+                painter.drawLine(
+                    int(cx + inner * math.cos(angle)), int(cy + inner * math.sin(angle)),
+                    int(cx + outer * math.cos(angle)), int(cy + outer * math.sin(angle)),
+                )
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            for dy in (-16, 16):
+                painter.drawEllipse(QRectF(cx - 34, cy + dy - 11, 22, 22))
+
+        elif variant == "bronze_rattle":
+            # 청동방울: a ring of bells radiating from a disc.
+            import math
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color.darker(150), 3.4))
+            painter.drawEllipse(QRectF(cx - 34, cy - 34, 68, 68))
+            painter.setBrush(solid)
+            painter.setPen(edge)
+            for i in range(8):
+                angle = 2.0 * math.pi * i / 8.0
+                bx = cx + 74 * math.cos(angle)
+                by = cy + 74 * math.sin(angle)
+                painter.drawEllipse(QRectF(bx - 17, by - 17, 34, 34))
+            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setPen(thin)
+            painter.drawEllipse(QRectF(cx - 16, cy - 16, 32, 32))
+
+        elif variant == "bronze_bell":
+            # 동탁: a bell with its suspension loop and clapper.
+            body.moveTo(cx - 26, top + 40)
+            body.lineTo(cx + 26, top + 40)
+            body.lineTo(cx + 52, bottom - 30)
+            body.quadTo(cx, bottom - 12, cx - 52, bottom - 30)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawArc(int(cx - 22), int(top), 44, 52, 0, 180 * 16)
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            painter.drawEllipse(QRectF(cx - 9, bottom - 26, 18, 18))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 44), int(bottom - 34), int(cx + 44), int(bottom - 34))
+
+        elif variant == "iron_sword":
+            # 철검: a long straight blade with guard and grip.
+            body.moveTo(cx, top)
+            body.lineTo(cx + 15, top + 30)
+            body.lineTo(cx + 15, s * 0.66)
+            body.lineTo(cx - 15, s * 0.66)
+            body.lineTo(cx - 15, top + 30)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.drawRect(QRectF(cx - 42, s * 0.66, 84, 14))
+            painter.drawRect(QRectF(cx - 13, s * 0.66 + 14, 26, 48))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(cx - 22, bottom - 44, 44, 44))
+            painter.setPen(thin)
+            painter.drawLine(int(cx), int(top + 12), int(cx), int(s * 0.64))
+
+        elif variant == "iron_spearhead":
+            # 철모: a leaf blade over a socket.
+            body.moveTo(cx, top)
+            body.quadTo(cx + 38, s * 0.34, cx + 20, s * 0.60)
+            body.lineTo(cx - 20, s * 0.60)
+            body.quadTo(cx - 38, s * 0.34, cx, top)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.drawRect(QRectF(cx - 20, s * 0.60, 40, bottom - s * 0.60))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx), int(top + 14), int(cx), int(s * 0.58))
+            painter.drawLine(int(cx - 18), int(bottom - 22), int(cx + 18), int(bottom - 22))
+
+        elif variant == "iron_arrowhead":
+            # 철촉: a narrow head on a long tang.
+            body.moveTo(cx, top)
+            body.lineTo(cx + 22, s * 0.40)
+            body.lineTo(cx + 6, s * 0.46)
+            body.lineTo(cx + 6, bottom)
+            body.lineTo(cx - 6, bottom)
+            body.lineTo(cx - 6, s * 0.46)
+            body.lineTo(cx - 22, s * 0.40)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx), int(top + 12), int(cx), int(s * 0.44))
+
+        elif variant == "iron_axe":
+            # 철부: a socketed axe with a flaring edge.
+            body.moveTo(cx - 30, top + 16)
+            body.lineTo(cx + 30, top + 16)
+            body.lineTo(cx + 44, bottom - 34)
+            body.quadTo(cx, bottom + 4, cx - 44, bottom - 34)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setBrush(QColor(255, 255, 255, 0))
+            painter.setPen(thin)
+            painter.drawRect(QRectF(cx - 24, top + 22, 48, 34))
+            painter.setPen(QPen(color.darker(175), 2.6))
+            painter.drawLine(int(cx - 40), int(bottom - 30), int(cx + 40), int(bottom - 30))
+
+        elif variant == "iron_ard":
+            # 따비: a forked digging blade on its shaft.
+            painter.drawRect(QRectF(cx - 12, top, 24, s * 0.46))
+            fork = QPainterPath()
+            fork.moveTo(cx - 12, s * 0.46)
+            fork.lineTo(cx + 12, s * 0.46)
+            fork.lineTo(cx + 46, bottom - 6)
+            fork.lineTo(cx + 24, bottom - 6)
+            fork.lineTo(cx, s * 0.68)
+            fork.lineTo(cx - 24, bottom - 6)
+            fork.lineTo(cx - 46, bottom - 6)
+            fork.closeSubpath()
+            painter.drawPath(fork)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 34), int(top + 26), int(cx + 34), int(top + 26))
+
+        elif variant == "iron_sickle":
+            # 낫: a curved blade with its tang.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color.darker(150), 9.0))
+            blade = QPainterPath()
+            blade.moveTo(cx + 62, top + 26)
+            blade.quadTo(cx - 4, top + 6, cx - 62, cy + 6)
+            blade.quadTo(cx - 20, bottom - 16, cx + 34, bottom - 34)
+            painter.drawPath(blade)
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(cx + 34, bottom - 46, 46, 20))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            inner = QPainterPath()
+            inner.moveTo(cx + 56, top + 36)
+            inner.quadTo(cx - 4, top + 20, cx - 50, cy + 6)
+            painter.drawPath(inner)
+
+        elif variant == "plate_armour":
+            # 판갑: a riveted cuirass, seen from the front.
+            body.moveTo(cx - 48, top + 10)
+            body.lineTo(cx + 48, top + 10)
+            body.quadTo(cx + 72, cy, cx + 56, bottom - 8)
+            body.lineTo(cx - 56, bottom - 8)
+            body.quadTo(cx - 72, cy, cx - 48, top + 10)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(1, 5):
+                y = top + 10 + i * (bottom - top - 18) / 5.0
+                painter.drawLine(int(cx - 62), int(y), int(cx + 62), int(y))
+            painter.setBrush(solid)
+            for i in range(4):
+                y = top + 24 + i * (bottom - top - 18) / 5.0
+                painter.drawEllipse(QRectF(cx - 56, y, 10, 10))
+                painter.drawEllipse(QRectF(cx + 46, y, 10, 10))
+
+        elif variant == "lamellar_armour":
+            # 찰갑: small scales laced into a sheet.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(edge)
+            painter.drawRect(QRectF(m + 8, m + 8, s - 2 * m - 16, s - 2 * m - 16))
+            painter.setPen(thin)
+            painter.setBrush(solid)
+            cols, rows_n = 5, 5
+            w = (s - 2 * m - 36) / cols
+            h = (s - 2 * m - 36) / rows_n
+            for r in range(rows_n):
+                offset = (w / 2.0) if r % 2 else 0.0
+                for c in range(cols):
+                    x = m + 18 + c * w + offset - (w if offset and c == cols - 1 else 0)
+                    scale = QPainterPath()
+                    scale.moveTo(x + 2, m + 18 + r * h)
+                    scale.lineTo(x + w - 4, m + 18 + r * h)
+                    scale.lineTo(x + w - 4, m + 18 + r * h + h * 0.6)
+                    scale.quadTo(x + w / 2.0, m + 18 + r * h + h,
+                                 x + 2, m + 18 + r * h + h * 0.6)
+                    scale.closeSubpath()
+                    painter.drawPath(scale)
+
+        elif variant == "horse_bit":
+            # 재갈: two cheek rings and the jointed mouthpiece.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color.darker(150), 7.0))
+            painter.drawEllipse(QRectF(m + 2, cy - 46, 92, 92))
+            painter.drawEllipse(QRectF(s - m - 94, cy - 46, 92, 92))
+            painter.setPen(QPen(color.darker(150), 8.0))
+            painter.drawLine(int(m + 90), int(cy), int(cx + 2), int(cy - 14))
+            painter.drawLine(int(cx - 2), int(cy - 14), int(s - m - 90), int(cy))
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            painter.drawEllipse(QRectF(cx - 12, cy - 26, 24, 24))
+
+        elif variant == "stirrup":
+            # 등자: the suspension loop over a flat footplate.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color.darker(150), 8.0))
+            loop = QPainterPath()
+            loop.moveTo(cx - 8, top + 6)
+            loop.lineTo(cx - 8, top + 34)
+            loop.quadTo(cx - 76, cy + 10, cx - 46, bottom - 30)
+            loop.lineTo(cx + 46, bottom - 30)
+            loop.quadTo(cx + 76, cy + 10, cx + 8, top + 34)
+            loop.lineTo(cx + 8, top + 6)
+            painter.drawPath(loop)
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            painter.drawRect(QRectF(cx - 56, bottom - 34, 112, 20))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(thin)
+            painter.drawRect(QRectF(cx - 16, top + 6, 32, 26))
+
+        elif variant == "iron_ingot":
+            # 철정: the spade-shaped bar ingot.
+            body.moveTo(cx - 52, top + 8)
+            body.lineTo(cx + 52, top + 8)
+            body.lineTo(cx + 18, top + 52)
+            body.lineTo(cx + 18, bottom - 52)
+            body.lineTo(cx + 52, bottom - 8)
+            body.lineTo(cx - 52, bottom - 8)
+            body.lineTo(cx - 18, bottom - 52)
+            body.lineTo(cx - 18, top + 52)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx), int(top + 52), int(cx), int(bottom - 52))
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
