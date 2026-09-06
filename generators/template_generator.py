@@ -721,6 +721,72 @@ class TemplateGenerator:
             "default_color": "#4682B4",
             "category": "structures"
         },
+        # -- Korean pottery and ceramics (토기·도자기) ---------------------
+        "Comb-pattern Pottery": {
+            "draw": ("_draw_korean_pottery", "comb_pattern", "COLOR"),
+            "default_color": "#A9825E",
+            "category": "artifacts"
+        },
+        "Plain Coarse Pottery": {
+            "draw": ("_draw_korean_pottery", "plain_coarse", "COLOR"),
+            "default_color": "#B08968",
+            "category": "artifacts"
+        },
+        "Red Burnished Pottery": {
+            "draw": ("_draw_korean_pottery", "red_burnished", "COLOR"),
+            "default_color": "#A5402B",
+            "category": "artifacts"
+        },
+        "Black Burnished Long-necked Jar": {
+            "draw": ("_draw_korean_pottery", "black_burnished", "COLOR"),
+            "default_color": "#3B3B3B",
+            "category": "artifacts"
+        },
+        "Soft Grey Pottery (Wajil)": {
+            "draw": ("_draw_korean_pottery", "wajil", "COLOR"),
+            "default_color": "#8B8B83",
+            "category": "artifacts"
+        },
+        "Hard Grey Stoneware (Gyeongjil)": {
+            "draw": ("_draw_korean_pottery", "gyeongjil", "COLOR"),
+            "default_color": "#6E6E6E",
+            "category": "artifacts"
+        },
+        "Mounted Dish (Gobae)": {
+            "draw": ("_draw_korean_pottery", "gobae", "COLOR"),
+            "default_color": "#9C7A56",
+            "category": "artifacts"
+        },
+        "Storage Jar (Ho)": {
+            "draw": ("_draw_korean_pottery", "storage_jar", "COLOR"),
+            "default_color": "#8B5A2B",
+            "category": "artifacts"
+        },
+        "Steamer (Siru)": {
+            "draw": ("_draw_korean_pottery", "siru", "COLOR"),
+            "default_color": "#A0764B",
+            "category": "artifacts"
+        },
+        "Celadon": {
+            "draw": ("_draw_korean_pottery", "celadon", "COLOR"),
+            "default_color": "#4E8C7E",
+            "category": "artifacts"
+        },
+        "Buncheong Ware": {
+            "draw": ("_draw_korean_pottery", "buncheong", "COLOR"),
+            "default_color": "#9BA69B",
+            "category": "artifacts"
+        },
+        "White Porcelain": {
+            "draw": ("_draw_korean_pottery", "white_porcelain", "COLOR"),
+            "default_color": "#C9C6BC",
+            "category": "artifacts"
+        },
+        "Onggi Jar": {
+            "draw": ("_draw_korean_pottery", "onggi", "COLOR"),
+            "default_color": "#5B3A22",
+            "category": "artifacts"
+        },
     }
 
     # Backward compatibility for older naming variants
@@ -2449,6 +2515,253 @@ class TemplateGenerator:
             painter.setPen(edge)
             painter.setBrush(solid)
             painter.drawRect(QRectF(m + 6, m + 30, s - 2 * m - 12, 18))
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    # ═══════════════════════════════════════════════════════
+    #  Drawing methods — Korean pottery and ceramics (토기·도자기)
+    # ═══════════════════════════════════════════════════════
+
+    def _draw_korean_pottery(self, painter, s, m, variant, color):
+        """
+        Korean ceramic types by profile.
+
+        Each is the silhouette the type is identified by, with just enough
+        surface treatment to tell neighbours apart — comb impressions, paddle
+        marks, burnish, slip — and nothing finer, since a map marker is a few
+        millimetres across.
+        """
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        edge = QPen(color.darker(150), 2.6)
+        thin = QPen(color.darker(170), 1.3)
+        cx = s / 2.0
+        top, bottom = m + 6, s - m - 6
+
+        painter.setPen(edge)
+        painter.setBrush(solid)
+        body = QPainterPath()
+
+        if variant == "comb_pattern":
+            # 빗살무늬토기: a deep conical vessel with a pointed base.
+            body.moveTo(cx - 74, top)
+            body.lineTo(cx + 74, top)
+            body.lineTo(cx + 12, bottom)
+            body.quadTo(cx, bottom + 6, cx - 12, bottom)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for row in range(5):
+                y = top + 18 + row * 30
+                half = 70 - row * 12
+                for i in range(5):
+                    x = cx - half + (2.0 * half / 4.0) * i
+                    painter.drawLine(int(x), int(y), int(x + 10), int(y + 14))
+
+        elif variant == "plain_coarse":
+            # 민무늬토기: a deep flat-based vessel, undecorated.
+            body.moveTo(cx - 68, top)
+            body.quadTo(cx - 62, s * 0.5, cx - 44, bottom)
+            body.lineTo(cx + 44, bottom)
+            body.quadTo(cx + 62, s * 0.5, cx + 68, top)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 66), int(top + 16), int(cx + 66), int(top + 16))
+
+        elif variant == "red_burnished":
+            # 붉은간토기: a globular jar with a short everted neck.
+            body.moveTo(cx - 26, top)
+            body.quadTo(cx - 34, top + 18, cx - 24, top + 34)
+            body.quadTo(cx - 84, s * 0.52, cx - 40, bottom)
+            body.lineTo(cx + 40, bottom)
+            body.quadTo(cx + 84, s * 0.52, cx + 24, top + 34)
+            body.quadTo(cx + 34, top + 18, cx + 26, top)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(4):
+                x = cx - 46 + i * 22
+                painter.drawLine(int(x), int(s * 0.42), int(x + 16), int(s * 0.62))
+
+        elif variant == "black_burnished":
+            # 검은간토기: the tall-necked burnished jar.
+            body.moveTo(cx - 22, top)
+            body.lineTo(cx - 14, top + 52)
+            body.quadTo(cx - 80, s * 0.58, cx - 36, bottom)
+            body.lineTo(cx + 36, bottom)
+            body.quadTo(cx + 80, s * 0.58, cx + 14, top + 52)
+            body.lineTo(cx + 22, top)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 20), int(top + 12), int(cx + 20), int(top + 12))
+            for i in range(3):
+                x = cx - 34 + i * 26
+                painter.drawLine(int(x), int(s * 0.56), int(x + 14), int(s * 0.72))
+
+        elif variant == "wajil":
+            # 와질토기: a round-bottomed short-necked jar, paddle-marked.
+            body.moveTo(cx - 34, top + 10)
+            body.quadTo(cx - 40, top + 28, cx - 30, top + 42)
+            body.quadTo(cx - 88, s * 0.56, cx, bottom)
+            body.quadTo(cx + 88, s * 0.56, cx + 30, top + 42)
+            body.quadTo(cx + 40, top + 28, cx + 34, top + 10)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(6):
+                x = cx - 60 + i * 24
+                painter.drawLine(int(x), int(s * 0.46), int(x + 18), int(s * 0.68))
+
+        elif variant == "gyeongjil":
+            # 경질토기: a hard-fired jar on a ring foot, paddled.
+            body.moveTo(cx - 40, top + 6)
+            body.quadTo(cx - 46, top + 24, cx - 34, top + 40)
+            body.quadTo(cx - 90, s * 0.56, cx - 30, bottom - 22)
+            body.lineTo(cx + 30, bottom - 22)
+            body.quadTo(cx + 90, s * 0.56, cx + 34, top + 40)
+            body.quadTo(cx + 46, top + 24, cx + 40, top + 6)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.drawRect(QRectF(cx - 36, bottom - 24, 72, 22))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(5):
+                y = s * 0.40 + i * 16
+                painter.drawLine(int(cx - 64), int(y), int(cx + 64), int(y))
+
+        elif variant == "gobae":
+            # 굽다리접시: a shallow dish on a pierced pedestal.
+            body.moveTo(cx - 74, top + 22)
+            body.lineTo(cx + 74, top + 22)
+            body.quadTo(cx + 58, top + 66, cx + 22, top + 74)
+            body.lineTo(cx - 22, top + 74)
+            body.quadTo(cx - 58, top + 66, cx - 74, top + 22)
+            body.closeSubpath()
+            painter.drawPath(body)
+            stand = QPainterPath()
+            stand.moveTo(cx - 22, top + 74)
+            stand.lineTo(cx + 22, top + 74)
+            stand.lineTo(cx + 58, bottom)
+            stand.lineTo(cx - 58, bottom)
+            stand.closeSubpath()
+            painter.drawPath(stand)
+            painter.setPen(thin)
+            painter.setBrush(QColor(255, 255, 255, 0))
+            for row, half in ((top + 98, 16), (top + 130, 26)):
+                painter.drawRect(QRectF(cx - half - 12, row, 18, 20))
+                painter.drawRect(QRectF(cx - 6 + half, row, 18, 20))
+
+        elif variant == "storage_jar":
+            # 항아리: a wide-shouldered jar with lugs.
+            body.moveTo(cx - 34, top + 8)
+            body.quadTo(cx - 42, top + 26, cx - 32, top + 40)
+            body.quadTo(cx - 92, s * 0.50, cx - 42, bottom)
+            body.lineTo(cx + 42, bottom)
+            body.quadTo(cx + 92, s * 0.50, cx + 32, top + 40)
+            body.quadTo(cx + 42, top + 26, cx + 34, top + 8)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.drawEllipse(QRectF(cx - 92, s * 0.42, 26, 26))
+            painter.drawEllipse(QRectF(cx + 66, s * 0.42, 26, 26))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 32), int(top + 20), int(cx + 32), int(top + 20))
+
+        elif variant == "siru":
+            # 시루: a steaming vessel — handles and a perforated base.
+            body.moveTo(cx - 72, top + 14)
+            body.lineTo(cx + 72, top + 14)
+            body.lineTo(cx + 40, bottom - 16)
+            body.lineTo(cx - 40, bottom - 16)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawArc(int(cx - 106), int(top + 20), 44, 52, -80 * 16, 160 * 16)
+            painter.drawArc(int(cx + 62), int(top + 20), 44, 52, 100 * 16, 160 * 16)
+            painter.setPen(thin)
+            painter.setBrush(solid)
+            for i in range(5):
+                x = cx - 30 + i * 15
+                painter.drawEllipse(QRectF(x - 6, bottom - 22, 12, 12))
+
+        elif variant == "celadon":
+            # 청자: the maebyeong profile — high shoulder, narrow foot.
+            body.moveTo(cx - 20, top)
+            body.lineTo(cx - 24, top + 20)
+            body.quadTo(cx - 76, top + 34, cx - 72, s * 0.46)
+            body.quadTo(cx - 62, bottom - 20, cx - 36, bottom)
+            body.lineTo(cx + 36, bottom)
+            body.quadTo(cx + 62, bottom - 20, cx + 72, s * 0.46)
+            body.quadTo(cx + 76, top + 34, cx + 24, top + 20)
+            body.lineTo(cx + 20, top)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for i in range(3):
+                painter.drawEllipse(QRectF(cx - 34 + i * 26, s * 0.46, 22, 30))
+
+        elif variant == "buncheong":
+            # 분청사기: a bottle with brushed white slip.
+            body.moveTo(cx - 16, top)
+            body.lineTo(cx - 16, top + 48)
+            body.quadTo(cx - 78, s * 0.52, cx - 44, bottom)
+            body.lineTo(cx + 44, bottom)
+            body.quadTo(cx + 78, s * 0.52, cx + 16, top + 48)
+            body.lineTo(cx + 16, top)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(QPen(color.lighter(155), 4.0))
+            painter.setBrush(Qt.NoBrush)
+            for i in range(3):
+                y = s * 0.56 + i * 22
+                brush_stroke = QPainterPath()
+                brush_stroke.moveTo(cx - 50, y)
+                brush_stroke.quadTo(cx, y + 16, cx + 50, y)
+                painter.drawPath(brush_stroke)
+
+        elif variant == "white_porcelain":
+            # 백자: the moon jar — almost a sphere.
+            body.moveTo(cx - 30, top + 12)
+            body.quadTo(cx - 96, top + 40, cx - 88, s * 0.54)
+            body.quadTo(cx - 74, bottom - 6, cx - 32, bottom)
+            body.lineTo(cx + 32, bottom)
+            body.quadTo(cx + 74, bottom - 6, cx + 88, s * 0.54)
+            body.quadTo(cx + 96, top + 40, cx + 30, top + 12)
+            body.closeSubpath()
+            painter.drawPath(body)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 30), int(top + 12), int(cx + 30), int(top + 12))
+            painter.drawLine(int(cx - 86), int(s * 0.52), int(cx + 86), int(s * 0.52))
+
+        elif variant == "onggi":
+            # 옹기: a large storage jar under its lid.
+            body.moveTo(cx - 60, top + 34)
+            body.quadTo(cx - 94, s * 0.50, cx - 46, bottom)
+            body.lineTo(cx + 46, bottom)
+            body.quadTo(cx + 94, s * 0.50, cx + 60, top + 34)
+            body.closeSubpath()
+            painter.drawPath(body)
+            lid = QPainterPath()
+            lid.moveTo(cx - 70, top + 34)
+            lid.quadTo(cx, top - 6, cx + 70, top + 34)
+            lid.closeSubpath()
+            painter.drawPath(lid)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(int(cx - 68), int(top + 34), int(cx + 68), int(top + 34))
+            for i in range(3):
+                y = s * 0.54 + i * 20
+                painter.drawLine(int(cx - 64), int(y), int(cx + 64), int(y))
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)

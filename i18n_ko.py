@@ -723,4 +723,18 @@ CATALOG = {
     "Encircling Ditch": "환호",
     "Beacon Station": "봉수",
     "Water Collection Basin": "집수정",
+    # Korean pottery and ceramics (토기·도자기)
+    "Comb-pattern Pottery": "빗살무늬토기",
+    "Plain Coarse Pottery": "민무늬토기",
+    "Red Burnished Pottery": "붉은간토기",
+    "Black Burnished Long-necked Jar": "검은간토기 (흑도장경호)",
+    "Soft Grey Pottery (Wajil)": "와질토기",
+    "Hard Grey Stoneware (Gyeongjil)": "경질토기",
+    "Mounted Dish (Gobae)": "굽다리접시 (고배)",
+    "Storage Jar (Ho)": "항아리 (호)",
+    "Steamer (Siru)": "시루",
+    "Celadon": "청자",
+    "Buncheong Ware": "분청사기",
+    "White Porcelain": "백자",
+    "Onggi Jar": "옹기",
 }
