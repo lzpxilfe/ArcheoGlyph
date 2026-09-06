@@ -803,107 +803,89 @@ class TemplateGenerator:
         painter.setBrush(old_brush)
 
     def _draw_bronze_dagger_typology(self, painter, s, m, variant, color):
-        """Typological bronze dagger variants inspired by catalog symbol conventions."""
-        cx = s / 2.0
-        top = float(m + 8)
-        bottom = float(s - m - 10)
-        height = max(40.0, bottom - top)
+        """
+        The bronze dagger series, as one profile with ten sets of numbers.
 
+        Every blade here is the same ``symmetric`` call - half-widths read down
+        the blade in grid units - so the ten types share a tip angle, a tang
+        and a margin without anyone matching them by hand. That shared
+        skeleton is what makes a typology series look like a series.
+        """
+        g = icon_grid.Grid(s)
+        # y positions down the blade, in grid units
+        stations = (6, 12, 20, 33, 44, 52, 58)
         profiles = {
-            "liaoning": [0, 10, 24, 17, 23, 11, 2],
-            "ordos": [0, 8, 18, 12, 16, 9, 2],
-            "antenna": [0, 8, 18, 11, 15, 9, 2],
-            "slender": [0, 6, 11, 9, 10, 6, 1],
-            "tao": [0, 7, 12, 10, 8, 5, 1],
-            "medium": [0, 8, 16, 10, 12, 7, 2],
-            "flat": [0, 12, 18, 18, 16, 8, 2],
-            "type_ia": [0, 9, 21, 16, 20, 9, 2],
-            "type_ib": [0, 8, 18, 14, 20, 11, 2],
-            "other": [0, 7, 14, 10, 11, 6, 1],
+            "liaoning": (0, 2.5, 8, 4, 7.5, 3, 2),     # 비파형: the lute waist,
+                                                        # pinched hard so the type reads
+            "ordos":    (0, 2.5, 6, 4, 5, 3, 2),
+            "antenna":  (0, 2.5, 6, 3.5, 5, 3, 2),
+            "slender":  (0, 2, 4, 3, 3.5, 2.5, 1.5),    # 세형: narrow throughout
+            "tao":      (0, 2, 4.5, 3.5, 3, 2, 1.5),
+            "medium":   (0, 2.5, 5, 3.5, 4, 2.5, 2),
+            "flat":     (0, 4, 6, 6, 5, 3, 2),          # 평인: no waist at all
+            "type_ia":  (0, 3, 6.5, 5, 6.5, 3, 2),
+            "type_ib":  (0, 2.5, 6, 4.5, 6.5, 3.5, 2),
+            "other":    (0, 2, 4.5, 3, 3.5, 2.5, 1.5),
         }
-        t_values = [0.00, 0.12, 0.30, 0.54, 0.74, 0.90, 1.00]
         widths = profiles.get(variant, profiles["other"])
-
-        right = []
-        left = []
-        for t, w in zip(t_values, widths):
-            y = top + (height * float(t))
-            right.append(QPointF(cx + float(w), y))
-            left.append(QPointF(cx - float(w), y))
-
-        polygon_points = right + list(reversed(left))
-        painter.drawPolygon(QPolygonF(polygon_points))
-
-        blade = QPainterPath()
-        blade.moveTo(polygon_points[0].x(), polygon_points[0].y())
-        for point in polygon_points[1:]:
-            blade.lineTo(point.x(), point.y())
-        blade.closeSubpath()
+        blade = g.symmetric(list(zip(widths, stations)))
+        painter.drawPath(blade)
 
         old_pen = painter.pen()
         ridge_pen = _pen(old_pen.color().darker(135), 1.20)
         _clip_detail(painter, blade)
         painter.setPen(ridge_pen)
-        painter.drawLine(int(cx), int(top + (height * 0.08)), int(cx), int(bottom + 8))
+        painter.drawPath(g.line(32, 8, 32, 58))
         painter.restore()
         painter.setPen(ridge_pen)
 
+        # What separates the types beyond the profile: a guard, a hilt band,
+        # or the antenna finials.
         if variant == "flat":
-            shoulder_y = int(top + (height * 0.30))
-            painter.drawLine(int(cx - 18), shoulder_y, int(cx + 18), shoulder_y)
+            painter.drawPath(g.line(27, 22, 37, 22))
         elif variant == "antenna":
-            antenna_y = int(top + (height * 0.78))
-            painter.drawLine(int(cx - 24), antenna_y, int(cx - 10), antenna_y)
-            painter.drawLine(int(cx + 10), antenna_y, int(cx + 24), antenna_y)
+            painter.drawPath(g.line(24, 48, 29, 48))
+            painter.drawPath(g.line(35, 48, 40, 48))
             painter.setBrush(color)
-            painter.drawEllipse(int(cx - 27), antenna_y - 3, 6, 6)
-            painter.drawEllipse(int(cx + 21), antenna_y - 3, 6, 6)
+            painter.drawPath(g.circle(23, 48, 2))
+            painter.drawPath(g.circle(41, 48, 2))
         elif variant == "liaoning":
-            ring_y = int(top + (height * 0.67))
-            painter.drawLine(int(cx - 14), ring_y, int(cx + 14), ring_y)
+            painter.drawPath(g.line(28, 43, 36, 43))
         elif variant == "type_ia":
-            ring_y = int(top + (height * 0.62))
-            painter.drawLine(int(cx - 16), ring_y, int(cx + 16), ring_y)
+            painter.drawPath(g.line(27, 41, 37, 41))
         elif variant == "type_ib":
-            band_y = int(top + (height * 0.58))
-            painter.drawLine(int(cx - 13), band_y, int(cx + 13), band_y)
-            painter.drawLine(int(cx - 15), band_y + 8, int(cx + 15), band_y + 8)
+            painter.drawPath(g.line(28, 39, 36, 39))
+            painter.drawPath(g.line(27, 43, 37, 43))
 
         painter.setPen(old_pen)
 
     def _draw_projectile_point_typology(self, painter, s, m, variant):
-        """Projectile point variants inspired by typology catalog symbols."""
-        cx = s / 2.0
-        top = float(m + 12)
-        bottom = float(s - m - 8)
-        mid = (top + bottom) / 2.0
+        """
+        The projectile point series, built the same way as the daggers.
 
+        The types differ only in how the base is worked - notched, stemmed or
+        left straight - so everything above the base is deliberately identical
+        across them.
+        """
+        g = icon_grid.Grid(s)
         shapes = {
-            "leaf": [(-2, top), (22, mid - 30), (28, mid), (14, bottom - 14), (4, bottom), (0, bottom + 2)],
-            "side_notched": [(-2, top), (20, mid - 34), (26, mid - 8), (17, mid + 6), (11, bottom - 18), (6, bottom - 6), (0, bottom + 2)],
-            "corner_notched": [(-2, top), (18, mid - 34), (24, mid - 10), (18, mid + 8), (8, bottom - 26), (8, bottom - 8), (0, bottom + 2)],
-            "stemmed": [(-2, top), (20, mid - 28), (22, mid + 6), (13, bottom - 24), (7, bottom - 18), (7, bottom - 6), (0, bottom + 2)],
-            "triangular": [(-2, top), (24, mid - 20), (20, bottom - 18), (10, bottom - 10), (6, bottom - 4), (0, bottom + 2)],
+            #        (half width, y) down the point
+            "leaf":           ((0, 7), (6, 20), (7, 32), (4, 48), (1.5, 56), (0, 58)),
+            "side_notched":   ((0, 7), (5.5, 19), (6.5, 30), (4, 35), (5, 44),
+                               (2, 48), (2, 57)),
+            "corner_notched": ((0, 7), (5, 19), (6, 30), (4.5, 36), (1.5, 42),
+                               (2, 50), (2, 57)),
+            "stemmed":        ((0, 7), (5.5, 20), (6, 34), (3, 42), (2, 44), (2, 57)),
+            "triangular":     ((0, 7), (6.5, 26), (5.5, 46), (2.5, 50), (1.5, 57)),
         }
-        right = shapes.get(variant, shapes["leaf"])
-        points = []
-        for x_off, y in right:
-            points.append(QPointF(cx + float(x_off), float(y)))
-        for x_off, y in reversed(right):
-            points.append(QPointF(cx - float(x_off), float(y)))
-        painter.drawPolygon(QPolygonF(points))
-
-        head = QPainterPath()
-        head.moveTo(points[0].x(), points[0].y())
-        for point in points[1:]:
-            head.lineTo(point.x(), point.y())
-        head.closeSubpath()
+        head = g.symmetric(list(shapes.get(variant, shapes["leaf"])))
+        painter.drawPath(head)
 
         # The midrib belongs inside the head, not running out through its tip.
         old_pen = painter.pen()
         _clip_detail(painter, head)
         painter.setPen(_pen(old_pen.color().darker(135), 1.1))
-        painter.drawLine(int(cx), int(top + 6), int(cx), int(bottom - 6))
+        painter.drawPath(g.line(32, 9, 32, 56))
         painter.restore()
         painter.setPen(old_pen)
 
@@ -1898,264 +1880,92 @@ class TemplateGenerator:
 
     def _draw_korean_pottery(self, painter, s, m, variant, color):
         """
-        Korean ceramic types by profile.
+        The ceramic series as one curved profile with thirteen sets of numbers.
 
-        Each is the silhouette the type is identified by, with just enough
-        surface treatment to tell neighbours apart — comb impressions, paddle
-        marks, burnish, slip — and nothing finer, since a map marker is a few
-        millimetres across.
+        Every vessel is a ``symmetric`` call over half-widths read down the
+        wall, so rim heights, shoulder positions and foot widths line up
+        across the series instead of each pot having its own curve. Surface
+        treatment is what separates the wares, and it is clipped to the body.
         """
+        g = icon_grid.Grid(s)
         old_pen, old_brush = painter.pen(), painter.brush()
         solid = QColor(color)
-        edge = _pen(color.darker(150), 2.6)
         thin = _pen(color.darker(170), 1.3)
-        cx = s / 2.0
-        top, bottom = m + 6, s - m - 6
-
-        painter.setPen(edge)
+        painter.setPen(_pen(color, 2.6))
         painter.setBrush(solid)
-        body = QPainterPath()
 
-        if variant == "comb_pattern":
-            # 빗살무늬토기: the pointed-base cone with its rim band. Built on
-            # the grid, so its wall angle matches the other vessels instead of
-            # being whatever the curve happened to be.
-            g = icon_grid.Grid(s)
-            body = g.symmetric([(18, 6), (18, 11), (16, 13), (5, 54), (1, 58)])
-            painter.drawPath(body)
-            _clip_detail(painter, body)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(g.line(46, 13, 18, 13))
-            # Three courses of comb impressions. More reads as rain.
-            for row, (half, y) in enumerate(((14, 20), (11, 30), (8, 40))):
-                for i in range(3):
-                    x = 32 - half + (half * i)
-                    painter.drawPath(g.line(x, y, x + 3, y + 5))
-            painter.restore()
+        #                  (half width, y) down the wall, in grid units
+        profiles = {
+            "comb_pattern":    ((18, 6), (18, 11), (16, 13), (5, 54), (1, 58)),
+            "plain_coarse":    ((17, 6), (16, 22), (14, 42), (12, 57)),
+            "red_burnished":   ((6, 6), (8, 11), (20, 26), (17, 44), (10, 57)),
+            "black_burnished": ((5, 5), (5, 19), (19, 33), (16, 48), (9, 57)),
+            "wajil":           ((8, 7), (9, 12), (21, 30), (14, 50), (4, 57)),
+            "gyeongjil":       ((10, 6), (11, 11), (22, 30), (16, 47), (11, 57)),
+            "storage_jar":     ((8, 6), (10, 11), (22, 26), (19, 46), (11, 57)),
+            "siru":            ((19, 8), (16, 28), (12, 50), (11, 56)),
+            "celadon":         ((5, 5), (6, 10), (20, 21), (14, 44), (9, 57)),
+            "buncheong":       ((4, 5), (4, 19), (18, 37), (12, 57)),
+            "white_porcelain": ((8, 7), (20, 20), (21, 33), (18, 46), (9, 57)),
+            "onggi":           ((17, 14), (21, 30), (18, 46), (11, 57)),
+            "gobae":           ((19, 8), (16, 14), (7, 22)),   # the dish only
+        }
+        body = g.symmetric(list(profiles.get(variant, profiles["plain_coarse"])),
+                           curved=True)
+        painter.drawPath(body)
 
-        elif variant == "plain_coarse":
-            # 민무늬토기: a deep flat-based vessel, undecorated.
-            body.moveTo(cx - 68, top)
-            body.quadTo(cx - 62, s * 0.5, cx - 44, bottom)
-            body.lineTo(cx + 44, bottom)
-            body.quadTo(cx + 62, s * 0.5, cx + 68, top)
-            body.closeSubpath()
-            painter.drawPath(body)
-            _clip_detail(painter, body)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawLine(int(cx - 66), int(top + 16), int(cx + 66), int(top + 16))
-            painter.restore()
-
-        elif variant == "red_burnished":
-            # 붉은간토기: a globular jar with a short everted neck.
-            body.moveTo(cx - 26, top)
-            body.quadTo(cx - 34, top + 18, cx - 24, top + 34)
-            body.quadTo(cx - 84, s * 0.52, cx - 40, bottom)
-            body.lineTo(cx + 40, bottom)
-            body.quadTo(cx + 84, s * 0.52, cx + 24, top + 34)
-            body.quadTo(cx + 34, top + 18, cx + 26, top)
-            body.closeSubpath()
-            painter.drawPath(body)
-            _clip_detail(painter, body)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            for i in range(4):
-                x = cx - 46 + i * 22
-                painter.drawLine(int(x), int(s * 0.42), int(x + 16), int(s * 0.62))
-            painter.restore()
-
-        elif variant == "black_burnished":
-            # 검은간토기: the tall-necked burnished jar.
-            body.moveTo(cx - 22, top)
-            body.lineTo(cx - 14, top + 52)
-            body.quadTo(cx - 80, s * 0.58, cx - 36, bottom)
-            body.lineTo(cx + 36, bottom)
-            body.quadTo(cx + 80, s * 0.58, cx + 14, top + 52)
-            body.lineTo(cx + 22, top)
-            body.closeSubpath()
-            painter.drawPath(body)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawLine(int(cx - 20), int(top + 12), int(cx + 20), int(top + 12))
-            for i in range(3):
-                x = cx - 34 + i * 26
-                painter.drawLine(int(x), int(s * 0.56), int(x + 14), int(s * 0.72))
-
-        elif variant == "wajil":
-            # 와질토기: a round-bottomed short-necked jar, paddle-marked.
-            body.moveTo(cx - 34, top + 10)
-            body.quadTo(cx - 40, top + 28, cx - 30, top + 42)
-            body.quadTo(cx - 88, s * 0.56, cx, bottom)
-            body.quadTo(cx + 88, s * 0.56, cx + 30, top + 42)
-            body.quadTo(cx + 40, top + 28, cx + 34, top + 10)
-            body.closeSubpath()
-            painter.drawPath(body)
-            _clip_detail(painter, body)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            for i in range(4):
-                x = cx - 48 + i * 30
-                painter.drawLine(int(x), int(s * 0.46), int(x + 18), int(s * 0.66))
-            painter.restore()
-
-        elif variant == "gyeongjil":
-            # 경질토기: a hard-fired jar on a ring foot, paddled.
-            body.moveTo(cx - 40, top + 6)
-            body.quadTo(cx - 46, top + 24, cx - 34, top + 40)
-            body.quadTo(cx - 90, s * 0.56, cx - 30, bottom - 22)
-            body.lineTo(cx + 30, bottom - 22)
-            body.quadTo(cx + 90, s * 0.56, cx + 34, top + 40)
-            body.quadTo(cx + 46, top + 24, cx + 40, top + 6)
-            body.closeSubpath()
-            painter.drawPath(body)
-            painter.drawRect(QRectF(cx - 36, bottom - 24, 72, 22))
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            for i in range(5):
-                y = s * 0.40 + i * 16
-                painter.drawLine(int(cx - 64), int(y), int(cx + 64), int(y))
-
-        elif variant == "gobae":
-            # 굽다리접시: a shallow dish on a pierced pedestal.
-            body.moveTo(cx - 74, top + 22)
-            body.lineTo(cx + 74, top + 22)
-            body.quadTo(cx + 58, top + 66, cx + 22, top + 74)
-            body.lineTo(cx - 22, top + 74)
-            body.quadTo(cx - 58, top + 66, cx - 74, top + 22)
-            body.closeSubpath()
-            painter.drawPath(body)
-            stand = QPainterPath()
-            stand.moveTo(cx - 22, top + 74)
-            stand.lineTo(cx + 22, top + 74)
-            stand.lineTo(cx + 58, bottom)
-            stand.lineTo(cx - 58, bottom)
-            stand.closeSubpath()
-            painter.drawPath(stand)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            for row, half in ((top + 98, 16), (top + 130, 26)):
-                painter.drawRect(QRectF(cx - half - 12, row, 18, 20))
-                painter.drawRect(QRectF(cx - 6 + half, row, 18, 20))
-
-        elif variant == "storage_jar":
-            # 항아리: a wide-shouldered jar with lugs.
-            body.moveTo(cx - 34, top + 8)
-            body.quadTo(cx - 42, top + 26, cx - 32, top + 40)
-            body.quadTo(cx - 92, s * 0.50, cx - 42, bottom)
-            body.lineTo(cx + 42, bottom)
-            body.quadTo(cx + 92, s * 0.50, cx + 32, top + 40)
-            body.quadTo(cx + 42, top + 26, cx + 34, top + 8)
-            body.closeSubpath()
-            painter.drawPath(body)
-            painter.drawEllipse(QRectF(cx - 92, s * 0.42, 26, 26))
-            painter.drawEllipse(QRectF(cx + 66, s * 0.42, 26, 26))
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawLine(int(cx - 32), int(top + 20), int(cx + 32), int(top + 20))
-
-        elif variant == "siru":
-            # 시루: a steaming vessel — handles and a perforated base.
-            body.moveTo(cx - 72, top + 14)
-            body.lineTo(cx + 72, top + 14)
-            body.lineTo(cx + 40, bottom - 16)
-            body.lineTo(cx - 40, bottom - 16)
-            body.closeSubpath()
-            painter.drawPath(body)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawArc(int(cx - 106), int(top + 20), 44, 52, -80 * 16, 160 * 16)
-            painter.drawArc(int(cx + 62), int(top + 20), 44, 52, 100 * 16, 160 * 16)
-            painter.setPen(thin)
-            painter.setBrush(solid)
-            for i in range(5):
-                x = cx - 30 + i * 15
-                painter.drawEllipse(QRectF(x - 6, bottom - 22, 12, 12))
-
-        elif variant == "celadon":
-            # 청자: the maebyeong profile — high shoulder, narrow foot.
-            body.moveTo(cx - 20, top)
-            body.lineTo(cx - 24, top + 20)
-            body.quadTo(cx - 76, top + 34, cx - 72, s * 0.46)
-            body.quadTo(cx - 62, bottom - 20, cx - 36, bottom)
-            body.lineTo(cx + 36, bottom)
-            body.quadTo(cx + 62, bottom - 20, cx + 72, s * 0.46)
-            body.quadTo(cx + 76, top + 34, cx + 24, top + 20)
-            body.lineTo(cx + 20, top)
-            body.closeSubpath()
-            painter.drawPath(body)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            for i in range(3):
-                painter.drawEllipse(QRectF(cx - 34 + i * 26, s * 0.46, 22, 30))
-
-        elif variant == "buncheong":
-            # 분청사기: a bottle with brushed white slip.
-            body.moveTo(cx - 16, top)
-            body.lineTo(cx - 16, top + 48)
-            body.quadTo(cx - 78, s * 0.52, cx - 44, bottom)
-            body.lineTo(cx + 44, bottom)
-            body.quadTo(cx + 78, s * 0.52, cx + 16, top + 48)
-            body.lineTo(cx + 16, top)
-            body.closeSubpath()
-            painter.drawPath(body)
-            painter.setPen(_pen(color.lighter(155), 4.0))
-            painter.setBrush(Qt.NoBrush)
-            for i in range(3):
-                y = s * 0.56 + i * 22
-                brush_stroke = QPainterPath()
-                brush_stroke.moveTo(cx - 50, y)
-                brush_stroke.quadTo(cx, y + 16, cx + 50, y)
-                painter.drawPath(brush_stroke)
-
-        elif variant == "white_porcelain":
-            # 백자 달항아리: nearly spherical, but the mouth and foot have to
-            # show or it reads as a plain circle.
-            body.moveTo(cx - 34, top + 16)
-            body.lineTo(cx - 30, top + 30)
-            body.quadTo(cx - 96, top + 62, cx - 88, s * 0.58)
-            body.quadTo(cx - 78, bottom - 22, cx - 36, bottom - 10)
-            body.lineTo(cx - 32, bottom)
-            body.lineTo(cx + 32, bottom)
-            body.lineTo(cx + 36, bottom - 10)
-            body.quadTo(cx + 78, bottom - 22, cx + 88, s * 0.58)
-            body.quadTo(cx + 96, top + 62, cx + 30, top + 30)
-            body.lineTo(cx + 34, top + 16)
-            body.closeSubpath()
-            painter.drawPath(body)
-            _clip_detail(painter, body)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush)
-            # The seam where the two thrown halves were joined.
-            painter.drawLine(int(cx - 88), int(s * 0.56), int(cx + 88), int(s * 0.56))
-            painter.restore()
-
+        # A ring foot or a lid is a second shape, not part of the wall.
+        if variant == "gyeongjil":
+            painter.drawPath(g.rect(23, 52, 18, 6))
         elif variant == "onggi":
-            # 옹기: a large storage jar under its lid.
-            body.moveTo(cx - 60, top + 34)
-            body.quadTo(cx - 94, s * 0.50, cx - 46, bottom)
-            body.lineTo(cx + 46, bottom)
-            body.quadTo(cx + 94, s * 0.50, cx + 60, top + 34)
-            body.closeSubpath()
-            painter.drawPath(body)
-            lid = QPainterPath()
-            lid.moveTo(cx - 70, top + 34)
-            lid.quadTo(cx, top - 6, cx + 70, top + 34)
-            lid.closeSubpath()
-            painter.drawPath(lid)
-            painter.setPen(thin)
+            painter.drawPath(g.symmetric([(20, 8), (21, 12), (17, 14)], curved=True))
+        elif variant == "storage_jar":
+            painter.drawPath(g.circle(9, 30, 4))
+            painter.drawPath(g.circle(55, 30, 4))
+        elif variant == "gobae":
+            # The pedestal is its own shape; merged into the dish profile the
+            # whole thing read as an hourglass.
+            painter.drawPath(g.symmetric([(7, 22), (8, 44), (17, 52), (17, 57)]))
+
+        _clip_detail(painter, body)
+        painter.setPen(thin)
+        painter.setBrush(Qt.NoBrush)
+        if variant == "comb_pattern":
+            painter.drawPath(g.line(46, 13, 18, 13))
+            for half, y in ((14, 20), (11, 30), (8, 40)):
+                for step in range(3):
+                    x = 32 - half + (half * step)
+                    painter.drawPath(g.line(x, y, x + 3, y + 5))
+        elif variant in ("red_burnished", "wajil"):
+            # Burnish strokes: swept, and few.
+            for step in range(3):
+                x = 24 + step * 8
+                painter.drawPath(g.line(x, 26, x + 5, 42))
+        elif variant in ("black_burnished", "celadon", "buncheong"):
+            painter.drawPath(g.line(20, 34, 44, 34))
+        elif variant == "gyeongjil":
+            # 타날문: the paddled bands that name the ware.
+            for y in (26, 33, 40):
+                painter.drawPath(g.line(12, y, 52, y))
+        elif variant == "white_porcelain":
+            # The seam where the two thrown halves meet.
+            painter.drawPath(g.line(12, 33, 52, 33))
+        elif variant == "onggi":
+            for y in (34, 42):
+                painter.drawPath(g.line(14, y, 50, y))
+        elif variant == "siru":
+            painter.setBrush(solid)
+            for step in range(4):
+                painter.drawPath(g.circle(25 + step * 5, 53, 1.5))
+        elif variant == "gobae":
+            # The pierced pedestal is what makes it a 굽다리접시.
             painter.setBrush(Qt.NoBrush)
-            painter.drawLine(int(cx - 68), int(top + 34), int(cx + 68), int(top + 34))
-            for i in range(3):
-                y = s * 0.54 + i * 20
-                painter.drawLine(int(cx - 64), int(y), int(cx + 64), int(y))
+            painter.drawPath(g.rect(28, 26, 3, 6, r=1))
+            painter.drawPath(g.rect(33, 26, 3, 6, r=1))
+        painter.restore()
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
-
-    # ═══════════════════════════════════════════════════════
-    #  Drawing methods — Korean stone, bronze and iron tools
-    # ═══════════════════════════════════════════════════════
 
     def _draw_korean_tool(self, painter, s, m, variant, color):
         """

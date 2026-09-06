@@ -199,25 +199,32 @@ class Grid:
 
         path = QPainterPath()
         path.moveTo(*self.pt(*right[0]))
-        self._run(path, right[1:], curved)
+        self._run(path, right[0], right[1:], curved)
         path.lineTo(*self.pt(*left[0]))
-        self._run(path, left[1:], curved)
+        self._run(path, left[0], left[1:], curved)
         path.closeSubpath()
         return path
 
-    def _run(self, path, points, curved):
+    #: How far a curved wall swells past the straight line between two
+    #: stations. Enough to read as thrown pottery, not so much that a jar
+    #: turns into a balloon.
+    BULGE = 0.16
+
+    def _run(self, path, start, points, curved):
+        """Walk the outline from ``start`` through ``points``."""
         if not curved:
             for x, y in points:
                 path.lineTo(*self.pt(x, y))
             return
-        previous = None
-        for index, (x, y) in enumerate(points):
-            if previous is None or index == len(points) - 1:
-                path.lineTo(*self.pt(x, y))
-            else:
-                # Bulge the control point outwards from the axis so a vessel
-                # wall swells instead of cutting the corner.
-                bulge = x + (x - self.centre) * 0.28
-                path.quadTo(self.u(bulge), self.u(previous[1] + (y - previous[1]) / 2.0),
-                            *self.pt(x, y))
+
+        previous = start
+        for x, y in points:
+            # The control point sits at the midpoint of the segment, pushed
+            # away from the axis. Anchoring it to the midpoint rather than to
+            # one end is what keeps the wall a curve instead of a corner -
+            # which is what made every pot a faceted polygon.
+            mid_x = (previous[0] + x) / 2.0
+            mid_y = (previous[1] + y) / 2.0
+            bulge = mid_x + (mid_x - self.centre) * self.BULGE
+            path.quadTo(self.u(bulge), self.u(mid_y), *self.pt(x, y))
             previous = (x, y)

@@ -22,6 +22,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 
 import qt_recorder as qr  # noqa: E402
 
+from archeoglyph.generators import icon_grid  # noqa: E402
+
 from archeoglyph.generators import template_generator as tg  # noqa: E402
 from archeoglyph.generators.template_generator import TemplateGenerator  # noqa: E402
 
@@ -194,3 +196,55 @@ def test_the_repetition_allowlist_has_no_stale_entries(painter):
         if len(recorder.calls) <= MARK_CAP:
             stale.append(f"{name} is down to {len(recorder.calls)} marks")
     assert not stale, "\n".join(stale)
+
+
+# Templates rebuilt on the icon grid. The set is the conversion's progress
+# report: adding a name here without moving the drawing onto the grid fails.
+GRID_NATIVE = sorted(
+    [name for name in TemplateGenerator.TEMPLATE_INFO
+     if name.startswith(("Bronze Dagger (", "Projectile Point ("))]
+    + ["Comb-pattern Pottery", "Plain Coarse Pottery", "Red Burnished Pottery",
+       "Black Burnished Long-necked Jar", "Soft Grey Pottery (Wajil)",
+       "Hard Grey Stoneware (Gyeongjil)", "Mounted Dish (Gobae)",
+       "Storage Jar (Ho)", "Steamer (Siru)", "Celadon", "Buncheong Ware",
+       "White Porcelain", "Onggi Jar"]
+)
+
+
+@pytest.mark.parametrize("name", GRID_NATIVE)
+def test_grid_native_templates_stay_on_the_grid(painter, name):
+    """
+    Every coordinate must land on the half-unit grid.
+
+    Freehand coordinates are why 188 symbols had subtly different wall angles,
+    margins and centres - the thing that stopped them looking like one hand
+    drew them. Snapping is what a design grid actually is, so it is checked
+    rather than trusted.
+    """
+    _paint(painter, name)
+    step = SIZE / (icon_grid.UNITS * 2)      # half a unit, in pixels
+    off = sorted({
+        (x, y) for x, y in painter.points()
+        if abs(x / step - round(x / step)) > 1e-6
+        or abs(y / step - round(y / step)) > 1e-6
+    })
+    assert not off, f"{name} has {len(off)} coordinates off the grid, e.g. {off[:3]}"
+
+
+@pytest.mark.parametrize("name", GRID_NATIVE)
+def test_grid_native_templates_respect_the_safe_area(painter, name):
+    """
+    Artwork lives inside the safe area, so the whole set shares a margin.
+
+    Half the outline sits outside the path, so the tolerance is that half
+    stroke and no more.
+    """
+    _paint(painter, name)
+    unit = SIZE / icon_grid.UNITS
+    slack = icon_grid.OUTLINE * unit / 2.0
+    low = icon_grid.MARGIN * unit - slack
+    high = SIZE - low
+    outside = [(x, y) for x, y in painter.points() if not (low <= x <= high and low <= y <= high)]
+    assert not outside, (
+        f"{name} draws outside the {icon_grid.MARGIN}-unit safe area at {outside[:3]}"
+    )
