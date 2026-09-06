@@ -12,6 +12,16 @@ Notes:
 - Display/plugin name is `ArchaeoGlyph`.
 - Repository/folder path remains `ArcheoGlyph` for compatibility.
 
+## 한국어 안내
+
+ArchaeoGlyph의 화면은 한국어를 지원합니다. QGIS 언어 설정이 한국어이면 자동으로 한국어로 표시되고,
+`Settings` 창 위쪽의 `언어` 항목에서 `자동 / English / 한국어`를 직접 고를 수도 있습니다.
+언어 변경은 창을 다시 열 때 적용되며, 메뉴와 도구 모음은 QGIS를 다시 시작한 뒤 바뀝니다.
+
+번역 문구는 `i18n_ko.py`에 원문-번역 사전으로 들어 있습니다. 템플릿 이름은 화면에만 번역해서 보여 주고,
+내부 식별자와 저장 값은 영어를 그대로 쓰므로 기존에 저장한 프로젝트와 설정이 그대로 동작합니다.
+AI에 보내는 프롬프트는 모델 품질 때문에 영어를 유지합니다.
+
 ## What It Does
 
 - Offline `Auto Trace` contour and structure extraction

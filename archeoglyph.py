@@ -8,6 +8,7 @@ from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 
+from .i18n import apply_settings_language, tr
 from .ui.main_dialog import ArcheoGlyphDialog
 from .defaults import HF_DEFAULT_MODEL_ID, HF_LEGACY_MODEL_ALIASES, PLUGIN_VERSION
 from .log import log_exception
@@ -37,6 +38,11 @@ class ArcheoGlyph:
             self.translator = QTranslator()
             self.translator.load(locale_path)
             QCoreApplication.installTranslator(self.translator)
+
+        # The plugin ships no compiled .qm catalogues; the Python catalogue in
+        # i18n.py is what actually translates the UI. Menu and toolbar text is
+        # built once, so a language change shows up after a QGIS restart.
+        apply_settings_language()
 
         self.actions = []
         self._register_symbol_search_path()
@@ -101,7 +107,15 @@ class ArcheoGlyph:
         settings.setValue('ArcheoGlyph/code_version', PLUGIN_VERSION)
 
     def tr(self, message):
-        """Get the translation for a string using Qt translation API."""
+        """
+        Translate a string.
+
+        The plugin catalogue is tried first; Qt's own translation is kept as a
+        fallback so a compiled .qm catalogue would still be honoured.
+        """
+        translated = tr(message)
+        if translated != message:
+            return translated
         return QCoreApplication.translate('ArcheoGlyph', message)
 
     def add_action(

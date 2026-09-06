@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 ArcheoGlyph - Settings Dialog
 Configure AI API keys and view setup instructions.
@@ -17,6 +17,12 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit, QGroupBox, QTabWidget, QWidget, QTextBrowser,
     QMessageBox, QScrollArea, QFrame, QApplication,
     QCheckBox, QComboBox, QFileDialog, QSpinBox, QProgressBar
+)
+from ..i18n import (
+    LANGUAGE_SETTING,
+    apply_settings_language,
+    available_languages,
+    tr,
 )
 from ..auth import get_api_key, set_api_key, storage_description
 from ..generators.autotrace.model_store import (
@@ -44,7 +50,7 @@ class InfoLabel(QLabel):
     
     def __init__(self, text, icon="Info", parent=None):
         super().__init__(parent)
-        self.setText(f"{icon} {text}")
+        self.setText("{icon} {text}".format(icon=icon, text=text))
         self.setWordWrap(True)
         self.setStyleSheet("""
             QLabel {
@@ -62,7 +68,7 @@ class WarningLabel(QLabel):
     
     def __init__(self, text, parent=None):
         super().__init__(parent)
-        self.setText(f"Warning: {text}")
+        self.setText(tr("Warning: {text}").format(text=text))
         self.setWordWrap(True)
         self.setStyleSheet("""
             QLabel {
@@ -127,6 +133,7 @@ class SettingsDialog(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        apply_settings_language()
         self.settings = QSettings()
         # Worker threads are kept here so they are never garbage collected
         # while still running (which aborts the QGIS process).
@@ -157,16 +164,30 @@ class SettingsDialog(QDialog):
         
     def setup_ui(self):
         """Initialize the settings UI."""
-        self.setWindowTitle("ArchaeoGlyph Settings & Help")
+        self.setWindowTitle(tr("ArchaeoGlyph Settings & Help"))
         self.setMinimumSize(650, 600)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
         layout = QVBoxLayout(self)
         
         # Header
-        header = QLabel("<h2>ArchaeoGlyph Settings</h2>")
+        header = QLabel(tr("<h2>ArchaeoGlyph Settings</h2>"))
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
+
+        # Language: applies the next time a dialog is opened, so the widgets
+        # already on screen are never left half-translated.
+        language_row = QHBoxLayout()
+        language_row.addWidget(QLabel(tr("Language:")))
+        self.language_combo = QComboBox()
+        for code, label in available_languages():
+            self.language_combo.addItem(tr(label), code)
+        language_row.addWidget(self.language_combo)
+        language_note = QLabel(tr("Takes effect the next time you open a window."))
+        language_note.setStyleSheet("color: #666;")
+        language_row.addWidget(language_note)
+        language_row.addStretch()
+        layout.addLayout(language_row)
         
         # Tab widget
         tabs = QTabWidget()
@@ -188,23 +209,23 @@ class SettingsDialog(QDialog):
         
         # Tab 1: Google Gemini
         gemini_tab = self._create_gemini_tab()
-        tabs.addTab(gemini_tab, "Google Gemini")
+        tabs.addTab(gemini_tab, tr("Google Gemini"))
         
         # Tab 2: Hugging Face (New)
         hf_tab = self._create_huggingface_tab()
-        tabs.addTab(hf_tab, "Hugging Face")
+        tabs.addTab(hf_tab, tr("Hugging Face"))
         
         # Tab 3: Local Stable Diffusion
         local_tab = self._create_local_sd_tab()
-        tabs.addTab(local_tab, "Local SD")
+        tabs.addTab(local_tab, tr("Local SD"))
         
         # Tab 4: Quick Start
         quickstart_tab = self._create_quickstart_tab()
-        tabs.addTab(quickstart_tab, "Quick Start")
+        tabs.addTab(quickstart_tab, tr("Quick Start"))
         
         # Tab 5: Help
         help_tab = self._create_help_tab()
-        tabs.addTab(help_tab, "Help")
+        tabs.addTab(help_tab, tr("Help"))
         
         layout.addWidget(tabs)
         
@@ -212,7 +233,7 @@ class SettingsDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
-        save_btn = QPushButton("Save Settings")
+        save_btn = QPushButton(tr("Save Settings"))
         save_btn.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -228,7 +249,7 @@ class SettingsDialog(QDialog):
         save_btn.clicked.connect(self.save_settings)
         btn_layout.addWidget(save_btn)
         
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(tr("Close"))
         close_btn.clicked.connect(self.close)
         btn_layout.addWidget(close_btn)
         
@@ -244,31 +265,31 @@ class SettingsDialog(QDialog):
         
         # Introduction
         info_label = QLabel(
-            "<h3>Hugging Face Inference API</h3>"
+            tr("<h3>Hugging Face Inference API</h3>"
             "<p>Use open-source AI models through Hugging Face inference."
-            "Requires a Hugging Face account and token.</p>"
+            "Requires a Hugging Face account and token.</p>")
         )
         info_label.setTextFormat(Qt.RichText)
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
         # Token Input
-        key_group = QGroupBox("API Token")
+        key_group = QGroupBox(tr("API Token"))
         key_layout = QVBoxLayout(key_group)
         
         link_label = QLabel(
-            '1. Get a token from: <a href="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</a>'
+            tr('1. Get a token from: <a href="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</a>')
         )
         link_label.setOpenExternalLinks(True)
         key_layout.addWidget(link_label)
         
         self.hf_key_input = QLineEdit()
         self.hf_key_input.setEchoMode(QLineEdit.Password)
-        self.hf_key_input.setPlaceholderText("hf_...")
+        self.hf_key_input.setPlaceholderText(tr("hf_..."))
         key_layout.addWidget(self.hf_key_input)
         
         # Show/Hide Checkbox
-        show_cb = QCheckBox("Show Token")
+        show_cb = QCheckBox(tr("Show Token"))
         show_cb.stateChanged.connect(
             lambda state: self.hf_key_input.setEchoMode(
                 QLineEdit.Normal if state == Qt.Checked else QLineEdit.Password
@@ -278,15 +299,17 @@ class SettingsDialog(QDialog):
         layout.addWidget(key_group)
 
         # Model Selection
-        model_group = QGroupBox("Model Selection")
+        model_group = QGroupBox(tr("Model Selection"))
         model_layout = QVBoxLayout(model_group)
 
         model_help = QLabel(
-            f"Specify the Model ID to use (e.g., '{HF_DEFAULT_MODEL_ID}' or "
-            "'Qwen/Qwen-Image'). If a model returns 403/404/503, the plugin "
-            "automatically tries modern fallback models.\n"
-            "Use 'Check Latest Models' to preview recommendations, then "
-            "'Apply Latest Recommended Models' to apply without Python console checks."
+            tr(
+                "Specify the Model ID to use (e.g., '{model}' or "
+                "'Qwen/Qwen-Image'). If a model returns 403/404/503, the plugin "
+                "automatically tries modern fallback models.\n"
+                "Use 'Check Latest Models' to preview recommendations, then "
+                "'Apply Latest Recommended Models' to apply without Python console checks."
+            ).format(model=HF_DEFAULT_MODEL_ID)
         )
         model_help.setWordWrap(True)
         model_help.setStyleSheet("color: #666; font-size: 11px;")
@@ -294,23 +317,23 @@ class SettingsDialog(QDialog):
 
         self.hf_model_input = QLineEdit()
         self.hf_model_input.setText(HF_DEFAULT_MODEL_ID)
-        self.hf_model_input.setPlaceholderText("organization/model-name")
+        self.hf_model_input.setPlaceholderText(tr("organization/model-name"))
         model_layout.addWidget(self.hf_model_input)
 
         model_actions = QHBoxLayout()
-        self.check_models_btn = QPushButton("Check Latest Models")
+        self.check_models_btn = QPushButton(tr("Check Latest Models"))
         self.check_models_btn.clicked.connect(
             lambda: self.refresh_latest_model_recommendations(manual=True, apply_changes=False)
         )
         model_actions.addWidget(self.check_models_btn)
 
-        self.refresh_models_btn = QPushButton("Apply Latest Recommended Models")
+        self.refresh_models_btn = QPushButton(tr("Apply Latest Recommended Models"))
         self.refresh_models_btn.clicked.connect(
             lambda: self.refresh_latest_model_recommendations(manual=True, apply_changes=True)
         )
         model_actions.addWidget(self.refresh_models_btn)
 
-        self.auto_refresh_models_check = QCheckBox("Auto-refresh model recommendations weekly")
+        self.auto_refresh_models_check = QCheckBox(tr("Auto-refresh model recommendations weekly"))
         self.auto_refresh_models_check.setChecked(True)
         model_actions.addWidget(self.auto_refresh_models_check)
         model_actions.addStretch()
@@ -324,34 +347,34 @@ class SettingsDialog(QDialog):
         layout.addWidget(model_group)
 
         # Optional advanced controls
-        advanced_group = QGroupBox("Advanced (Optional)")
+        advanced_group = QGroupBox(tr("Advanced (Optional)"))
         advanced_layout = QVBoxLayout(advanced_group)
 
         advanced_layout.addWidget(QLabel(
-            "Auto Trace separates the artifact from its background. OpenCV needs no "
+            tr("Auto Trace separates the artifact from its background. OpenCV needs no "
             "download but struggles with gradients, shadows and grey-on-grey photos; "
-            "a background-removal model handles those. SAM is also supported."
+            "a background-removal model handles those. SAM is also supported.")
         ))
 
         backend_row = QHBoxLayout()
-        backend_row.addWidget(QLabel("Auto Trace Backend:"))
+        backend_row.addWidget(QLabel(tr("Auto Trace Backend:")))
         self.mask_backend_combo = QComboBox()
-        self.mask_backend_combo.addItem("Auto (recommended: best available model, else OpenCV)", "auto")
-        self.mask_backend_combo.addItem("OpenCV only (no extra download)", "opencv")
-        self.mask_backend_combo.addItem("Background-removal model (ONNX)", "onnx")
-        self.mask_backend_combo.addItem("SAM (optional)", "sam")
+        self.mask_backend_combo.addItem(tr("Auto (recommended: best available model, else OpenCV)"), "auto")
+        self.mask_backend_combo.addItem(tr("OpenCV only (no extra download)"), "opencv")
+        self.mask_backend_combo.addItem(tr("Background-removal model (ONNX)"), "onnx")
+        self.mask_backend_combo.addItem(tr("SAM (optional)"), "sam")
         backend_row.addWidget(self.mask_backend_combo)
         advanced_layout.addLayout(backend_row)
 
-        onnx_group = QGroupBox("Background-removal model (recommended for photographs)")
+        onnx_group = QGroupBox(tr("Background-removal model (recommended for photographs)"))
         onnx_layout = QVBoxLayout(onnx_group)
         onnx_layout.addWidget(QLabel(
-            "Downloaded once, verified by size and SHA-256, and stored in your QGIS "
-            "profile. Runs on the CPU; no image ever leaves your machine."
+            tr("Downloaded once, verified by size and SHA-256, and stored in your QGIS "
+            "profile. Runs on the CPU; no image ever leaves your machine.")
         ))
 
         onnx_model_row = QHBoxLayout()
-        onnx_model_row.addWidget(QLabel("Model:"))
+        onnx_model_row.addWidget(QLabel(tr("Model:")))
         self.onnx_model_combo = QComboBox()
         for key, spec in MODEL_SPECS.items():
             self.onnx_model_combo.addItem(spec.label, key)
@@ -360,17 +383,17 @@ class SettingsDialog(QDialog):
         onnx_layout.addLayout(onnx_model_row)
 
         onnx_actions = QHBoxLayout()
-        self.onnx_install_runtime_btn = QPushButton("Install onnxruntime")
-        self.onnx_install_runtime_btn.setToolTip("Installs the CPU inference runtime with pip.")
+        self.onnx_install_runtime_btn = QPushButton(tr("Install onnxruntime"))
+        self.onnx_install_runtime_btn.setToolTip(tr("Installs the CPU inference runtime with pip."))
         self.onnx_install_runtime_btn.clicked.connect(self.install_onnx_runtime)
         onnx_actions.addWidget(self.onnx_install_runtime_btn)
 
-        self.onnx_download_btn = QPushButton("Download model")
+        self.onnx_download_btn = QPushButton(tr("Download model"))
         self.onnx_download_btn.clicked.connect(self.download_onnx_model)
         onnx_actions.addWidget(self.onnx_download_btn)
 
-        self.onnx_verify_btn = QPushButton("Verify")
-        self.onnx_verify_btn.setToolTip("Re-check the stored file against its published SHA-256.")
+        self.onnx_verify_btn = QPushButton(tr("Verify"))
+        self.onnx_verify_btn.setToolTip(tr("Re-check the stored file against its published SHA-256."))
         self.onnx_verify_btn.clicked.connect(self.verify_onnx_model)
         onnx_actions.addWidget(self.onnx_verify_btn)
         onnx_actions.addStretch()
@@ -381,10 +404,10 @@ class SettingsDialog(QDialog):
         onnx_layout.addWidget(self.onnx_progress)
 
         diagnostics_row = QHBoxLayout()
-        self.diagnostics_btn = QPushButton("Copy diagnostics")
+        self.diagnostics_btn = QPushButton(tr("Copy diagnostics"))
         self.diagnostics_btn.setToolTip(
-            "Copy a plain-text report of versions, installed packages and models.\n"
-            "Paste it into a bug report when something does not work."
+            tr("Copy a plain-text report of versions, installed packages and models.\n"
+            "Paste it into a bug report when something does not work.")
         )
         self.diagnostics_btn.clicked.connect(self.copy_diagnostics)
         diagnostics_row.addWidget(self.diagnostics_btn)
@@ -398,48 +421,48 @@ class SettingsDialog(QDialog):
         advanced_layout.addWidget(onnx_group)
 
         sam_type_row = QHBoxLayout()
-        sam_type_row.addWidget(QLabel("SAM Model Type:"))
+        sam_type_row.addWidget(QLabel(tr("SAM Model Type:")))
         self.sam_model_type_combo = QComboBox()
-        self.sam_model_type_combo.addItem("SAM1 ViT-B (local checkpoint)", "vit_b")
-        self.sam_model_type_combo.addItem("SAM1 ViT-L (local checkpoint)", "vit_l")
-        self.sam_model_type_combo.addItem("SAM1 ViT-H (local checkpoint)", "vit_h")
-        self.sam_model_type_combo.addItem("SAM3 Large (HF, latest, may be gated)", "hf:facebook/sam3-hiera-large")
-        self.sam_model_type_combo.addItem("SAM2.1 Large (HF)", "hf:facebook/sam2.1-hiera-large")
-        self.sam_model_type_combo.addItem("SAM2.1 Small (HF)", "hf:facebook/sam2.1-hiera-small")
+        self.sam_model_type_combo.addItem(tr("SAM1 ViT-B (local checkpoint)"), "vit_b")
+        self.sam_model_type_combo.addItem(tr("SAM1 ViT-L (local checkpoint)"), "vit_l")
+        self.sam_model_type_combo.addItem(tr("SAM1 ViT-H (local checkpoint)"), "vit_h")
+        self.sam_model_type_combo.addItem(tr("SAM3 Large (HF, latest, may be gated)"), "hf:facebook/sam3-hiera-large")
+        self.sam_model_type_combo.addItem(tr("SAM2.1 Large (HF)"), "hf:facebook/sam2.1-hiera-large")
+        self.sam_model_type_combo.addItem(tr("SAM2.1 Small (HF)"), "hf:facebook/sam2.1-hiera-small")
         sam_type_row.addWidget(self.sam_model_type_combo)
         advanced_layout.addLayout(sam_type_row)
 
         checkpoint_row = QHBoxLayout()
-        checkpoint_row.addWidget(QLabel("SAM Checkpoint:"))
+        checkpoint_row.addWidget(QLabel(tr("SAM Checkpoint:")))
         self.sam_checkpoint_input = QLineEdit()
-        self.sam_checkpoint_input.setPlaceholderText("Path to sam_vit_*.pth (SAM1 only)")
+        self.sam_checkpoint_input.setPlaceholderText(tr("Path to sam_vit_*.pth (SAM1 only)"))
         checkpoint_row.addWidget(self.sam_checkpoint_input)
-        sam_browse_btn = QPushButton("Browse...")
+        sam_browse_btn = QPushButton(tr("Browse..."))
         sam_browse_btn.clicked.connect(self._browse_sam_checkpoint)
         checkpoint_row.addWidget(sam_browse_btn)
         advanced_layout.addLayout(checkpoint_row)
 
-        advanced_layout.addWidget(QLabel("SAM Quick Setup (Recommended for first-time users):"))
+        advanced_layout.addWidget(QLabel(tr("SAM Quick Setup (Recommended for first-time users):")))
 
         sam_actions_row = QHBoxLayout()
-        self.sam_install_btn = QPushButton("Install SAM Packages")
+        self.sam_install_btn = QPushButton(tr("Install SAM Packages"))
         self.sam_install_btn.clicked.connect(self.install_sam_package)
         sam_actions_row.addWidget(self.sam_install_btn)
 
-        sam_download_btn = QPushButton("Download ViT-B Checkpoint")
+        sam_download_btn = QPushButton(tr("Download ViT-B Checkpoint"))
         sam_download_btn.clicked.connect(self._open_sam_checkpoint_download)
         sam_actions_row.addWidget(sam_download_btn)
 
-        sam_find_btn = QPushButton("Auto-Find Downloaded File")
+        sam_find_btn = QPushButton(tr("Auto-Find Downloaded File"))
         sam_find_btn.clicked.connect(self._autofind_sam_checkpoint)
         sam_actions_row.addWidget(sam_find_btn)
 
-        sam_hf_models_btn = QPushButton("Open SAM2/3 Models")
+        sam_hf_models_btn = QPushButton(tr("Open SAM2/3 Models"))
         sam_hf_models_btn.clicked.connect(self._open_sam_hf_models)
         sam_actions_row.addWidget(sam_hf_models_btn)
         advanced_layout.addLayout(sam_actions_row)
 
-        sam_guide_btn = QPushButton("SAM Setup Guide")
+        sam_guide_btn = QPushButton(tr("SAM Setup Guide"))
         sam_guide_btn.clicked.connect(self._show_sam_quick_guide)
         advanced_layout.addWidget(sam_guide_btn)
 
@@ -453,59 +476,59 @@ class SettingsDialog(QDialog):
         self.sam_model_type_combo.currentIndexChanged.connect(lambda _idx: self._refresh_sam_status())
 
         self.hf_overlay_linework_check = QCheckBox(
-            "HF: Overlay factual linework (stricter, may look similar to Auto Trace)"
+            tr("HF: Overlay factual linework (stricter, may look similar to Auto Trace)")
         )
         self.hf_overlay_linework_check.setChecked(False)
         advanced_layout.addWidget(self.hf_overlay_linework_check)
 
         layout.addWidget(advanced_group)
 
-        quality_group = QGroupBox("Auto Trace Quality Assist")
+        quality_group = QGroupBox(tr("Auto Trace Quality Assist"))
         quality_layout = QVBoxLayout(quality_group)
         quality_layout.addWidget(QLabel(
-            "Control Auto Trace speed/detail profile and low-quality warning thresholds "
-            "shown in the main generator window."
+            tr("Control Auto Trace speed/detail profile and low-quality warning thresholds "
+            "shown in the main generator window.")
         ))
 
         detail_mode_row = QHBoxLayout()
-        detail_mode_row.addWidget(QLabel("Auto Trace detail mode:"))
+        detail_mode_row.addWidget(QLabel(tr("Auto Trace detail mode:")))
         self.autotrace_detail_mode_combo = QComboBox()
-        self.autotrace_detail_mode_combo.addItem("Fast (speed priority)", "fast")
-        self.autotrace_detail_mode_combo.addItem("Precise (detail priority)", "precise")
+        self.autotrace_detail_mode_combo.addItem(tr("Fast (speed priority)"), "fast")
+        self.autotrace_detail_mode_combo.addItem(tr("Precise (detail priority)"), "precise")
         detail_mode_row.addWidget(self.autotrace_detail_mode_combo, 1)
         quality_layout.addLayout(detail_mode_row)
 
         weak_row = QHBoxLayout()
-        weak_row.addWidget(QLabel("Warning threshold (minimum):"))
+        weak_row.addWidget(QLabel(tr("Warning threshold (minimum):")))
         self.image_warn_min_short_px_spin = QSpinBox()
         self.image_warn_min_short_px_spin.setRange(256, 4096)
-        self.image_warn_min_short_px_spin.setSuffix(" px")
+        self.image_warn_min_short_px_spin.setSuffix(tr(" px"))
         weak_row.addWidget(self.image_warn_min_short_px_spin)
         quality_layout.addLayout(weak_row)
 
         rec_row = QHBoxLayout()
-        rec_row.addWidget(QLabel("Recommended threshold:"))
+        rec_row.addWidget(QLabel(tr("Recommended threshold:")))
         self.image_warn_recommended_short_px_spin = QSpinBox()
         self.image_warn_recommended_short_px_spin.setRange(256, 4096)
-        self.image_warn_recommended_short_px_spin.setSuffix(" px")
+        self.image_warn_recommended_short_px_spin.setSuffix(tr(" px"))
         rec_row.addWidget(self.image_warn_recommended_short_px_spin)
         quality_layout.addLayout(rec_row)
 
         sharp_row = QHBoxLayout()
-        sharp_row.addWidget(QLabel("Minimum sharpness:"))
+        sharp_row.addWidget(QLabel(tr("Minimum sharpness:")))
         self.image_warn_min_sharpness_spin = QSpinBox()
         self.image_warn_min_sharpness_spin.setRange(0, 2000)
         self.image_warn_min_sharpness_spin.setToolTip(
-            "Variance of the Laplacian. Lower values accept softer images; 0 disables the check."
+            tr("Variance of the Laplacian. Lower values accept softer images; 0 disables the check.")
         )
         sharp_row.addWidget(self.image_warn_min_sharpness_spin)
         sharp_row.addStretch()
         quality_layout.addLayout(sharp_row)
 
         quality_help = QLabel(
-            "Resolution and sharpness decide how much detail can be traced; file size does not. "
+            tr("Resolution and sharpness decide how much detail can be traced; file size does not. "
             "A practical floor is a 700px short side, with 900px recommended, and a sharpness "
-            "of about 60 for an in-focus photo."
+            "of about 60 for an in-focus photo.")
         )
         quality_help.setWordWrap(True)
         quality_help.setStyleSheet("color: #666; font-size: 11px;")
@@ -514,7 +537,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(quality_group)
         
         # Connection Test
-        test_btn = QPushButton("Test Hugging Face Connection")
+        test_btn = QPushButton(tr("Test Hugging Face Connection"))
         test_btn.clicked.connect(self.test_huggingface_connection)
         layout.addWidget(test_btn)
         
@@ -544,24 +567,26 @@ class SettingsDialog(QDialog):
         layout.addWidget(intro)
         
         # Step 1: Install package
-        install_group = QGroupBox("Step 1: Install Required Package")
+        install_group = QGroupBox(tr("Step 1: Install Required Package"))
         install_layout = QVBoxLayout(install_group)
         
         install_desc = QLabel(
-            "<b>What is this?</b><br>"
-            "The modern 'google-genai' package allows Python to communicate with Gemini 3.1 "
-            "and Nano Banana image models.<br><br>"
-            "<b>How to install:</b><br>"
-            "Click the button below. Installation takes 1-2 minutes.<br>"
-            "If it fails, you can install manually by opening Command Prompt and typing:<br>"
-            f"<code>pip install {GEMINI_INSTALL_PACKAGE}</code>"
+            tr(
+                "<b>What is this?</b><br>"
+                "The modern 'google-genai' package allows Python to communicate with Gemini 3.1 "
+                "and Nano Banana image models.<br><br>"
+                "<b>How to install:</b><br>"
+                "Click the button below. Installation takes 1-2 minutes.<br>"
+                "If it fails, you can install manually by opening Command Prompt and typing:<br>"
+                "<code>pip install {package}</code>"
+            ).format(package=GEMINI_INSTALL_PACKAGE)
         )
         install_desc.setWordWrap(True)
         install_desc.setTextFormat(Qt.RichText)
         install_layout.addWidget(install_desc)
         
         btn_layout = QHBoxLayout()
-        self.install_btn = QPushButton(f"Install {GEMINI_INSTALL_PACKAGE}")
+        self.install_btn = QPushButton(tr("Install {package}").format(package=GEMINI_INSTALL_PACKAGE))
         self.install_btn.setMinimumHeight(40)
         self.install_btn.setStyleSheet("""
             QPushButton {
@@ -577,7 +602,7 @@ class SettingsDialog(QDialog):
                 background-color: #ccc;
             }
         """)
-        self.install_btn.setToolTip("Click to automatically install the required Python package")
+        self.install_btn.setToolTip(tr("Click to automatically install the required Python package"))
         self.install_btn.clicked.connect(self.install_gemini_package)
         btn_layout.addWidget(self.install_btn)
         
@@ -590,23 +615,23 @@ class SettingsDialog(QDialog):
         layout.addWidget(install_group)
         
         # Step 2: Get API Key
-        apikey_group = QGroupBox("Step 2: Get Your Free API Key")
+        apikey_group = QGroupBox(tr("Step 2: Get Your Free API Key"))
         apikey_layout = QVBoxLayout(apikey_group)
         
         apikey_desc = QLabel(
-            "<b>What is an API key?</b><br>"
+            tr("<b>What is an API key?</b><br>"
             "An API key is like a password that allows ArchaeoGlyph to use Google's AI service.<br><br>"
             "<b>How to get one (FREE!):</b><br>"
             "1. Click the button below to open Google AI Studio<br>"
             "2. Sign in with your Google account<br>"
             "3. Click 'Create API Key'<br>"
-            "4. Copy the generated key (starts with 'AIza...')"
+            "4. Copy the generated key (starts with 'AIza...')")
         )
         apikey_desc.setWordWrap(True)
         apikey_desc.setTextFormat(Qt.RichText)
         apikey_layout.addWidget(apikey_desc)
         
-        link_btn = QPushButton("Open Google AI Studio")
+        link_btn = QPushButton(tr("Open Google AI Studio"))
         link_btn.setMinimumHeight(40)
         link_btn.setStyleSheet("""
             QPushButton {
@@ -619,7 +644,7 @@ class SettingsDialog(QDialog):
                 background-color: #d33426;
             }
         """)
-        link_btn.setToolTip("Opens Google AI Studio in your web browser")
+        link_btn.setToolTip(tr("Opens Google AI Studio in your web browser"))
         link_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(
                 QUrl(GEMINI_AI_STUDIO_URL)
@@ -630,12 +655,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(apikey_group)
         
         # Step 3: Enter API Key
-        key_group = QGroupBox("Step 3: Enter Your API Key")
+        key_group = QGroupBox(tr("Step 3: Enter Your API Key"))
         key_layout = QVBoxLayout(key_group)
         
         key_desc = QLabel(
-            "<b>Paste your API key below:</b><br>"
-            "Your key is stored locally and never sent anywhere except Google. It looks like: AIza..."
+            tr("<b>Paste your API key below:</b><br>"
+            "Your key is stored locally and never sent anywhere except Google. It looks like: AIza...")
         )
         key_desc.setWordWrap(True)
         key_desc.setTextFormat(Qt.RichText)
@@ -644,14 +669,14 @@ class SettingsDialog(QDialog):
         key_input_layout = QHBoxLayout()
         self.gemini_key_input = QLineEdit()
         self.gemini_key_input.setEchoMode(QLineEdit.Password)
-        self.gemini_key_input.setPlaceholderText("Paste your API key here (AIza...)")
+        self.gemini_key_input.setPlaceholderText(tr("Paste your API key here (AIza...)"))
         self.gemini_key_input.setMinimumHeight(35)
-        self.gemini_key_input.setToolTip("Your Google Gemini API key")
+        self.gemini_key_input.setToolTip(tr("Your Google Gemini API key"))
         key_input_layout.addWidget(self.gemini_key_input)
         
-        show_key_btn = QPushButton("Show")
+        show_key_btn = QPushButton(tr("Show"))
         show_key_btn.setFixedWidth(40)
-        show_key_btn.setToolTip("Show/Hide API key")
+        show_key_btn.setToolTip(tr("Show/Hide API key"))
         show_key_btn.clicked.connect(self._toggle_key_visibility)
         key_input_layout.addWidget(show_key_btn)
         key_layout.addLayout(key_input_layout)
@@ -664,19 +689,19 @@ class SettingsDialog(QDialog):
         layout.addWidget(key_group)
         
         # Step 4: Test connection
-        test_group = QGroupBox("Step 4: Test Your Connection")
+        test_group = QGroupBox(tr("Step 4: Test Your Connection"))
         test_layout = QVBoxLayout(test_group)
         
         test_desc = QLabel(
-            "<b>Verify everything works:</b><br>"
-            "Click the test button to make sure your API key is valid and the connection works."
+            tr("<b>Verify everything works:</b><br>"
+            "Click the test button to make sure your API key is valid and the connection works.")
         )
         test_desc.setWordWrap(True)
         test_desc.setTextFormat(Qt.RichText)
         test_layout.addWidget(test_desc)
         
         test_btn_layout = QHBoxLayout()
-        test_btn = QPushButton("Test Gemini Connection")
+        test_btn = QPushButton(tr("Test Gemini Connection"))
         test_btn.setMinimumHeight(40)
         test_btn.setStyleSheet("""
             QPushButton {
@@ -689,7 +714,7 @@ class SettingsDialog(QDialog):
                 background-color: #218838;
             }
         """)
-        test_btn.setToolTip("Test if your API key works correctly")
+        test_btn.setToolTip(tr("Test if your API key works correctly"))
         test_btn.clicked.connect(self.test_gemini_connection)
         test_btn_layout.addWidget(test_btn)
         
@@ -740,29 +765,29 @@ class SettingsDialog(QDialog):
         layout.addWidget(warning)
         
         # Server URL
-        server_group = QGroupBox("Server Configuration")
+        server_group = QGroupBox(tr("Server Configuration"))
         server_layout = QVBoxLayout(server_group)
         
         server_desc = QLabel(
-            "<b>Server URL:</b><br>"
+            tr("<b>Server URL:</b><br>"
             "Enter the URL where your Stable Diffusion server is running.<br>"
-            "Default is <code>http://127.0.0.1:7860</code> (localhost)."
+            "Default is <code>http://127.0.0.1:7860</code> (localhost).")
         )
         server_desc.setWordWrap(True)
         server_desc.setTextFormat(Qt.RichText)
         server_layout.addWidget(server_desc)
         
         url_layout = QHBoxLayout()
-        url_layout.addWidget(QLabel("URL:"))
+        url_layout.addWidget(QLabel(tr("URL:")))
         self.sd_url_input = QLineEdit()
-        self.sd_url_input.setPlaceholderText("http://127.0.0.1:7860")
+        self.sd_url_input.setPlaceholderText(tr("http://127.0.0.1:7860"))
         self.sd_url_input.setMinimumHeight(35)
-        self.sd_url_input.setToolTip("The URL of your local Stable Diffusion API server")
+        self.sd_url_input.setToolTip(tr("The URL of your local Stable Diffusion API server"))
         url_layout.addWidget(self.sd_url_input)
         server_layout.addLayout(url_layout)
         
         test_layout = QHBoxLayout()
-        test_btn = QPushButton("Test Connection")
+        test_btn = QPushButton(tr("Test Connection"))
         test_btn.setMinimumHeight(35)
         test_btn.clicked.connect(self.test_sd_connection)
         test_layout.addWidget(test_btn)
@@ -775,7 +800,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(server_group)
         
         # Setup instructions
-        setup_group = QGroupBox("How to Set Up Local Stable Diffusion")
+        setup_group = QGroupBox(tr("How to Set Up Local Stable Diffusion"))
         setup_layout = QVBoxLayout(setup_group)
         
         setup_text = QTextBrowser()
@@ -804,7 +829,7 @@ class SettingsDialog(QDialog):
         """)
         setup_layout.addWidget(setup_text)
         
-        guide_btn = QPushButton("Open Full Setup Guide (GitHub)")
+        guide_btn = QPushButton(tr("Open Full Setup Guide (GitHub)"))
         guide_btn.clicked.connect(self._open_sd_guide)
         setup_layout.addWidget(guide_btn)
         
@@ -825,51 +850,51 @@ class SettingsDialog(QDialog):
         layout.setSpacing(15)
         
         # Header
-        header = QLabel("<h3>Get Started in 30 Seconds</h3>")
+        header = QLabel(tr("<h3>Get Started in 30 Seconds</h3>"))
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
         
         # No setup option
-        no_setup = QGroupBox("Option 1: Use Templates (NO Setup Required!)")
+        no_setup = QGroupBox(tr("Option 1: Use Templates (NO Setup Required!)"))
         no_setup_layout = QVBoxLayout(no_setup)
         no_setup_layout.addWidget(QLabel(
-            "<ol>"
+            tr("<ol>"
             "<li>Open ArchaeoGlyph from the toolbar</li>"
             "<li>Select <b>'Use Template'</b> mode</li>"
             "<li>Choose artifact type (Pottery, Stone Tools, etc.)</li>"
             "<li>Pick your color</li>"
             "<li>Click <b>Generate</b>!</li>"
             "</ol>"
-            "<p><i>That's it. No API key or installation needed.</i></p>"
+            "<p><i>That's it. No API key or installation needed.</i></p>")
         ))
         layout.addWidget(no_setup)
         
         # Hugging Face option
-        hf_opt = QGroupBox("Option 2: Use AI (Hugging Face)")
+        hf_opt = QGroupBox(tr("Option 2: Use AI (Hugging Face)"))
         hf_layout = QVBoxLayout(hf_opt)
         hf_layout.addWidget(QLabel(
-            "<ol>"
+            tr("<ol>"
             "<li>Go to the <b>Hugging Face</b> tab</li>"
             "<li>Click link to get a <b>token</b></li>"
             "<li>Paste key and click <b>Save Settings</b></li>"
             "<li>Restart QGIS</li>"
             "</ol>"
-            "<p><i>Generate symbols with online inference models.</i></p>"
+            "<p><i>Generate symbols with online inference models.</i></p>")
         ))
         layout.addWidget(hf_opt)
 
         # Gemini option
-        gemini_opt = QGroupBox("Option 3: Use AI (Google Gemini)")
+        gemini_opt = QGroupBox(tr("Option 3: Use AI (Google Gemini)"))
         gemini_layout = QVBoxLayout(gemini_opt)
         gemini_layout.addWidget(QLabel(
-            "<ol>"
+            tr("<ol>"
             "<li>Go to the <b>Google Gemini</b> tab</li>"
             "<li>Click <b>Install Package</b> (wait 1-2 min)</li>"
             "<li>Click link to get <b>free API key</b></li>"
             "<li>Paste key and click <b>Save Settings</b></li>"
             "<li>Restart QGIS</li>"
             "</ol>"
-            "<p><i>Now you can upload any image and generate custom symbols.</i></p>"
+            "<p><i>Now you can upload any image and generate custom symbols.</i></p>")
         ))
         layout.addWidget(gemini_opt)
         
@@ -1036,7 +1061,7 @@ class SettingsDialog(QDialog):
         """Auto-refresh latest model recommendations on a weekly cadence."""
         enabled = self.auto_refresh_models_check.isChecked()
         if not enabled:
-            self.model_refresh_status.setText("Automatic refresh is disabled.")
+            self.model_refresh_status.setText(tr("Automatic refresh is disabled."))
             self.model_refresh_status.setStyleSheet("color: #666; font-size: 11px;")
             return
 
@@ -1050,7 +1075,9 @@ class SettingsDialog(QDialog):
             return
 
         self.model_refresh_status.setText(
-            f"Latest-model check is up to date (last check: {self._format_utc(last_checked)})."
+            tr("Latest-model check is up to date (last check: {when}).").format(
+                when=self._format_utc(last_checked)
+            )
         )
         self.model_refresh_status.setStyleSheet("color: #2f6f44; font-size: 11px;")
 
@@ -1063,7 +1090,7 @@ class SettingsDialog(QDialog):
         self.refresh_models_btn.setEnabled(False)
         if hasattr(self, "check_models_btn"):
             self.check_models_btn.setEnabled(False)
-        self.model_refresh_status.setText("Checking latest model recommendations...")
+        self.model_refresh_status.setText(tr("Checking latest model recommendations..."))
         self.model_refresh_status.setStyleSheet("color: orange; font-size: 11px;")
 
         hf_api_key = self.hf_key_input.text().strip()
@@ -1105,7 +1132,7 @@ class SettingsDialog(QDialog):
         if recommended_sam:
             idx = self.sam_model_type_combo.findData(recommended_sam)
             if idx < 0:
-                self.sam_model_type_combo.addItem(f"Auto-detected ({recommended_sam})", recommended_sam)
+                self.sam_model_type_combo.addItem(tr("Auto-detected ({model})").format(model=recommended_sam), recommended_sam)
                 idx = self.sam_model_type_combo.findData(recommended_sam)
             if idx >= 0:
                 current_sam = str(self.sam_model_type_combo.currentData() or "").strip()
@@ -1232,7 +1259,7 @@ class SettingsDialog(QDialog):
                         self.model_refresh_status.setStyleSheet("color: #2f6f44; font-size: 11px;")
                         QMessageBox.information(
                             self,
-                            "Latest Models Applied",
+                            tr("Latest Models Applied"),
                             "\n".join(applied_summary),
                         )
                 else:
@@ -1242,7 +1269,7 @@ class SettingsDialog(QDialog):
             self.model_refresh_status.setText(fallback_msg)
             self.model_refresh_status.setStyleSheet("color: #b00020; font-size: 11px;")
             if manual:
-                QMessageBox.warning(self, "Latest Model Refresh Failed", fallback_msg)
+                QMessageBox.warning(self, tr("Latest Model Refresh Failed"), fallback_msg)
 
     def _open_sd_guide(self):
         """Open local SD setup guide."""
@@ -1262,13 +1289,13 @@ class SettingsDialog(QDialog):
         """Install SAM-related packages (SAM1 + SAM2/3 path)."""
         reply = QMessageBox.question(
             self,
-            "Install SAM Packages",
-            "Install SAM packages now?\n\n"
+            tr("Install SAM Packages"),
+            tr("Install SAM packages now?\n\n"
             "This installs:\n"
             "- segment-anything (SAM1 local checkpoint)\n"
             "- transformers + huggingface_hub (SAM2/3 via HF)\n\n"
             "Note: SAM still needs 'torch'. If torch is missing, install it first "
-            "(CPU build is okay for basic use).",
+            "(CPU build is okay for basic use)."),
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.No:
@@ -1276,8 +1303,8 @@ class SettingsDialog(QDialog):
 
         python_path = self._get_python_executable()
         self.sam_install_btn.setEnabled(False)
-        self.sam_install_btn.setText("Installing...")
-        self.sam_status_label.setText("Installing SAM packages...")
+        self.sam_install_btn.setText(tr("Installing..."))
+        self.sam_status_label.setText(tr("Installing SAM packages..."))
         self.sam_status_label.setStyleSheet("color: orange; font-size: 11px;")
 
         self.sam_process = QProcess(self)
@@ -1305,36 +1332,43 @@ class SettingsDialog(QDialog):
         msg = out or err
         if msg:
             last_line = msg.splitlines()[-1][:120]
-            self.sam_status_label.setText(f"Installing SAM: {last_line}")
+            self.sam_status_label.setText(tr("Installing SAM: {line}").format(line=last_line))
             self.sam_status_label.setStyleSheet("color: orange; font-size: 11px;")
 
     def _handle_sam_install_finished(self, exit_code, exit_status):
         """Handle SAM installer completion."""
         self.sam_install_btn.setEnabled(True)
-        self.sam_install_btn.setText("Install SAM Packages")
+        self.sam_install_btn.setText(tr("Install SAM Packages"))
         if exit_code == 0 and exit_status == QProcess.NormalExit:
             QMessageBox.information(
                 self,
-                "Installed",
-                "SAM packages installed successfully.\n"
-                "If this is first-time setup, restart QGIS."
+                tr("Installed"),
+                tr("SAM packages installed successfully.\n"
+                "If this is first-time setup, restart QGIS.")
             )
         else:
             python_path = self._get_python_executable()
             QMessageBox.warning(
                 self,
-                "Install Failed",
-                "Could not install SAM packages automatically.\n\n"
-                "Manual command:\n"
-                f"{python_path} -m pip install --user segment-anything transformers huggingface_hub pillow"
+                tr("Install Failed"),
+                tr(
+                    "Could not install SAM packages automatically.\n\n"
+                    "Manual command:\n"
+                    "{command}"
+                ).format(
+                    command=(
+                        f"{python_path} -m pip install --user "
+                        "segment-anything transformers huggingface_hub pillow"
+                    )
+                )
             )
         self._refresh_sam_status()
 
     def _handle_sam_install_error(self, error):
         """Handle SAM installer process errors."""
         self.sam_install_btn.setEnabled(True)
-        self.sam_install_btn.setText("Install SAM Packages")
-        self.sam_status_label.setText(f"SAM install process error: {error}")
+        self.sam_install_btn.setText(tr("Install SAM Packages"))
+        self.sam_status_label.setText(tr("SAM install process error: {error}").format(error=error))
         self.sam_status_label.setStyleSheet("color: red; font-size: 11px;")
         self._refresh_sam_status()
 
@@ -1345,9 +1379,9 @@ class SettingsDialog(QDialog):
         )
         QMessageBox.information(
             self,
-            "Download Started",
-            "Browser download opened for sam_vit_b_01ec64.pth.\n"
-            "After download, click 'Auto-Find Downloaded File'."
+            tr("Download Started"),
+            tr("Browser download opened for sam_vit_b_01ec64.pth.\n"
+            "After download, click 'Auto-Find Downloaded File'.")
         )
 
     def _open_sam_hf_models(self):
@@ -1392,17 +1426,17 @@ class SettingsDialog(QDialog):
                     self.sam_model_type_combo.setCurrentIndex(idx)
                 QMessageBox.information(
                     self,
-                    "Checkpoint Found",
-                    f"SAM checkpoint found and selected:\n{path}"
+                    tr("Checkpoint Found"),
+                    tr("SAM checkpoint found and selected:\n{path}").format(path=path)
                 )
                 self._refresh_sam_status()
                 return
 
         QMessageBox.information(
             self,
-            "Not Found",
-            "No SAM checkpoint was found in common folders.\n"
-            "Click 'Download ViT-B Checkpoint' first."
+            tr("Not Found"),
+            tr("No SAM checkpoint was found in common folders.\n"
+            "Click 'Download ViT-B Checkpoint' first.")
         )
         self._refresh_sam_status()
 
@@ -1410,8 +1444,8 @@ class SettingsDialog(QDialog):
         """Show beginner-friendly SAM setup instructions."""
         QMessageBox.information(
             self,
-            "SAM Quick Guide",
-            "SAM setup (beginner):\n\n"
+            tr("SAM Quick Guide"),
+            tr("SAM setup (beginner):\n\n"
             "Tip: In Hugging Face tab, click 'Apply Latest Recommended Models' first.\n\n"
             "Option A: SAM2.1/SAM3 via Hugging Face (easiest)\n"
             "1. Keep 'Auto Trace Backend' = SAM (Optional)\n"
@@ -1425,7 +1459,7 @@ class SettingsDialog(QDialog):
             "4. Click 'Download ViT-B Checkpoint'\n"
             "5. Click 'Auto-Find Downloaded File'\n"
             "6. Save Settings and restart QGIS\n\n"
-            "If SAM is not ready, ArcheoGlyph automatically falls back to OpenCV."
+            "If SAM is not ready, ArcheoGlyph automatically falls back to OpenCV.")
         )
 
     def _profile_dir(self):
@@ -1482,9 +1516,11 @@ class SettingsDialog(QDialog):
         size_mb = spec.size // (1024 * 1024)
         reply = QMessageBox.question(
             self,
-            "Download model",
-            f"Download {spec.label}?\n\n"
-            f"About {size_mb} MB, stored in your QGIS profile and verified by SHA-256.",
+            tr("Download model"),
+            tr(
+                "Download {label}?\n\n"
+                "About {size} MB, stored in your QGIS profile and verified by SHA-256."
+            ).format(label=spec.label, size=size_mb),
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.No:
@@ -1494,7 +1530,7 @@ class SettingsDialog(QDialog):
         self.onnx_progress.setVisible(True)
         self.onnx_progress.setRange(0, 100)
         self.onnx_progress.setValue(0)
-        self.onnx_status_label.setText(f"Downloading {spec.filename}...")
+        self.onnx_status_label.setText(tr("Downloading {filename}...").format(filename=spec.filename))
 
         self.onnx_download_thread = ModelDownloadThread(spec, self._profile_dir())
         self.onnx_download_thread.progress.connect(self._on_onnx_progress)
@@ -1510,9 +1546,9 @@ class SettingsDialog(QDialog):
         self.onnx_download_btn.setEnabled(True)
         message = str((result or {}).get("message", ""))
         if (result or {}).get("ok"):
-            QMessageBox.information(self, "Model ready", message or "Download complete.")
+            QMessageBox.information(self, tr("Model ready"), message or "Download complete.")
         else:
-            QMessageBox.warning(self, "Download failed", message or "The download did not complete.")
+            QMessageBox.warning(self, tr("Download failed"), message or "The download did not complete.")
         self._refresh_onnx_status()
 
     def verify_onnx_model(self):
@@ -1523,18 +1559,20 @@ class SettingsDialog(QDialog):
         try:
             ok = verify_model(spec, self._profile_dir())
         except OSError as e:
-            QMessageBox.warning(self, "Verify failed", str(e))
+            QMessageBox.warning(self, tr("Verify failed"), str(e))
             return
         if ok:
             QMessageBox.information(
-                self, "Model verified",
-                f"{spec.filename} matches its published SHA-256.\n\n{model_path(spec, self._profile_dir())}",
+                self, tr("Model verified"),
+                tr("{filename} matches its published SHA-256.\n\n{path}").format(
+                    filename=spec.filename, path=model_path(spec, self._profile_dir())
+                ),
             )
         else:
             QMessageBox.warning(
-                self, "Model does not match",
-                "The stored file does not match its published checksum. "
-                "Delete it and download again.",
+                self, tr("Model does not match"),
+                tr("The stored file does not match its published checksum. "
+                "Delete it and download again."),
             )
         self._refresh_onnx_status()
 
@@ -1545,14 +1583,14 @@ class SettingsDialog(QDialog):
         try:
             text = report_text(self._profile_dir())
         except Exception as e:
-            QMessageBox.warning(self, "Diagnostics failed", str(e))
+            QMessageBox.warning(self, tr("Diagnostics failed"), str(e))
             return
 
         QApplication.clipboard().setText(text)
         message = QMessageBox(self)
         message.setIcon(QMessageBox.Information)
-        message.setWindowTitle("Diagnostics copied")
-        message.setText("The report was copied to the clipboard.")
+        message.setWindowTitle(tr("Diagnostics copied"))
+        message.setText(tr("The report was copied to the clipboard."))
         message.setDetailedText(text)
         message.exec_()
 
@@ -1580,7 +1618,9 @@ class SettingsDialog(QDialog):
                 return
             model_id = model_choice[3:] if model_choice.lower().startswith("hf:") else model_choice
             self.sam_status_label.setText(
-                f"SAM ready (HF): {model_id} (checkpoint not required)."
+                tr("SAM ready (HF): {model} (checkpoint not required).").format(
+                    model=model_id
+                )
             )
             self.sam_status_label.setStyleSheet("color: green; font-size: 11px;")
             return
@@ -1589,7 +1629,7 @@ class SettingsDialog(QDialog):
             dep_missing.append("segment-anything")
 
         if checkpoint_ok and not dep_missing:
-            self.sam_status_label.setText("SAM ready: dependencies and checkpoint detected.")
+            self.sam_status_label.setText(tr("SAM ready: dependencies and checkpoint detected."))
             self.sam_status_label.setStyleSheet("color: green; font-size: 11px;")
             return
 
@@ -1613,7 +1653,7 @@ class SettingsDialog(QDialog):
 
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Select SAM Checkpoint",
+            tr("Select SAM Checkpoint"),
             start_dir,
             "SAM Checkpoint (sam_vit_*.pth *.pth *.pt);;PyTorch Checkpoint (*.pth *.pt);;All Files (*)"
         )
@@ -1636,6 +1676,9 @@ class SettingsDialog(QDialog):
 
     def load_settings(self):
         """Load saved settings."""
+        language = str(self.settings.value(LANGUAGE_SETTING, "auto") or "auto")
+        index = self.language_combo.findData(language)
+        self.language_combo.setCurrentIndex(index if index >= 0 else 0)
         gemini_key = get_api_key("gemini", self.settings)
         hf_key = get_api_key("huggingface", self.settings)
         # Loading must not change stored settings; normalise for display only.
@@ -1729,22 +1772,25 @@ class SettingsDialog(QDialog):
             package_found = importlib.util.find_spec("google.genai") is not None
             legacy_found = importlib.util.find_spec("google.generativeai") is not None
             if package_found:
-                self.install_status.setText("Installed")
+                self.install_status.setText(tr("Installed"))
                 self.install_status.setStyleSheet("color: green; font-weight: bold;")
             elif legacy_found:
-                self.install_status.setText("Legacy only")
+                self.install_status.setText(tr("Legacy only"))
                 self.install_status.setStyleSheet("color: #8a4b00; font-weight: bold;")
             else:
-                self.install_status.setText("Not installed")
+                self.install_status.setText(tr("Not installed"))
                 self.install_status.setStyleSheet("color: red;")
         except Exception:
-            self.install_status.setText("Not installed")
+            self.install_status.setText(tr("Not installed"))
             self.install_status.setStyleSheet("color: red;")
 
         self._maybe_auto_refresh_latest_models()
 
     def save_settings(self):
         """Save settings."""
+        self.settings.setValue(
+            LANGUAGE_SETTING, str(self.language_combo.currentData() or "auto")
+        )
         set_api_key("gemini", self.gemini_key_input.text(), self.settings)
         set_api_key("huggingface", self.hf_key_input.text(), self.settings)
         self.settings.setValue('ArcheoGlyph/hf_model_id', self._normalize_hf_model_id(self.hf_model_input.text()))
@@ -1756,15 +1802,18 @@ class SettingsDialog(QDialog):
             spec = MODEL_SPECS.get(onnx_model_key)
             missing = []
             if not find_spec("onnxruntime"):
-                missing.append("the onnxruntime package")
+                missing.append(tr("the onnxruntime package"))
             if spec is None or not is_installed(spec, self._profile_dir()):
-                missing.append("the model file")
+                missing.append(tr("the model file"))
             if missing:
                 QMessageBox.warning(
                     self,
-                    "Background-removal model not ready",
-                    "Auto Trace needs " + " and ".join(missing) + ".\n"
-                    "Switching to Auto for now; the model is used automatically once installed.",
+                    tr("Background-removal model not ready"),
+                    tr(
+                        "Auto Trace needs {missing}.\n"
+                        "Switching to Auto for now; the model is used automatically "
+                        "once installed."
+                    ).format(missing=tr(" and ").join(missing)),
                 )
                 mask_backend = "auto"
                 idx = self.mask_backend_combo.findData("auto")
@@ -1779,10 +1828,10 @@ class SettingsDialog(QDialog):
                 if not (find_spec("torch") and find_spec("transformers")):
                     QMessageBox.warning(
                         self,
-                        "SAM Package Missing",
-                        "SAM2/3 mode needs torch + transformers.\n"
+                        tr("SAM Package Missing"),
+                        tr("SAM2/3 mode needs torch + transformers.\n"
                         "Switching backend to OpenCV for now.\n\n"
-                        "Use 'Install SAM Packages' first."
+                        "Use 'Install SAM Packages' first.")
                     )
                     mask_backend = "opencv"
                     idx = self.mask_backend_combo.findData("opencv")
@@ -1792,9 +1841,9 @@ class SettingsDialog(QDialog):
                 if not sam_checkpoint or not os.path.exists(sam_checkpoint):
                     QMessageBox.warning(
                         self,
-                        "SAM Not Ready",
-                        "SAM backend was selected, but checkpoint file is missing.\n"
-                        "Switching backend to OpenCV for now."
+                        tr("SAM Not Ready"),
+                        tr("SAM backend was selected, but checkpoint file is missing.\n"
+                        "Switching backend to OpenCV for now.")
                     )
                     mask_backend = "opencv"
                     idx = self.mask_backend_combo.findData("opencv")
@@ -1804,10 +1853,10 @@ class SettingsDialog(QDialog):
                     if not (find_spec("torch") and find_spec("segment_anything")):
                         QMessageBox.warning(
                             self,
-                            "SAM Package Missing",
-                            "SAM checkpoint exists, but required packages are missing.\n"
+                            tr("SAM Package Missing"),
+                            tr("SAM checkpoint exists, but required packages are missing.\n"
                             "Switching backend to OpenCV for now.\n\n"
-                            "Use 'Install SAM Packages' first."
+                            "Use 'Install SAM Packages' first.")
                         )
                         mask_backend = "opencv"
                         idx = self.mask_backend_combo.findData("opencv")
@@ -1845,9 +1894,9 @@ class SettingsDialog(QDialog):
         
         QMessageBox.information(
             self, 
-            "Settings Saved", 
-            "Your settings have been saved!\n\n"
-            "If you installed a new package, please restart QGIS."
+            tr("Settings Saved"), 
+            tr("Your settings have been saved!\n\n"
+            "If you installed a new package, please restart QGIS.")
         )
 
     def _parse_int_setting(self, value, default=0):
@@ -1862,14 +1911,14 @@ class SettingsDialog(QDialog):
         api_key = self.hf_key_input.text().strip()
 
         if not api_key:
-            QMessageBox.warning(self, "No Token", "Please enter Hugging Face token.")
+            QMessageBox.warning(self, tr("No Token"), tr("Please enter Hugging Face token."))
             return
 
         trigger_button = self.sender()
         if trigger_button:
             trigger_button.setEnabled(False)
 
-        self.hf_test_result.setText("Testing...")
+        self.hf_test_result.setText(tr("Testing..."))
         self.hf_test_result.setStyleSheet("color: orange;")
 
         model_id = self._normalize_hf_model_id(self.hf_model_input.text().strip())
@@ -1904,60 +1953,66 @@ class SettingsDialog(QDialog):
             if model and model != requested_model_id:
                 self.hf_model_input.setText(model)
                 self.settings.setValue('ArcheoGlyph/hf_model_id', model)
-            self.hf_test_result.setText("Connected")
+            self.hf_test_result.setText(tr("Connected"))
             self.hf_test_result.setStyleSheet("color: green; font-weight: bold;")
-            QMessageBox.information(self, "Success", f"Connected with model: {model or requested_model_id}")
+            QMessageBox.information(self, tr("Success"), tr("Connected with model: {model}").format(
+                                                             model=model or requested_model_id
+                                                         ))
             return
 
         if status == "loading":
             if model and model != requested_model_id:
                 self.hf_model_input.setText(model)
                 self.settings.setValue('ArcheoGlyph/hf_model_id', model)
-            self.hf_test_result.setText("Loading model...")
+            self.hf_test_result.setText(tr("Loading model..."))
             self.hf_test_result.setStyleSheet("color: orange;")
             QMessageBox.information(
                 self,
-                "Loading",
-                f"Connected, but model is initializing: {model or requested_model_id}"
+                tr("Loading"),
+                tr("Connected, but model is initializing: {model}").format(
+                    model=model or requested_model_id
+                )
             )
             return
 
         if status == "invalid_token":
-            self.hf_test_result.setText("Invalid token")
+            self.hf_test_result.setText(tr("Invalid token"))
             self.hf_test_result.setStyleSheet("color: red;")
-            QMessageBox.warning(self, "Invalid Token", "Please check your Hugging Face token.")
+            QMessageBox.warning(self, tr("Invalid Token"), tr("Please check your Hugging Face token."))
             return
 
         if status == "forbidden":
-            self.hf_test_result.setText("Model access denied (403)")
+            self.hf_test_result.setText(tr("Model access denied (403)"))
             self.hf_test_result.setStyleSheet("color: red;")
             QMessageBox.warning(
                 self,
-                "Model Access Denied",
-                "Model terms may need acceptance on Hugging Face, or the model is restricted."
+                tr("Model Access Denied"),
+                tr("Model terms may need acceptance on Hugging Face, or the model is restricted.")
             )
             return
 
         if status == "not_found":
-            self.hf_test_result.setText("Model not found (404)")
+            self.hf_test_result.setText(tr("Model not found (404)"))
             self.hf_test_result.setStyleSheet("color: red;")
             QMessageBox.warning(
                 self,
-                "Model Not Found",
-                "No candidate model was found.\n"
-                f"Try '{HF_DEFAULT_MODEL_ID}' or 'Qwen/Qwen-Image'."
+                tr("Model Not Found"),
+                tr(
+                    "No candidate model was found.\n"
+                    "Try '{model}' or 'Qwen/Qwen-Image'."
+                ).format(model=HF_DEFAULT_MODEL_ID)
             )
             return
 
         if status == "error":
-            self.hf_test_result.setText("Failed")
+            self.hf_test_result.setText(tr("Failed"))
             self.hf_test_result.setStyleSheet("color: red;")
-            QMessageBox.warning(self, "Connection Failed", message or "Unknown error")
+            QMessageBox.warning(self, tr("Connection Failed"), message or "Unknown error")
             return
 
-        self.hf_test_result.setText("Failed")
+        self.hf_test_result.setText(tr("Failed"))
         self.hf_test_result.setStyleSheet("color: red;")
-        QMessageBox.warning(self, "Connection Failed", "Unexpected test result.")
+        QMessageBox.warning(self, tr("Connection Failed"), tr("Unexpected test result."))
         
     def _start_pip_install(self, package, button=None, done=None):
         """
@@ -1966,9 +2021,11 @@ class SettingsDialog(QDialog):
         """
         reply = QMessageBox.question(
             self,
-            "Install package",
-            f"Install '{package}' into the Python that QGIS uses?\n\n"
-            "The installer runs in the background; you can keep using QGIS.",
+            tr("Install package"),
+            tr(
+                "Install '{package}' into the Python that QGIS uses?\n\n"
+                "The installer runs in the background; you can keep using QGIS."
+            ).format(package=package),
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.No:
@@ -1976,7 +2033,7 @@ class SettingsDialog(QDialog):
 
         if button is not None:
             button.setEnabled(False)
-            button.setText("Installing...")
+            button.setText(tr("Installing..."))
 
         self._pip_target = {"package": package, "button": button, "done": done, "label": button.text() if button else ""}
         self._pip_log = {}
@@ -2002,20 +2059,25 @@ class SettingsDialog(QDialog):
         package = target.get("package", "package")
         if button is not None:
             button.setEnabled(True)
-            button.setText(f"Install {package}")
+            button.setText(tr("Install {package}").format(package=package))
 
         if exit_code == 0:
             QMessageBox.information(
-                self, "Installed",
-                f"'{package}' was installed.\n\nRestart QGIS if it is not picked up immediately.",
+                self, tr("Installed"),
+                tr(
+                    "'{package}' was installed.\n\n"
+                    "Restart QGIS if it is not picked up immediately."
+                ).format(package=package),
             )
         else:
             log_text = "STDOUT:\n" + "\n".join(self._pip_log.get("stdout", []))
             log_text += "\n\nSTDERR:\n" + "\n".join(self._pip_log.get("stderr", []))
             message = QMessageBox(self)
             message.setIcon(QMessageBox.Warning)
-            message.setWindowTitle("Installation failed")
-            message.setText(f"Installing '{package}' failed (exit code {exit_code}).")
+            message.setWindowTitle(tr("Installation failed"))
+            message.setText(tr("Installing '{package}' failed (exit code {code}).").format(
+                                package=package, code=exit_code
+                            ))
             message.setDetailedText(log_text)
             message.exec_()
 
@@ -2027,11 +2089,13 @@ class SettingsDialog(QDialog):
         """Install Google GenAI SDK using QProcess (Async)."""
         reply = QMessageBox.question(
             self,
-            "Install Package",
-            f"This will install '{GEMINI_INSTALL_PACKAGE}' package.\n\n"
-            "The installer will run in the background.\n"
-            "You can continue using QGIS while it installs.\n\n"
-            "Continue?",
+            tr("Install Package"),
+            tr(
+                "This will install '{package}' package.\n\n"
+                "The installer will run in the background.\n"
+                "You can continue using QGIS while it installs.\n\n"
+                "Continue?"
+            ).format(package=GEMINI_INSTALL_PACKAGE),
             QMessageBox.Yes | QMessageBox.No
         )
         
@@ -2039,8 +2103,8 @@ class SettingsDialog(QDialog):
             return
             
         self.install_btn.setEnabled(False)
-        self.install_btn.setText("Installing...")
-        self.install_status.setText("Starting...")
+        self.install_btn.setText(tr("Installing..."))
+        self.install_status.setText(tr("Starting..."))
         self.install_status.setStyleSheet("color: orange;")
         
         # Setup QProcess
@@ -2081,30 +2145,30 @@ class SettingsDialog(QDialog):
             last_line = msg.splitlines()[-1] if "\n" in msg else msg
             # Show last line in status if it's not too long
             if len(last_line) < 50:
-                self.install_status.setText(f"Installing: {last_line}")
+                self.install_status.setText(tr("Installing: {line}").format(line=last_line))
             else:
-                self.install_status.setText("Installing...")
+                self.install_status.setText(tr("Installing..."))
                 
     def _handle_process_finished(self, exit_code, exit_status):
         """Handle install completion."""
         self.install_btn.setEnabled(True)
-        self.install_btn.setText(f"Install {GEMINI_INSTALL_PACKAGE}")
+        self.install_btn.setText(tr("Install {package}").format(package=GEMINI_INSTALL_PACKAGE))
         
         from qgis.core import QgsMessageLog, Qgis
         
         if exit_code == 0 and exit_status == QProcess.NormalExit:
-            self.install_status.setText("Installed")
+            self.install_status.setText(tr("Installed"))
             self.install_status.setStyleSheet("color: green; font-weight: bold;")
             QgsMessageLog.logMessage("ArcheoGlyph: Package installed successfully.", "ArcheoGlyph", Qgis.Success)
             
             QMessageBox.information(
                 self, 
-                "Success", 
-                "Package installed successfully!\n\n"
-                "Please RESTART QGIS to apply changes."
+                tr("Success"), 
+                tr("Package installed successfully!\n\n"
+                "Please RESTART QGIS to apply changes.")
             )
         else:
-            self.install_status.setText("Failed")
+            self.install_status.setText(tr("Failed"))
             self.install_status.setStyleSheet("color: red;")
             
             # Use the accumulated log: the streams were already drained while
@@ -2119,9 +2183,9 @@ class SettingsDialog(QDialog):
             # Show error details
             msg = QMessageBox(self)
             msg.setIcon(QMessageBox.Warning)
-            msg.setWindowTitle("Installation Failed")
-            msg.setText(f"Installation failed (Exit Code: {exit_code}).")
-            msg.setInformativeText("Check the 'ArcheoGlyph' tab in QGIS Log Messages panel for full details.")
+            msg.setWindowTitle(tr("Installation Failed"))
+            msg.setText(tr("Installation failed (Exit Code: {code}).").format(code=exit_code))
+            msg.setInformativeText(tr("Check the 'ArcheoGlyph' tab in QGIS Log Messages panel for full details."))
             msg.setDetailedText(full_log)
             copy_button = msg.addButton("Copy Command", QMessageBox.ActionRole)
             msg.addButton(QMessageBox.Ok)
@@ -2132,19 +2196,19 @@ class SettingsDialog(QDialog):
                 clipboard = QApplication.clipboard()
                 cmd = f'"{self._get_python_executable()}" -m pip install --user {GEMINI_INSTALL_PACKAGE}'
                 clipboard.setText(cmd)
-                QMessageBox.information(self, "Copied", "Command copied to clipboard!\nPaste it in your terminal.")
+                QMessageBox.information(self, tr("Copied"), tr("Command copied to clipboard!\nPaste it in your terminal."))
             
     def _handle_process_error(self, error):
         """Handle process start error."""
         self.install_btn.setEnabled(True)
-        self.install_btn.setText(f"Install {GEMINI_INSTALL_PACKAGE}")
-        self.install_status.setText("Error")
+        self.install_btn.setText(tr("Install {package}").format(package=GEMINI_INSTALL_PACKAGE))
+        self.install_status.setText(tr("Error"))
         self.install_status.setStyleSheet("color: red;")
         
         QMessageBox.warning(
             self,
-            "Process Error",
-            f"Failed to start installer.\nError code: {error}"
+            tr("Process Error"),
+            tr("Failed to start installer.\nError code: {error}").format(error=error)
         )
             
     def test_gemini_connection(self):
@@ -2154,16 +2218,16 @@ class SettingsDialog(QDialog):
         if not api_key:
             QMessageBox.warning(
                 self, 
-                "No API Key", 
-                "Please enter your API key first!\n\n"
+                tr("No API Key"), 
+                tr("Please enter your API key first!\n\n"
                 "If you don't have one:\n"
                 "1. Click 'Open Google AI Studio'\n"
                 "2. Sign in with Google\n"
-                "3. Create a new key"
+                "3. Create a new key")
             )
             return
             
-        self.gemini_test_result.setText("Testing...")
+        self.gemini_test_result.setText(tr("Testing..."))
         self.gemini_test_result.setStyleSheet("color: orange;")
         
         # Disable button during test
@@ -2181,44 +2245,48 @@ class SettingsDialog(QDialog):
             button.setEnabled(True)
             
         if success:
-            self.gemini_test_result.setText("Connected")
+            self.gemini_test_result.setText(tr("Connected"))
             self.gemini_test_result.setStyleSheet("color: green; font-weight: bold;")
             QMessageBox.information(
                 self,
-                "Success",
-                f"Connection successful!\n\n"
-                f"AI Response: {message[:100]}\n\n"
-                f"You're all set! Click 'Save Settings' and start generating symbols!"
+                tr("Success"),
+                tr(
+                    "Connection successful!\n\n"
+                    "AI Response: {response}\n\n"
+                    "You're all set! Click 'Save Settings' and start generating symbols!"
+                ).format(response=message[:100])
             )
         else:
             if "Package" in message:
-                self.gemini_test_result.setText("Package missing")
+                self.gemini_test_result.setText(tr("Package missing"))
                 self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(
                     self,
-                    "Package Not Installed",
-                    f"The {GEMINI_INSTALL_PACKAGE} package is not installed.\n\n"
-                    "Please:\n"
-                    "1. Complete Step 1 (Install Package)\n"
-                    "2. Restart QGIS\n"
-                    "3. Try again"
+                    tr("Package Not Installed"),
+                    tr(
+                        "The {package} package is not installed.\n\n"
+                        "Please:\n"
+                        "1. Complete Step 1 (Install Package)\n"
+                        "2. Restart QGIS\n"
+                        "3. Try again"
+                    ).format(package=GEMINI_INSTALL_PACKAGE)
                 )
             elif "API_KEY_INVALID" in message or "invalid" in message.lower():
-                self.gemini_test_result.setText("Invalid key")
+                self.gemini_test_result.setText(tr("Invalid key"))
                 self.gemini_test_result.setStyleSheet("color: red;")
                 QMessageBox.warning(
                     self, 
-                    "Invalid API Key", 
-                    "Your API key appears to be invalid.\n\n"
+                    tr("Invalid API Key"), 
+                    tr("Your API key appears to be invalid.\n\n"
                     "Please:\n"
                     "1. Go to Google AI Studio\n"
                     "2. Create a NEW API key\n"
-                    "3. Copy and paste it here"
+                    "3. Copy and paste it here")
                 )
             else:
-                self.gemini_test_result.setText("Failed")
+                self.gemini_test_result.setText(tr("Failed"))
                 self.gemini_test_result.setStyleSheet("color: red;")
-                QMessageBox.warning(self, "Connection Failed", f"Error: {message}")
+                QMessageBox.warning(self, tr("Connection Failed"), tr("Error: {message}").format(message=message))
 
     def test_sd_connection(self):
         """Test Stable Diffusion server connection."""
@@ -2228,7 +2296,7 @@ class SettingsDialog(QDialog):
             url = "http://127.0.0.1:7860"
             self.sd_url_input.setText(url)
             
-        self.sd_test_result.setText("Testing...")
+        self.sd_test_result.setText(tr("Testing..."))
         self.sd_test_result.setStyleSheet("color: orange;")
         QApplication.processEvents()
         
@@ -2242,28 +2310,32 @@ class SettingsDialog(QDialog):
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode())
-                    self.sd_test_result.setText(f"Connected ({len(data)} models)")
+                    self.sd_test_result.setText(tr("Connected ({count} models)").format(count=len(data)))
                     self.sd_test_result.setStyleSheet("color: green; font-weight: bold;")
                     QMessageBox.information(
                         self,
-                        "Success",
-                        f"Connected to Stable Diffusion!\n\n"
-                        f"Found {len(data)} model(s).\n\n"
-                        f"Don't forget to click 'Save Settings'!"
+                        tr("Success"),
+                        tr(
+                            "Connected to Stable Diffusion!\n\n"
+                            "Found {count} model(s).\n\n"
+                            "Don't forget to click 'Save Settings'!"
+                        ).format(count=len(data))
                     )
                     
         except Exception as e:
-            self.sd_test_result.setText("Not connected")
+            self.sd_test_result.setText(tr("Not connected"))
             self.sd_test_result.setStyleSheet("color: red;")
             QMessageBox.warning(
                 self,
-                "Connection Failed",
-                f"Cannot connect to: {url}\n\n"
-                f"Make sure:\n"
-                f"1. Stable Diffusion WebUI is running\n"
-                f"2. It was started with --api flag\n"
-                f"3. The URL is correct\n\n"
-                f"Error: {str(e)}"
+                tr("Connection Failed"),
+                tr(
+                    "Cannot connect to: {url}\n\n"
+                    "Make sure:\n"
+                    "1. Stable Diffusion WebUI is running\n"
+                    "2. It was started with --api flag\n"
+                    "3. The URL is correct\n\n"
+                    "Error: {error}"
+                ).format(url=url, error=str(e))
             )
 
 

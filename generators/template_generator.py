@@ -10,7 +10,18 @@ from qgis.PyQt.QtGui import QImage, QColor, QPainter, QPainterPath, QPolygonF, Q
 from qgis.PyQt.QtCore import Qt, QBuffer, QByteArray, QIODevice, QPointF, QRect, QRectF, QSize
 from qgis.PyQt.QtSvg import QSvgGenerator, QSvgRenderer
 
+from ..i18n import tr
 from ..log import log_exception
+
+
+def template_display_name(name):
+    """
+    The label to show for a template.
+
+    Template names are English identifiers: they key TEMPLATE_INFO, get stored
+    in settings and travel with saved projects. Only the label is translated.
+    """
+    return tr(name)
 
 
 class TemplateGenerator:

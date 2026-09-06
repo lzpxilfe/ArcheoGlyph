@@ -135,3 +135,92 @@ def test_settings_keys_written_by_the_ui_are_read_somewhere():
     # model_refresh_last_checked_utc is bookkeeping for the dialog itself.
     inert = [key for key in inert if not key.endswith("last_checked_utc")]
     assert not inert, f"settings written but never read: {inert}"
+
+
+def test_translated_combos_are_read_by_data_not_by_label():
+    """
+    A style or template chosen by its label breaks the moment the label is
+    translated: the value is what keys TEMPLATE_INFO and normalize_style.
+    """
+    source = (ROOT / "ui/main_dialog.py").read_text(encoding="utf-8-sig")
+    offenders = []
+    for combo in ("style_combo", "template_combo"):
+        for method in ("currentText()", "setCurrentText(", "findText("):
+            if f"{combo}.{method}" in source:
+                offenders.append(f"main_dialog.py uses {combo}.{method} instead of the item data")
+    assert not offenders, "\n".join(offenders)
+
+
+# Call sites whose string argument is shown to the user. Widened deliberately:
+# a false positive is a one-word fix, a missed string is an untranslated dialog.
+TRANSLATED_WIDGETS = {
+    "QLabel", "QPushButton", "QGroupBox", "QCheckBox", "QRadioButton",
+    "QAction", "QToolButton", "QCommandLinkButton",
+}
+TRANSLATED_METHODS = {
+    "setText", "setToolTip", "setWindowTitle", "setPlaceholderText", "setTitle",
+    "setStatusTip", "setWhatsThis", "setSuffix", "setPrefix", "setLabelText",
+    "setInformativeText", "setDetailedText",
+}
+# owner.method -> positional argument indices carrying user-facing text
+TRANSLATED_DIALOG_ARGS = {
+    ("QMessageBox", "warning"): (1, 2),
+    ("QMessageBox", "information"): (1, 2),
+    ("QMessageBox", "critical"): (1, 2),
+    ("QMessageBox", "question"): (1, 2),
+    ("QInputDialog", "getText"): (1, 2),
+    ("QFileDialog", "getOpenFileName"): (1,),
+    ("QFileDialog", "getSaveFileName"): (1,),
+    ("QFileDialog", "getExistingDirectory"): (1,),
+}
+
+
+def _untranslated_at_call_sites(path):
+    """Bare string literals at user-facing call sites, with their line."""
+    tree = ast.parse((ROOT / path).read_text(encoding="utf-8-sig"))
+    found = []
+
+    def check(node, why):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.strip():
+            found.append((node.lineno, why, node.value))
+        elif isinstance(node, ast.JoinedStr):
+            found.append((node.lineno, why, "<f-string>"))
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in TRANSLATED_WIDGETS and node.args:
+            check(node.args[0], func.id)
+        elif isinstance(func, ast.Attribute):
+            key = (getattr(func.value, "id", None), func.attr)
+            if key in TRANSLATED_DIALOG_ARGS:
+                for index in TRANSLATED_DIALOG_ARGS[key]:
+                    if index < len(node.args):
+                        check(node.args[index], f"{key[0]}.{key[1]} arg{index}")
+            elif func.attr == "addItem" and node.args:
+                check(node.args[0], "addItem")
+            elif func.attr == "addItems" and node.args:
+                if isinstance(node.args[0], (ast.List, ast.Tuple)):
+                    for element in node.args[0].elts:
+                        check(element, "addItems")
+            elif func.attr == "addTab" and len(node.args) > 1:
+                check(node.args[1], "addTab")
+            elif func.attr in TRANSLATED_METHODS and node.args:
+                check(node.args[0], func.attr)
+    return found
+
+
+def test_every_user_facing_string_goes_through_tr():
+    """
+    A literal at a user-facing call site is a string that will show in English
+    inside a translated dialog. f-strings are flagged too: they cannot be
+    translated at all and must become tr("...{name}...").format(name=...).
+    """
+    problems = []
+    for path in DIALOGS + ["archeoglyph.py"]:
+        for line, why, text in _untranslated_at_call_sites(path):
+            problems.append(f"{path}:{line} ({why}) {text[:60]!r} is not inside tr(...)")
+    assert not problems, (
+        "user-facing strings that bypass translation:\n" + "\n".join(problems)
+    )

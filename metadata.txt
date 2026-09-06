@@ -2,11 +2,14 @@
 name=ArchaeoGlyph
 qgisMinimumVersion=3.0
 description=Archaeological Symbol Generator - Generate factual, map-ready symbols from artifact images
+description[ko]=고고학 심볼 생성기 - 유물 사진과 실측도로 지도에 바로 쓸 수 있는 심볼을 만듭니다
 version=0.2.0
 author=lzpxilfe (balguljang2)
 email=balguljang2@gmail.com
 
 about=ArchaeoGlyph helps archaeologists create factual, standardized symbols for GIS maps. Drop in an artifact photo or a measured drawing and generate map-ready SVG symbols using Auto Trace, AI (Google Gemini, Hugging Face, or local Stable Diffusion), or built-in templates. Symbols are recolourable in QGIS, and features include style controls (Simple Symbol/Line/Measured), optional background-removal models, target layer selection, graduated sizing, and direct symbol library integration.
+
+about[ko]=ArchaeoGlyph는 고고학 조사 결과를 GIS 지도에 표현할 때 쓰는 표준 심볼을 만들어 줍니다. 유물 사진이나 실측도·탁본을 넣으면 자동 추적, AI(Google Gemini, Hugging Face, 로컬 Stable Diffusion), 또는 내장 템플릿으로 지도용 SVG 심볼을 생성합니다. 생성된 심볼은 QGIS에서 색을 바꿀 수 있고, 표현 방식(단순 심볼·선묘·실측도) 선택, 배경 제거 모델, 대상 레이어 지정, 단계별 크기 조정, 심볼 라이브러리 연동을 지원합니다. UI는 QGIS 언어 설정에 따라 한국어로 표시됩니다.
 
 tracker=https://github.com/lzpxilfe/ArcheoGlyph/issues
 repository=https://github.com/lzpxilfe/ArcheoGlyph.git

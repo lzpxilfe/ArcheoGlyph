@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 ArcheoGlyph - Main Dialog UI
 """
@@ -23,7 +23,9 @@ from ..defaults import (
     DEFAULT_MIN_SYMBOL_SIZE_MM,
     PLUGIN_VERSION,
 )
+from ..i18n import apply_settings_language, tr
 from ..generators.style_utils import STYLE_LEGEND, STYLE_OPTIONS
+from ..generators.template_generator import template_display_name
 from ..generators.symbol_result import SymbolResult
 from ..generators.style_control_utils import (
     STYLE_CONTROL_DEFAULTS,
@@ -98,7 +100,7 @@ class ImageDropArea(QLabel):
                 background-color: #e8f0fe;
             }
         """)
-        self.setText("Drop Image Here\nor Click to Browse")
+        self.setText(tr("Drop Image Here\nor Click to Browse"))
         self.image_path = None
         self._source_pixmap = None
         self.color_picking_mode = False
@@ -144,7 +146,7 @@ class ImageDropArea(QLabel):
         """Open file dialog to select image."""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Select Artifact Image",
+            tr("Select Artifact Image"),
             "",
             "Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp)"
         )
@@ -204,7 +206,7 @@ class ImageDropArea(QLabel):
         self.image_path = None
         self._source_pixmap = None
         self.clear()
-        self.setText("Drop Image Here\nor Click to Browse")
+        self.setText(tr("Drop Image Here\nor Click to Browse"))
 
 
 class PreviewLabel(QLabel):
@@ -222,7 +224,7 @@ class PreviewLabel(QLabel):
                 background-color: white;
             }
         """)
-        self.setText("Preview")
+        self.setText(tr("Preview"))
         self.generated_image = None
         
     def set_preview(self, pixmap_or_path):
@@ -263,6 +265,9 @@ class ArcheoGlyphDialog(QDialog):
     
     def __init__(self, iface, parent=None):
         super().__init__(parent)
+        # Pick up the language before any widget text is built. Changing it
+        # takes effect the next time the dialog is opened.
+        apply_settings_language()
         self.iface = iface
         self.settings = QSettings()
         self.plugin_dir = os.path.dirname(os.path.dirname(__file__))
@@ -279,7 +284,11 @@ class ArcheoGlyphDialog(QDialog):
         
     def setup_ui(self):
         """Initialize the user interface."""
-        self.setWindowTitle(f"ArchaeoGlyph v{self.plugin_version} - Symbol Generator")
+        self.setWindowTitle(
+            tr("ArchaeoGlyph v{version} - Symbol Generator").format(
+                version=self.plugin_version
+            )
+        )
         self.setMinimumSize(680, 560)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
@@ -294,21 +303,21 @@ class ArcheoGlyphDialog(QDialog):
         left_panel.setSpacing(10)
         
         # Image drop area
-        input_group = QGroupBox("Input Image")
+        input_group = QGroupBox(tr("Input Image"))
         input_layout = QVBoxLayout(input_group)
         input_layout.setSpacing(6)
         self.image_drop = ImageDropArea()
         self.image_drop.imageDropped.connect(self.on_image_loaded)
         self.image_drop.colorPicked.connect(self.set_current_color)
         self.image_drop.setToolTip(
-            "Use a representative photo of the artifact or archaeological feature.\n"
-            "Clean backgrounds produce better silhouettes and internal detail lines."
+            tr("Use a representative photo of the artifact or archaeological feature.\n"
+            "Clean backgrounds produce better silhouettes and internal detail lines.")
         )
         input_layout.addWidget(self.image_drop, alignment=Qt.AlignCenter)
         
         # Photo tip label
         tip_label = QLabel(
-            "<i>Tip: Use a clear photo with a clean background for best results.</i>"
+            tr("<i>Tip: Use a clear photo with a clean background for best results.</i>")
         )
         tip_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px;")
         tip_label.setWordWrap(True)
@@ -323,13 +332,13 @@ class ArcheoGlyphDialog(QDialog):
         self.image_quality_hint_label.setVisible(False)
         input_layout.addWidget(self.image_quality_hint_label)
         
-        clear_btn = QPushButton("Clear")
+        clear_btn = QPushButton(tr("Clear"))
         clear_btn.clicked.connect(self.clear_input)
         input_layout.addWidget(clear_btn)
         left_panel.addWidget(input_group)
         
         # Preview area
-        preview_group = QGroupBox("Generated Symbol")
+        preview_group = QGroupBox(tr("Generated Symbol"))
         preview_layout = QVBoxLayout(preview_group)
         self.preview_label = PreviewLabel()
         preview_layout.addWidget(self.preview_label, alignment=Qt.AlignCenter)
@@ -362,15 +371,15 @@ class ArcheoGlyphDialog(QDialog):
         # --- Add groups to scroll_layout instead of right_panel ---
         
         # Generation mode
-        mode_group = QGroupBox("Generation Mode")
+        mode_group = QGroupBox(tr("Generation Mode"))
         mode_layout = QVBoxLayout(mode_group)
         
         self.mode_button_group = QButtonGroup(self)
-        self.autotrace_radio = QRadioButton("Auto Trace")
-        self.gemini_radio = QRadioButton("AI (Google Gemini)")
-        self.hf_radio = QRadioButton("AI (Hugging Face)")
-        self.local_radio = QRadioButton("AI (Local Stable Diffusion)")
-        self.template_radio = QRadioButton("Use Template")
+        self.autotrace_radio = QRadioButton(tr("Auto Trace"))
+        self.gemini_radio = QRadioButton(tr("AI (Google Gemini)"))
+        self.hf_radio = QRadioButton(tr("AI (Hugging Face)"))
+        self.local_radio = QRadioButton(tr("AI (Local Stable Diffusion)"))
+        self.template_radio = QRadioButton(tr("Use Template"))
         
         self.autotrace_radio.setChecked(True)
         self.mode_button_group.addButton(self.autotrace_radio, 0)
@@ -400,7 +409,7 @@ class ArcheoGlyphDialog(QDialog):
         scroll_layout.addWidget(mode_group)
         
         # Style selection
-        self.style_group = QGroupBox("Style")
+        self.style_group = QGroupBox(tr("Style"))
         style_layout = QVBoxLayout(self.style_group)
         style_tabs = QTabWidget()
 
@@ -408,31 +417,34 @@ class ArcheoGlyphDialog(QDialog):
         basic_layout = QVBoxLayout(basic_tab)
 
         self.style_combo = QComboBox()
-        self.style_combo.addItems(STYLE_OPTIONS)
+        for style_value in STYLE_OPTIONS:
+            # The label may be translated; the data stays the canonical
+            # English value the generators expect.
+            self.style_combo.addItem(tr(style_value), style_value)
         self.style_combo.setToolTip(
-            "Simple Symbol uses a two-tone fill with bold outlines for readable distribution maps."
+            tr("Simple Symbol uses a two-tone fill with bold outlines for readable distribution maps.")
         )
         basic_layout.addWidget(self.style_combo)
 
-        self.legend_quick_btn = QPushButton("Simple Symbol Quick Setup")
+        self.legend_quick_btn = QPushButton(tr("Simple Symbol Quick Setup"))
         self.legend_quick_btn.setToolTip(
-            "Applies a stable preset to turn photos into simple map symbols."
+            tr("Applies a stable preset to turn photos into simple map symbols.")
         )
         self.legend_quick_btn.clicked.connect(self._apply_legend_quick_setup)
         basic_layout.addWidget(self.legend_quick_btn)
 
-        self.fast_quick_btn = QPushButton("Fast Convert Setup")
+        self.fast_quick_btn = QPushButton(tr("Fast Convert Setup"))
         self.fast_quick_btn.setToolTip(
-            "Applies speed-priority settings for quick conversion."
+            tr("Applies speed-priority settings for quick conversion.")
         )
         self.fast_quick_btn.clicked.connect(self._apply_fast_convert_setup)
         basic_layout.addWidget(self.fast_quick_btn)
 
         # Symmetry checkbox
-        self.symmetry_check = QCheckBox("Mirror symmetry")
+        self.symmetry_check = QCheckBox(tr("Mirror symmetry"))
         self.symmetry_check.setChecked(False)
         self.symmetry_check.setToolTip(
-            "Produces a bilaterally symmetrical symbol by mirroring the contour."
+            tr("Produces a bilaterally symmetrical symbol by mirroring the contour.")
         )
         basic_layout.addWidget(self.symmetry_check)
 
@@ -447,14 +459,14 @@ class ArcheoGlyphDialog(QDialog):
         if input_kind_default not in ("auto", "photo", "drawing"):
             input_kind_default = "auto"
         input_kind_row = QHBoxLayout()
-        input_kind_row.addWidget(QLabel("Input type:"))
+        input_kind_row.addWidget(QLabel(tr("Input type:")))
         self.input_kind_combo = QComboBox()
-        self.input_kind_combo.addItem("Auto detect", "auto")
-        self.input_kind_combo.addItem("Photograph", "photo")
-        self.input_kind_combo.addItem("Drawing / rubbing", "drawing")
+        self.input_kind_combo.addItem(tr("Auto detect"), "auto")
+        self.input_kind_combo.addItem(tr("Photograph"), "photo")
+        self.input_kind_combo.addItem(tr("Drawing / rubbing"), "drawing")
         self.input_kind_combo.setToolTip(
-            "Drawings and rubbings are traced from their ink strokes; photographs\n"
-            "go through background removal first."
+            tr("Drawings and rubbings are traced from their ink strokes; photographs\n"
+            "go through background removal first.")
         )
         idx = self.input_kind_combo.findData(input_kind_default)
         self.input_kind_combo.setCurrentIndex(idx if idx >= 0 else 0)
@@ -462,21 +474,21 @@ class ArcheoGlyphDialog(QDialog):
         input_kind_row.addWidget(self.input_kind_combo, 1)
         basic_layout.addLayout(input_kind_row)
 
-        self.synthetic_structure_check = QCheckBox("Add schematic structure lines")
+        self.synthetic_structure_check = QCheckBox(tr("Add schematic structure lines"))
         self.synthetic_structure_check.setChecked(
             self.settings.value("ArcheoGlyph/autotrace_synthetic_structure", False, type=bool)
         )
         self.synthetic_structure_check.setToolTip(
-            "Off by default: only lines observed in the image are drawn.\n"
-            "Enable to add conventional rim/shoulder, centre and terminal lines."
+            tr("Off by default: only lines observed in the image are drawn.\n"
+            "Enable to add conventional rim/shoulder, centre and terminal lines.")
         )
         self.synthetic_structure_check.toggled.connect(self._on_synthetic_structure_toggled)
         basic_layout.addWidget(self.synthetic_structure_check)
 
-        self.autotrace_upscale_check = QCheckBox("Low-res detail boost (upscale)")
+        self.autotrace_upscale_check = QCheckBox(tr("Low-res detail boost (upscale)"))
         self.autotrace_upscale_check.setChecked(bool(upscale_default))
         self.autotrace_upscale_check.setToolTip(
-            "Auto Trace only. Aggressively upscales low-resolution images before contour analysis."
+            tr("Auto Trace only. Aggressively upscales low-resolution images before contour analysis.")
         )
         self.autotrace_upscale_check.toggled.connect(self._on_autotrace_upscale_toggled)
         basic_layout.addWidget(self.autotrace_upscale_check)
@@ -488,10 +500,10 @@ class ArcheoGlyphDialog(QDialog):
             detail_mode_default = "fast"
 
         detail_mode_row = QHBoxLayout()
-        detail_mode_row.addWidget(QLabel("Auto Trace quality:"))
+        detail_mode_row.addWidget(QLabel(tr("Auto Trace quality:")))
         self.autotrace_detail_mode_combo = QComboBox()
-        self.autotrace_detail_mode_combo.addItem("Fast (speed priority)", "fast")
-        self.autotrace_detail_mode_combo.addItem("Precise (detail priority)", "precise")
+        self.autotrace_detail_mode_combo.addItem(tr("Fast (speed priority)"), "fast")
+        self.autotrace_detail_mode_combo.addItem(tr("Precise (detail priority)"), "precise")
         detail_idx = self.autotrace_detail_mode_combo.findData(detail_mode_default)
         if detail_idx < 0:
             detail_idx = 1
@@ -508,11 +520,11 @@ class ArcheoGlyphDialog(QDialog):
         if round_strategy_default not in ("image_first", "hybrid", "structure_first"):
             round_strategy_default = "image_first"
         round_strategy_row = QHBoxLayout()
-        round_strategy_row.addWidget(QLabel("Round artifact mode:"))
+        round_strategy_row.addWidget(QLabel(tr("Round artifact mode:")))
         self.round_strategy_combo = QComboBox()
-        self.round_strategy_combo.addItem("Image-first (recommended)", "image_first")
-        self.round_strategy_combo.addItem("Hybrid (rescue on failure)", "hybrid")
-        self.round_strategy_combo.addItem("Structure-first (stable)", "structure_first")
+        self.round_strategy_combo.addItem(tr("Image-first (recommended)"), "image_first")
+        self.round_strategy_combo.addItem(tr("Hybrid (rescue on failure)"), "hybrid")
+        self.round_strategy_combo.addItem(tr("Structure-first (stable)"), "structure_first")
         round_strategy_idx = self.round_strategy_combo.findData(round_strategy_default)
         if round_strategy_idx < 0:
             round_strategy_idx = 0
@@ -523,13 +535,13 @@ class ArcheoGlyphDialog(QDialog):
         round_strategy_row.addWidget(self.round_strategy_combo, 1)
         basic_layout.addLayout(round_strategy_row)
         basic_layout.addStretch()
-        style_tabs.addTab(basic_tab, "Basic")
+        style_tabs.addTab(basic_tab, tr("Basic"))
 
         params_tab = QWidget()
         params_layout = QVBoxLayout(params_tab)
 
         params_hint = QLabel(
-            "Adjust expression balance for symbol output."
+            tr("Adjust expression balance for symbol output.")
         )
         params_hint.setWordWrap(True)
         params_hint.setStyleSheet("color: #666; font-size: 11px;")
@@ -537,11 +549,11 @@ class ArcheoGlyphDialog(QDialog):
         controls = resolve_style_controls(self.settings)
 
         factual_layout = QHBoxLayout()
-        factual_layout.addWidget(QLabel("Factuality:"))
+        factual_layout.addWidget(QLabel(tr("Factuality:")))
         self.factuality_slider = QSlider(Qt.Horizontal)
         self.factuality_slider.setRange(STYLE_CONTROL_MIN, STYLE_CONTROL_MAX)
         self.factuality_slider.setValue(int(controls[STYLE_CONTROL_FACTUALITY]))
-        self.factuality_slider.setToolTip("0 = expressive symbol, 100 = measured/documentary.")
+        self.factuality_slider.setToolTip(tr("0 = expressive symbol, 100 = measured/documentary."))
         self.factuality_slider.valueChanged.connect(self._on_style_params_changed)
         factual_layout.addWidget(self.factuality_slider)
         self.factuality_value_label = QLabel(str(STYLE_CONTROL_DEFAULTS[STYLE_CONTROL_FACTUALITY]))
@@ -550,11 +562,11 @@ class ArcheoGlyphDialog(QDialog):
         params_layout.addLayout(factual_layout)
 
         symbolic_layout = QHBoxLayout()
-        symbolic_layout.addWidget(QLabel("Symbol Looseness:"))
+        symbolic_layout.addWidget(QLabel(tr("Symbol Looseness:")))
         self.symbolic_looseness_slider = QSlider(Qt.Horizontal)
         self.symbolic_looseness_slider.setRange(STYLE_CONTROL_MIN, STYLE_CONTROL_MAX)
         self.symbolic_looseness_slider.setValue(int(controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS]))
-        self.symbolic_looseness_slider.setToolTip("0 = tight measured shape, 100 = loose symbolic simplification.")
+        self.symbolic_looseness_slider.setToolTip(tr("0 = tight measured shape, 100 = loose symbolic simplification."))
         self.symbolic_looseness_slider.valueChanged.connect(self._on_style_params_changed)
         symbolic_layout.addWidget(self.symbolic_looseness_slider)
         self.symbolic_looseness_value_label = QLabel(str(STYLE_CONTROL_DEFAULTS[STYLE_CONTROL_SYMBOLIC_LOOSENESS]))
@@ -563,11 +575,11 @@ class ArcheoGlyphDialog(QDialog):
         params_layout.addLayout(symbolic_layout)
 
         exaggeration_layout = QHBoxLayout()
-        exaggeration_layout.addWidget(QLabel("Exaggeration:"))
+        exaggeration_layout.addWidget(QLabel(tr("Exaggeration:")))
         self.exaggeration_slider = QSlider(Qt.Horizontal)
         self.exaggeration_slider.setRange(STYLE_CONTROL_MIN, STYLE_CONTROL_MAX)
         self.exaggeration_slider.setValue(int(controls[STYLE_CONTROL_EXAGGERATION]))
-        self.exaggeration_slider.setToolTip("0 = none, 100 = strong stylization and simplified emphasis.")
+        self.exaggeration_slider.setToolTip(tr("0 = none, 100 = strong stylization and simplified emphasis."))
         self.exaggeration_slider.valueChanged.connect(self._on_style_params_changed)
         exaggeration_layout.addWidget(self.exaggeration_slider)
         self.exaggeration_value_label = QLabel(str(STYLE_CONTROL_DEFAULTS[STYLE_CONTROL_EXAGGERATION]))
@@ -575,18 +587,18 @@ class ArcheoGlyphDialog(QDialog):
         exaggeration_layout.addWidget(self.exaggeration_value_label)
         params_layout.addLayout(exaggeration_layout)
         params_layout.addStretch()
-        style_tabs.addTab(params_tab, "Parameters")
+        style_tabs.addTab(params_tab, tr("Parameters"))
 
         style_layout.addWidget(style_tabs)
         scroll_layout.addWidget(self.style_group)
         self._update_style_param_labels()
         
         # Template selection (initially hidden)
-        self.template_group = QGroupBox("Template Type")
+        self.template_group = QGroupBox(tr("Template Type"))
         template_layout = QVBoxLayout(self.template_group)
 
         category_row = QHBoxLayout()
-        category_row.addWidget(QLabel("Category:"))
+        category_row.addWidget(QLabel(tr("Category:")))
         self.template_category_combo = QComboBox()
         for value, label in self.TEMPLATE_CATEGORY_LABELS:
             self.template_category_combo.addItem(label, value)
@@ -595,7 +607,7 @@ class ArcheoGlyphDialog(QDialog):
         template_layout.addLayout(category_row)
 
         self.template_search_input = QLineEdit()
-        self.template_search_input.setPlaceholderText("Filter templates (e.g., dagger, tomb, survey)")
+        self.template_search_input.setPlaceholderText(tr("Filter templates (e.g., dagger, tomb, survey)"))
         self.template_search_input.textChanged.connect(self._refresh_template_list)
         template_layout.addWidget(self.template_search_input)
 
@@ -627,13 +639,13 @@ class ArcheoGlyphDialog(QDialog):
         scroll_layout.addWidget(self.template_group)
         
         # Color settings
-        color_group = QGroupBox("Color")
+        color_group = QGroupBox(tr("Color"))
         color_layout = QVBoxLayout(color_group) # Changed to QVBoxLayout for better density
         
         # Row 1: Checkbox
-        self.override_color_check = QCheckBox("Override Color")
+        self.override_color_check = QCheckBox(tr("Override Color"))
         self.override_color_check.setChecked(False) # Default: Use extracted/natural color
-        self.override_color_check.setToolTip("If unchecked, the symbol will use the artifact's natural colors.")
+        self.override_color_check.setToolTip(tr("If unchecked, the symbol will use the artifact's natural colors."))
         color_layout.addWidget(self.override_color_check)
         
         # Row 2: Picker controls
@@ -644,11 +656,11 @@ class ArcheoGlyphDialog(QDialog):
         self.update_color_preview()
         picker_layout.addWidget(self.color_preview)
         
-        self.color_btn = QPushButton("Pick Color")
+        self.color_btn = QPushButton(tr("Pick Color"))
         self.color_btn.clicked.connect(self.pick_color)
         picker_layout.addWidget(self.color_btn)
         
-        self.eyedrop_btn = QPushButton("Pick from Image")
+        self.eyedrop_btn = QPushButton(tr("Pick from Image"))
         self.eyedrop_btn.setCheckable(True)
         self.eyedrop_btn.toggled.connect(self.toggle_picking_mode)
         picker_layout.addWidget(self.eyedrop_btn)
@@ -669,30 +681,30 @@ class ArcheoGlyphDialog(QDialog):
         scroll_layout.addWidget(color_group)
         
         # Size settings
-        size_group = QGroupBox("Size Scaling")
+        size_group = QGroupBox(tr("Size Scaling"))
         size_layout = QVBoxLayout(size_group)
         
         size_mode_layout = QHBoxLayout()
-        size_mode_layout.addWidget(QLabel("Mode:"))
+        size_mode_layout.addWidget(QLabel(tr("Mode:")))
         self.size_mode_combo = QComboBox()
         self.size_mode_combo.addItems([
-            "Fixed Size",
-            "By Data Count (Natural Breaks)",
-            "By Data Count (Equal Interval)",
-            "By Data Count (Quantile)"
+            tr("Fixed Size"),
+            tr("By Data Count (Natural Breaks)"),
+            tr("By Data Count (Equal Interval)"),
+            tr("By Data Count (Quantile)")
         ])
         self.size_mode_combo.currentIndexChanged.connect(self._on_size_mode_changed)
         size_mode_layout.addWidget(self.size_mode_combo)
         size_layout.addLayout(size_mode_layout)
 
         minmax_layout = QHBoxLayout()
-        minmax_layout.addWidget(QLabel("Min:"))
+        minmax_layout.addWidget(QLabel(tr("Min:")))
         self.min_size_spin = QSpinBox()
         self.min_size_spin.setRange(2, 128)
         self.min_size_spin.setValue(int(DEFAULT_MIN_SYMBOL_SIZE_MM))
         minmax_layout.addWidget(self.min_size_spin)
         
-        minmax_layout.addWidget(QLabel("Max:"))
+        minmax_layout.addWidget(QLabel(tr("Max:")))
         self.max_size_spin = QSpinBox()
         self.max_size_spin.setRange(2, 256)
         self.max_size_spin.setValue(int(DEFAULT_MAX_SYMBOL_SIZE_MM))
@@ -700,44 +712,44 @@ class ArcheoGlyphDialog(QDialog):
         size_layout.addLayout(minmax_layout)
 
         size_field_layout = QHBoxLayout()
-        size_field_layout.addWidget(QLabel("Size Field:"))
+        size_field_layout.addWidget(QLabel(tr("Size Field:")))
         self.size_field_combo = QComboBox()
         self.size_field_combo.setToolTip(
-            "Choose a numeric attribute for graduated size. "
-            "Use Auto to pick the first numeric field."
+            tr("Choose a numeric attribute for graduated size. "
+            "Use Auto to pick the first numeric field.")
         )
-        self.size_field_combo.addItem("Auto (first numeric field)", "")
+        self.size_field_combo.addItem(tr("Auto (first numeric field)"), "")
         size_field_layout.addWidget(self.size_field_combo, 1)
         size_layout.addLayout(size_field_layout)
 
         class_layout = QHBoxLayout()
-        class_layout.addWidget(QLabel("Classes:"))
+        class_layout.addWidget(QLabel(tr("Classes:")))
         self.class_count_spin = QSpinBox()
         self.class_count_spin.setRange(2, 12)
         self.class_count_spin.setValue(int(DEFAULT_GRADUATED_CLASSES))
-        self.class_count_spin.setToolTip("Number of size classes for graduated rendering.")
+        self.class_count_spin.setToolTip(tr("Number of size classes for graduated rendering."))
         class_layout.addWidget(self.class_count_spin)
         class_layout.addStretch()
         size_layout.addLayout(class_layout)
         scroll_layout.addWidget(size_group)
 
         # Target layer selection
-        layer_group = QGroupBox("Target Layer")
+        layer_group = QGroupBox(tr("Target Layer"))
         layer_layout = QHBoxLayout(layer_group)
         self.layer_combo = QComboBox()
-        self.layer_combo.setToolTip("Choose the point layer that will receive the generated symbol.")
+        self.layer_combo.setToolTip(tr("Choose the point layer that will receive the generated symbol."))
         self.layer_combo.currentIndexChanged.connect(self._refresh_size_field_list)
         layer_layout.addWidget(self.layer_combo, 1)
-        refresh_layers_btn = QPushButton("Refresh")
+        refresh_layers_btn = QPushButton(tr("Refresh"))
         refresh_layers_btn.clicked.connect(self.refresh_layer_list)
         layer_layout.addWidget(refresh_layers_btn)
         scroll_layout.addWidget(layer_group)
 
         # Prompt input (for AI modes)
-        self.prompt_group = QGroupBox("Text Prompt")
+        self.prompt_group = QGroupBox(tr("Text Prompt"))
         prompt_layout = QVBoxLayout(self.prompt_group)
         self.prompt_input = QLineEdit()
-        self.prompt_input.setPlaceholderText("Enter a description for the icon (e.g., 'ancient pottery shard')")
+        self.prompt_input.setPlaceholderText(tr("Enter a description for the icon (e.g., 'ancient pottery shard')"))
         prompt_layout.addWidget(self.prompt_input)
         self.prompt_group.setVisible(False) # Hidden by default
         scroll_layout.addWidget(self.prompt_group)
@@ -756,7 +768,7 @@ class ArcheoGlyphDialog(QDialog):
         # Action buttons (Fixed at bottom, outside scroll)
         button_layout = QHBoxLayout()
         
-        self.generate_btn = QPushButton("Generate")
+        self.generate_btn = QPushButton(tr("Generate"))
         self.generate_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4a90d9;
@@ -775,24 +787,24 @@ class ArcheoGlyphDialog(QDialog):
         self.generate_btn.clicked.connect(self.generate_symbol)
         button_layout.addWidget(self.generate_btn)
 
-        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn = QPushButton(tr("Cancel"))
         self.cancel_btn.setEnabled(False)
-        self.cancel_btn.setToolTip("Stop the running generation.")
+        self.cancel_btn.setToolTip(tr("Stop the running generation."))
         self.cancel_btn.clicked.connect(self.cancel_generation)
         button_layout.addWidget(self.cancel_btn)
         
-        self.save_btn = QPushButton("Save to Library")
+        self.save_btn = QPushButton(tr("Save to Library"))
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self.save_to_library)
         button_layout.addWidget(self.save_btn)
         
-        self.apply_btn = QPushButton("Apply to Layer")
+        self.apply_btn = QPushButton(tr("Apply to Layer"))
         self.apply_btn.setEnabled(False)
         self.apply_btn.clicked.connect(self.apply_to_layer)
         button_layout.addWidget(self.apply_btn)
         
         # Settings button
-        settings_btn = QPushButton("Settings")
+        settings_btn = QPushButton(tr("Settings"))
         settings_btn.clicked.connect(self.open_settings)
         button_layout.addWidget(settings_btn)
         
@@ -840,15 +852,15 @@ class ArcheoGlyphDialog(QDialog):
         # Update placeholder based on mode
         if button == self.hf_radio:
              self.prompt_input.setPlaceholderText(
-                 "Optional: style note (e.g., 'typology plate icon with clear shoulder line')"
+                 tr("Optional: style note (e.g., 'typology plate icon with clear shoulder line')")
              )
         elif button == self.gemini_radio:
              self.prompt_input.setPlaceholderText(
-                 "Optional: factual note (e.g., 'preserve chips and asymmetry, no decorative background')"
+                 tr("Optional: factual note (e.g., 'preserve chips and asymmetry, no decorative background')")
              )
         elif button == self.local_radio:
              self.prompt_input.setPlaceholderText(
-                 "Optional: local SD prompt hint (e.g., 'flat archaeological icon, muted tones')"
+                 tr("Optional: local SD prompt hint (e.g., 'flat archaeological icon, muted tones')")
              )
 
     def update_color_preview(self):
@@ -890,9 +902,18 @@ class ArcheoGlyphDialog(QDialog):
             strategy = "image_first"
         self.settings.setValue("ArcheoGlyph/round_strategy", strategy)
 
+    def selected_style(self):
+        """
+        The canonical English style value behind the combo's label.
+
+        The label is translated; the generators are not, so everything that
+        passes a style onwards must go through here.
+        """
+        return self.style_combo.currentData() or STYLE_LEGEND
+
     def _apply_legend_quick_setup(self):
         """Apply a practical legend-like preset without requiring special terminology."""
-        style_idx = self.style_combo.findText(STYLE_LEGEND)
+        style_idx = self.style_combo.findData(STYLE_LEGEND)
         if style_idx >= 0:
             self.style_combo.setCurrentIndex(style_idx)
 
@@ -1025,9 +1046,9 @@ class ArcheoGlyphDialog(QDialog):
         """Toggle the cursor and mode for color picking."""
         self.image_drop.set_picking_mode(checked)
         if checked:
-            self.eyedrop_btn.setText("Click Image to Pick")
+            self.eyedrop_btn.setText(tr("Click Image to Pick"))
         else:
-            self.eyedrop_btn.setText("Pick from Image")
+            self.eyedrop_btn.setText(tr("Pick from Image"))
 
     def set_current_color(self, color):
         """Set color from picker."""
@@ -1045,7 +1066,7 @@ class ArcheoGlyphDialog(QDialog):
              # HF mode needs prompt (checked later), but doesn't strictly need an image
              pass
         elif not self.template_radio.isChecked() and not self.image_drop.image_path:
-            QMessageBox.warning(self, "No Image", "Please select an input image first.")
+            QMessageBox.warning(self, tr("No Image"), tr("Please select an input image first."))
             return
             
         self.progress_bar.setVisible(True)
@@ -1082,7 +1103,7 @@ class ArcheoGlyphDialog(QDialog):
                     round_strategy = "image_first"
                 kwargs = {
                     'image_path': self.image_drop.image_path,
-                    'style': self.style_combo.currentText(),
+                    'style': self.selected_style(),
                     'color': selected_color,
                     'symmetry': self.symmetry_check.isChecked(),
                     'force_lowres_upscale': self.autotrace_upscale_check.isChecked(),
@@ -1102,7 +1123,7 @@ class ArcheoGlyphDialog(QDialog):
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'prompt': prompt,
-                    'style': self.style_combo.currentText(),
+                    'style': self.selected_style(),
                     'color': selected_color,
                     'symmetry': self.symmetry_check.isChecked(),
                     STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
@@ -1118,17 +1139,17 @@ class ArcheoGlyphDialog(QDialog):
 
                 if prompt:
                     self.mode_info_label.setText(
-                        "HF custom prompt active: text guidance will influence stylization."
+                        tr("HF custom prompt active: text guidance will influence stylization.")
                     )
                 else:
                     self.mode_info_label.setText(
-                        "HF default factual guidance active."
+                        tr("HF default factual guidance active.")
                     )
                     prompt = "archaeological artifact from reference photo"
 
                 kwargs = {
                     'prompt': prompt,
-                    'style': self.style_combo.currentText(),
+                    'style': self.selected_style(),
                     'color': selected_color,
                     'image_path': self.image_drop.image_path,
                     'symmetry': self.symmetry_check.isChecked(),
@@ -1145,7 +1166,7 @@ class ArcheoGlyphDialog(QDialog):
                 kwargs = {
                     'image_path': self.image_drop.image_path,
                     'prompt': prompt,
-                    'style': self.style_combo.currentText(),
+                    'style': self.selected_style(),
                     'color': selected_color,
                     STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
                     STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
@@ -1156,9 +1177,9 @@ class ArcheoGlyphDialog(QDialog):
                 self._current_generator = TemplateGenerator(self.plugin_dir)
                 target_func = self._current_generator.generate
                 source_label = "template"
-                template_name = self.template_combo.currentText()
-                if not template_name or template_name == "No templates match current filter":
-                    QMessageBox.warning(self, "No Template", "Adjust template filters and select a valid template.")
+                template_name = self.template_combo.currentData()
+                if not template_name:
+                    QMessageBox.warning(self, tr("No Template"), tr("Adjust template filters and select a valid template."))
                     self.progress_bar.setVisible(False)
                     self.progress_bar.setRange(0, 100)
                     self.generate_btn.setEnabled(True)
@@ -1170,7 +1191,7 @@ class ArcheoGlyphDialog(QDialog):
             
             if target_func:
                 self.generation_thread = GenerationThread(
-                    target_func, source_label, self.style_combo.currentText(), **kwargs
+                    target_func, source_label, self.selected_style(), **kwargs
                 )
                 self.generation_thread.result_ready.connect(self.on_generation_finished)
                 self.generation_thread.start()
@@ -1198,19 +1219,22 @@ class ArcheoGlyphDialog(QDialog):
             if "quota exceeded" in lower or "resourceexhausted" in lower:
                 QMessageBox.critical(
                     self,
-                    "Quota Exceeded",
-                    "Google Gemini quota is currently exhausted for this API key/project.\n\n"
+                    tr("Quota Exceeded"),
+                    tr("Google Gemini quota is currently exhausted for this API key/project.\n\n"
                     "Actions:\n"
                     "1. Wait for quota reset and retry.\n"
                     "2. Use Auto Trace or Hugging Face in the meantime.\n"
-                    "3. Check quota/billing in Google AI Studio."
+                    "3. Check quota/billing in Google AI Studio.")
                 )
                 return
-            QMessageBox.critical(self, "Error", f"Generation failed: {message}")
+            QMessageBox.critical(
+                    self, tr("Error"),
+                    tr("Generation failed: {message}").format(message=message),
+                )
             return
             
         if result is None or result.is_empty:
-            QMessageBox.warning(self, "Failed", "Generation returned no result.")
+            QMessageBox.warning(self, tr("Failed"), tr("Generation returned no result."))
             return
 
         if not result.is_vector and result.raster_png:
@@ -1225,7 +1249,7 @@ class ArcheoGlyphDialog(QDialog):
 
         pixmap = self._result_to_pixmap(result)
         if pixmap is None or pixmap.isNull():
-            QMessageBox.warning(self, "Failed", "Generated symbol could not be rendered.")
+            QMessageBox.warning(self, tr("Failed"), tr("Generated symbol could not be rendered."))
             return
 
         self.current_result = result
@@ -1306,11 +1330,11 @@ class ArcheoGlyphDialog(QDialog):
     def save_to_library(self):
         """Save generated symbol to the QGIS symbol library."""
         if self.current_result is None:
-            QMessageBox.warning(self, "No Symbol", "Please generate a symbol first.")
+            QMessageBox.warning(self, tr("No Symbol"), tr("Please generate a symbol first."))
             return
 
         name, ok = QInputDialog.getText(
-            self, "Save to Library", "Symbol name:", text="ArchaeoGlyph Symbol"
+            self, tr("Save to Library"), tr("Symbol name:"), text="ArchaeoGlyph Symbol"
         )
         if not ok:
             return
@@ -1319,20 +1343,23 @@ class ArcheoGlyphDialog(QDialog):
 
         final_name = SymbolManager().save_to_library(self.current_result, name=name)
         if final_name:
-            QMessageBox.information(self, "Saved", f"Symbol saved to QGIS library as '{final_name}'.")
+            QMessageBox.information(
+                    self, tr("Saved"),
+                    tr("Symbol saved to QGIS library as '{name}'.").format(name=final_name),
+                )
         else:
-            QMessageBox.warning(self, "Error", "Failed to save symbol. See the ArchaeoGlyph message log.")
+            QMessageBox.warning(self, tr("Error"), tr("Failed to save symbol. See the ArchaeoGlyph message log."))
 
     def apply_to_layer(self):
         """Apply generated symbol to current layer."""
         layer = self._get_selected_layer()
         
         if not layer:
-            QMessageBox.warning(self, "No Layer", "Please choose a point layer in Target Layer.")
+            QMessageBox.warning(self, tr("No Layer"), tr("Please choose a point layer in Target Layer."))
             return
             
         if self.current_result is None:
-            QMessageBox.warning(self, "No Symbol", "Please generate a symbol first.")
+            QMessageBox.warning(self, tr("No Symbol"), tr("Please generate a symbol first."))
             return
             
         from ..symbol_manager import SymbolManager
@@ -1357,10 +1384,13 @@ class ArcheoGlyphDialog(QDialog):
         )
         
         if success:
-            QMessageBox.information(self, "Applied", f"Symbol applied to layer: {layer.name()}")
+            QMessageBox.information(
+                    self, tr("Applied"),
+                    tr("Symbol applied to layer: {layer}").format(layer=layer.name()),
+                )
             layer.triggerRepaint()
         else:
-            QMessageBox.warning(self, "Error", "Failed to apply symbol to layer. See the ArchaeoGlyph message log.")
+            QMessageBox.warning(self, tr("Error"), tr("Failed to apply symbol to layer. See the ArchaeoGlyph message log."))
             
     def open_settings(self):
         """Open the settings dialog."""
@@ -1453,7 +1483,7 @@ class ArcheoGlyphDialog(QDialog):
         point_layers.sort(key=lambda layer: layer.name().lower())
 
         if not point_layers:
-            self.layer_combo.addItem("No point layers available", "")
+            self.layer_combo.addItem(tr("No point layers available"), "")
             self.layer_combo.setEnabled(False)
             self.layer_combo.blockSignals(False)
             self._refresh_size_field_list()
@@ -1496,7 +1526,7 @@ class ArcheoGlyphDialog(QDialog):
         if not hasattr(self, "template_combo"):
             return
 
-        selected_text = self.template_combo.currentText() if self.template_combo.count() else ""
+        selected = self.template_combo.currentData() if self.template_combo.count() else None
         category = self.template_category_combo.currentData() if hasattr(self, "template_category_combo") else "all"
         query = self.template_search_input.text().strip().lower() if hasattr(self, "template_search_input") else ""
 
@@ -1508,14 +1538,19 @@ class ArcheoGlyphDialog(QDialog):
         if query:
             filtered = [name for name in filtered if query in name.lower()]
 
-        if not filtered:
-            filtered = ["No templates match current filter"]
-
         self.template_combo.blockSignals(True)
         self.template_combo.clear()
-        self.template_combo.addItems(filtered)
-        if selected_text and selected_text in filtered:
-            self.template_combo.setCurrentText(selected_text)
+        if filtered:
+            for name in filtered:
+                # Canonical English name as data: it keys TEMPLATE_INFO and is
+                # what gets stored, so translating the label is safe.
+                self.template_combo.addItem(template_display_name(name), name)
+            if selected and selected in filtered:
+                self.template_combo.setCurrentIndex(self.template_combo.findData(selected))
+        else:
+            # No match: an item with no data, so callers see an empty selection
+            # instead of comparing against a sentence.
+            self.template_combo.addItem(tr("No templates match current filter"), None)
         self.template_combo.blockSignals(False)
 
     def _on_size_mode_changed(self, index):
@@ -1533,7 +1568,7 @@ class ArcheoGlyphDialog(QDialog):
         previous = self.size_field_combo.currentData()
         self.size_field_combo.blockSignals(True)
         self.size_field_combo.clear()
-        self.size_field_combo.addItem("Auto (first numeric field)", "")
+        self.size_field_combo.addItem(tr("Auto (first numeric field)"), "")
 
         layer = self._get_selected_layer()
         if layer:
