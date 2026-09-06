@@ -192,7 +192,11 @@ class SamBackend:
                     arr_v = value.detach().cpu().numpy()
                 else:
                     arr_v = np.asarray(value)
-            except Exception:
+            except Exception as e:
+                # SAM then contributes nothing and Auto Trace falls back
+                # silently, which reads as "SAM did not help" rather than
+                # "SAM could not be read".
+                log_exception("Could not read the masks SAM returned", e)
                 return []
             if arr_v is None:
                 return []
@@ -218,7 +222,8 @@ class SamBackend:
                     arr_s = value.detach().cpu().numpy()
                 else:
                     arr_s = np.asarray(value)
-            except Exception:
+            except Exception as e:
+                log_exception("Could not read the mask scores SAM returned", e)
                 return []
             if arr_s is None:
                 return []

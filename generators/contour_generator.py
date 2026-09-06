@@ -29,6 +29,7 @@ from .autotrace.model_store import DEFAULT_MODEL_KEY, installed_model
 from .autotrace.pipeline import run_autotrace
 from .autotrace.sam_backend import SamBackend
 from .autotrace.segment import OnnxSalientBackend, normalize_backend, onnx_available, select_mask
+from ..log import log, log_exception
 
 EMPTY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"></svg>'
 
@@ -228,9 +229,13 @@ class ContourGenerator:
         """Black-on-white silhouette PNG bytes for AI guidance, or None."""
         try:
             bgr, mask = self.analyze(image_path)
-        except Exception:
+        except Exception as e:
+            # Without this the AI backends simply get no guidance image and
+            # produce a looser symbol, with nothing to say why.
+            log_exception("Could not build the silhouette guide for AI generation", e)
             return None
         if bgr is None or mask is None:
+            log("No silhouette guide: the image produced no usable mask.")
             return None
         out_img = np.full((bgr.shape[0], bgr.shape[1], 3), 255, dtype=np.uint8)
         out_img[mask == 255] = [0, 0, 0]
@@ -241,12 +246,15 @@ class ContourGenerator:
         """Ink centreline constraint image bytes for AI guidance, or None."""
         try:
             from .ink_centerline import render_ink_constraint_bytes
-        except ImportError:
+        except ImportError as e:
+            log_exception("Ink centreline is unavailable, so AI gets no line guide", e)
             return None
         try:
             bgr, mask = self.analyze(image_path)
             if bgr is None or mask is None:
+                log("No ink guide: the image produced no usable mask.")
                 return None
             return render_ink_constraint_bytes(bgr, mask=mask, fmt=fmt)
-        except Exception:
+        except Exception as e:
+            log_exception("Could not build the ink guide for AI generation", e)
             return None

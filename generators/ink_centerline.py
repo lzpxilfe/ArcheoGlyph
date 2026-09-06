@@ -32,6 +32,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from ..log import log_exception
+
 try:
     import cv2 as _cv2
 except ImportError:  # pragma: no cover
@@ -629,7 +631,10 @@ def render_ink_constraint_image(
             silhouette_color=silhouette_color, line_thickness=line_thickness,
             silhouette_thickness=silhouette_thickness,
         )
-    except Exception:
+    except Exception as e:
+        # The AI backends fall back to the plain photo when this returns None,
+        # so a failure here quietly costs line fidelity.
+        log_exception("Could not render the ink guide", e)
         return None
 
 
