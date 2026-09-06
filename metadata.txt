@@ -3,7 +3,7 @@ name=ArchaeoGlyph
 qgisMinimumVersion=3.0
 description=Archaeological Symbol Generator - Generate factual, map-ready symbols from artifact images
 description[ko]=고고학 심볼 생성기 - 유물 사진과 실측도로 지도에 바로 쓸 수 있는 심볼을 만듭니다
-version=0.2.0
+version=0.2.1
 author=lzpxilfe (balguljang2)
 email=balguljang2@gmail.com
 
@@ -15,6 +15,16 @@ tracker=https://github.com/lzpxilfe/ArcheoGlyph/issues
 repository=https://github.com/lzpxilfe/ArcheoGlyph.git
 
 changelog=
+    0.2.1 - Korean UI and Korean archaeology templates
+        * The interface, help text and template names are available in Korean,
+          following the QGIS locale with a manual override in Settings
+        * 85 new templates for Korean archaeology: burials, settlement,
+          production and defence features, ceramics, stone/bronze/iron
+          implements, ornaments and roof tiles (188 templates in total)
+        * Style and template combos now carry their canonical English value as
+          item data, so translating a label cannot change what is generated
+        * Every template is exercised by tests that check it draws inside the
+          tile and fills enough of it to read at marker size
     0.2.0 - Vector output, factual Auto Trace, working AI backends
         * Symbols are produced as SVG markers with param(fill)/param(outline)
           and stored in the QGIS profile, so they stay sharp and recolourable

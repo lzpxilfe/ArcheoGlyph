@@ -2,7 +2,7 @@
 
 Archaeological Symbol Generator for QGIS.
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.1-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.0+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -107,11 +107,33 @@ python -m pip install google-genai                          # Gemini backend
 
 ## Template Coverage
 
-Programmatic fallback templates include:
+188 built-in templates, all drawn in code as parametrised SVG so QGIS can
+recolour them. Filter the list by category or search it by name; the search
+matches the shown name, so a Korean list is searchable in Korean.
+
+Korean archaeology (85 templates), following the category scheme of
+한국고고학사전:
+- Burials — 지석묘 세 형식, 석관묘, 석곽묘, 목관묘, 목곽묘, 옹관묘, 적석목곽분,
+  횡혈식석실분, 봉토분, 주구묘, 토광묘
+- Settlement, production and defence — 수혈주거지 네 형식, 굴립주건물, 부뚜막, 온돌,
+  토기·기와·숯가마, 제철유구, 논, 밭, 토성, 석성, 산성, 목책, 환호, 봉수, 집수정
+- Ceramics — 빗살무늬토기, 민무늬토기, 붉은간토기, 검은간토기, 와질토기, 경질토기,
+  굽다리접시, 항아리, 시루, 청자, 분청사기, 백자, 옹기
+- Stone, bronze and iron — 주먹도끼, 찍개, 슴베찌르개, 좀돌날몸돌, 간돌검, 반달돌칼,
+  돌괭이, 갈판갈돌, 돌화살촉, 어망추, 다뉴조문경, 다뉴세문경, 청동방울, 동탁,
+  철검, 철모, 철촉, 철부, 따비, 철겸, 판갑, 찰갑, 재갈, 등자, 철정
+- Ornaments, tiles and other finds — 곡옥, 관옥, 유리구슬, 금귀걸이, 금관, 대금구,
+  목간, 수막새, 암막새, 전돌, 벼루, 토우, 치미, 초석
+
+Also included:
 - Bronze weapon symbols (`Bronze Sword`, `Bronze Dagger-axe`, `Bronze Spear`)
 - Kofun variants (including `Enpun`, `Zenpokouen`, `Hotategai`, `Hofun`, `Yosumi`, etc.)
 - Paper-style map/report symbols (`North Arrow`, `Scale Bar`, `Harris Matrix Context`, `Stratigraphic Unit`)
 - Pottery section snippets (`Rim/Base/Body Sherd`)
+
+The symbols are original drawings. Only the published category scheme of
+한국고고학사전 is used as a reference; its plates and photographs are the copyright
+of 국립문화유산연구원 and are not reproduced or bundled.
 
 ## Performance Tips
 
