@@ -129,21 +129,24 @@ def _paint_attrs(brush, pen, closed=True):
     colour = pen.color()
     attrs.append(f'stroke="{colour.hex()}"')
     attrs.append(f'stroke-width="{_n(pen.width)}"')
-    attrs.append('stroke-linejoin="round"')
-    attrs.append('stroke-linecap="round"')
+    joins = {"RoundJoin": "round", "BevelJoin": "bevel", "MiterJoin": "miter"}
+    caps = {"RoundCap": "round", "SquareCap": "square", "FlatCap": "butt"}
+    attrs.append(f'stroke-linejoin="{joins.get(pen.join, "miter")}"')
+    attrs.append(f'stroke-linecap="{caps.get(pen.cap, "butt")}"')
     dashes = pen.dash_array()
     if dashes:
         attrs.append(f'stroke-dasharray="{dashes}"')
     return " ".join(attrs)
 
 
-def _element(kind, payload, brush, pen):
+def _element(kind, payload, brush, pen, clip_id=None):
+    clip = f' clip-path="url(#{clip_id})"' if clip_id else ""
     if kind == "path":
         data = _path_data(payload)
         if not data:
             return ""
         rule = ' fill-rule="evenodd"' if payload.subtracted_from else ""
-        return f'<path d="{data}" {_paint_attrs(brush, pen)}{rule}/>'
+        return f'<path d="{data}" {_paint_attrs(brush, pen)}{rule}{clip}/>'
     if kind == "polygon":
         points = " ".join(f"{_n(x)},{_n(y)}" for x, y in payload.pairs)
         return f'<polygon points="{points}" {_paint_attrs(brush, pen)}/>'
@@ -152,20 +155,20 @@ def _element(kind, payload, brush, pen):
         return (
             f'<rect x="{_n(r.left())}" y="{_n(r.top())}" '
             f'width="{_n(r.width())}" height="{_n(r.height())}" '
-            f'{_paint_attrs(brush, pen)}/>'
+            f'{_paint_attrs(brush, pen)}{clip}/>'
         )
     if kind == "ellipse":
         r = payload
         return (
             f'<ellipse cx="{_n(r.center().x())}" cy="{_n(r.center().y())}" '
             f'rx="{_n(r.width() / 2.0)}" ry="{_n(r.height() / 2.0)}" '
-            f'{_paint_attrs(brush, pen)}/>'
+            f'{_paint_attrs(brush, pen)}{clip}/>'
         )
     if kind == "line":
         c = payload
         return (
             f'<line x1="{_n(c[0])}" y1="{_n(c[1])}" x2="{_n(c[2])}" y2="{_n(c[3])}" '
-            f'{_paint_attrs(brush, pen, closed=False)}/>'
+            f'{_paint_attrs(brush, pen, closed=False)}{clip}/>'
         )
     if kind == "point":
         c = payload
@@ -210,7 +213,22 @@ def render(name, colour):
         for attr, value in saved.items():
             setattr(tg, attr, value)
 
-    return "".join(_element(*call) for call in painter.calls)
+    # Clipped detail needs a <clipPath> per distinct silhouette.
+    clips, defs = {}, []
+    parts = []
+    for kind, payload, brush, pen, clip in painter.calls:
+        clip_id = None
+        if clip is not None:
+            key = id(clip)
+            if key not in clips:
+                clips[key] = f"clip{len(clips)}-{abs(hash(name)) % 99999}"
+                defs.append(
+                    f'<clipPath id="{clips[key]}"><path d="{_path_data(clip)}"/></clipPath>'
+                )
+            clip_id = clips[key]
+        parts.append(_element(kind, payload, brush, pen, clip_id))
+    head = f"<defs>{''.join(defs)}</defs>" if defs else ""
+    return head + "".join(parts)
 
 
 # ---------------------------------------------------------------- the page

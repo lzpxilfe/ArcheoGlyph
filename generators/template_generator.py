@@ -15,6 +15,59 @@ from ..log import log_exception
 from . import template_catalog
 
 
+# -- House style -----------------------------------------------------------
+#
+# These symbols are markers on a map, read at 5-10 mm. At that size a hairline
+# disappears and a mitred corner turns into a speck, which is what makes a
+# drawing look scratchy rather than drawn. Every stroke in this module goes
+# through _pen() so the whole catalogue is drawn in one hand.
+
+DETAIL_WIDTH = 3.0      # internal lines: section marks, hatching, decoration
+OUTLINE_WIDTH = 4.8     # the silhouette and anything that carries the shape
+
+
+def _weight(width):
+    """Lift a requested stroke width onto the house steps."""
+    width = float(width)
+    if width <= 2.0:
+        return DETAIL_WIDTH
+    if width <= 3.4:
+        return OUTLINE_WIDTH
+    return width * 1.3      # a deliberately heavy stroke stays heavy
+
+
+def _clip_detail(painter, *paths):
+    """
+    Confine internal detail to the silhouette it belongs to.
+
+    Hatching, burnish marks and section lines are laid out from a bounding
+    box rather than from the curve, so without this they run past the edge of
+    the shape - which is what makes a symbol look unfinished. Pair every call
+    with painter.restore().
+    """
+    outline = QPainterPath()
+    for path in paths:
+        outline.addPath(path)
+    painter.save()
+    painter.setClipPath(outline)
+
+
+def _pen(color, width=1.0, style=None):
+    """
+    A stroke in the house style: round, weighted, and darker than its fill.
+
+    Callers pass the colour they mean and the relative weight they mean; the
+    deepening and the rounding are applied here so they cannot drift between
+    the 59 drawing methods.
+    """
+    pen = QPen(QColor(color).darker(140), _weight(width))
+    if style is not None:
+        pen.setStyle(style)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    return pen
+
+
 def template_display_name(name):
     """
     The label to show for a template.
@@ -455,7 +508,7 @@ class TemplateGenerator:
         """
         q_color = QColor(color)
         painter.setBrush(q_color)
-        painter.setPen(QPen(q_color.darker(130), 2.0))
+        painter.setPen(_pen(q_color, 2.6))
         m = 25  # margin
 
         name, extra = self._resolve_draw(template_type)
@@ -490,17 +543,18 @@ class TemplateGenerator:
 
         old_pen = painter.pen()
         old_brush = painter.brush()
-        line_pen = QPen(old_pen.color().darker(140), 1.1)
+        line_pen = _pen(old_pen.color().darker(140), 1.1)
+        _clip_detail(painter, p)
         painter.setPen(line_pen)
         painter.setBrush(Qt.NoBrush)
 
-        # Split-profile convention used in ceramic illustration.
+        # Split-profile convention used in ceramic illustration: the centre
+        # line, the rim and the base. The section hatching that used to fill
+        # the left half reads as scribble once the symbol is map-sized.
         painter.drawLine(int(cx), int(m + 24), int(cx), int(s - m - 2))
         painter.drawLine(int(cx - 24), int(m + 30), int(cx + 24), int(m + 30))
         painter.drawLine(int(cx - 44), int(s - m - 8), int(cx + 44), int(s - m - 8))
-        for i in range(6):
-            y = int(m + 50 + (i * 24))
-            painter.drawLine(int(cx - 46 + (i % 2) * 4), y, int(cx - 12), y + 8)
+        painter.restore()
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
@@ -509,8 +563,8 @@ class TemplateGenerator:
         """Section-style ceramic sherd snippets used in typology figures."""
         old_pen = painter.pen()
         old_brush = painter.brush()
-        edge_pen = QPen(color.darker(145), 2.0)
-        hatch_pen = QPen(color.darker(165), 1.0)
+        edge_pen = _pen(color.darker(145), 2.0)
+        hatch_pen = _pen(color.darker(165), 1.0)
         painter.setPen(edge_pen)
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 95))
 
@@ -537,13 +591,15 @@ class TemplateGenerator:
             path.closeSubpath()
         painter.drawPath(path)
 
+        _clip_detail(painter, path)
         painter.setPen(hatch_pen)
         painter.setBrush(Qt.NoBrush)
-        for i in range(7):
-            x = int(m + 36 + i * 26)
+        for i in range(5):
+            x = int(m + 48 + i * 34)
             y1 = int(m + 60 + (i % 3) * 14)
             y2 = int(s - m - 28 - (i % 2) * 10)
             painter.drawLine(x - 9, y1, x + 8, y2)
+        painter.restore()
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
@@ -560,7 +616,7 @@ class TemplateGenerator:
 
         cx = s / 2.0
         old_pen = painter.pen()
-        scar_pen = QPen(old_pen.color().darker(145), 1.0)
+        scar_pen = _pen(old_pen.color().darker(145), 1.0)
         painter.setPen(scar_pen)
         painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 12))
         for i in range(4):
@@ -600,7 +656,7 @@ class TemplateGenerator:
         """Coin — double circle with cross."""
         painter.drawEllipse(m + 10, m + 10, s - 2*m - 20, s - 2*m - 20)
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(color.darker(150), 2.5))
+        painter.setPen(_pen(color.darker(150), 2.5))
         inner = 35
         painter.drawEllipse(m + inner, m + inner, s - 2*m - 2*inner, s - 2*m - 2*inner)
         cx, cy = s/2, s/2
@@ -636,7 +692,7 @@ class TemplateGenerator:
         p.closeSubpath()
         painter.drawPath(p)
         old_pen = painter.pen()
-        ridge_pen = QPen(old_pen.color().darker(130), 1.25)
+        ridge_pen = _pen(old_pen.color().darker(130), 1.25)
         painter.setPen(ridge_pen)
         painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 8))
         painter.setPen(old_pen)
@@ -646,7 +702,7 @@ class TemplateGenerator:
         old_pen = painter.pen()
         old_brush = painter.brush()
         cx = s / 2.0
-        painter.setPen(QPen(color.darker(170), 2.2))
+        painter.setPen(_pen(color.darker(170), 2.2))
         painter.setBrush(color)
 
         path = QPainterPath()
@@ -686,7 +742,7 @@ class TemplateGenerator:
             path.closeSubpath()
 
         painter.drawPath(path)
-        painter.setPen(QPen(color.darker(185), 1.3))
+        painter.setPen(_pen(color.darker(185), 1.3))
         painter.setBrush(Qt.NoBrush)
         ridge_bottom = int(s - m - 22 if variant == "sword" else s - m - 20)
         painter.drawLine(int(cx), int(m + 14), int(cx), ridge_bottom)
@@ -726,7 +782,7 @@ class TemplateGenerator:
         painter.drawPolygon(QPolygonF(polygon_points))
 
         old_pen = painter.pen()
-        ridge_pen = QPen(old_pen.color().darker(135), 1.20)
+        ridge_pen = _pen(old_pen.color().darker(135), 1.20)
         painter.setPen(ridge_pen)
         painter.drawLine(int(cx), int(top + (height * 0.08)), int(cx), int(bottom + 8))
 
@@ -777,7 +833,7 @@ class TemplateGenerator:
 
         # Midrib line for legibility in typology-like symbols.
         old_pen = painter.pen()
-        painter.setPen(QPen(old_pen.color().darker(135), 1.1))
+        painter.setPen(_pen(old_pen.color().darker(135), 1.1))
         painter.drawLine(int(cx), int(top + 6), int(cx), int(bottom - 6))
         painter.setPen(old_pen)
 
@@ -812,7 +868,7 @@ class TemplateGenerator:
             old_brush = painter.brush()
             old_pen = painter.pen()
             moat_width = 8.0 if variant == "moat" else 5.0
-            moat_pen = QPen(color.lighter(135), moat_width)
+            moat_pen = _pen(color.lighter(135), moat_width)
             painter.setPen(moat_pen)
             painter.setBrush(Qt.NoBrush)
 
@@ -828,7 +884,7 @@ class TemplateGenerator:
             painter.drawPath(moat_path)
 
             if variant == "makinokuchi":
-                painter.setPen(QPen(old_pen.color().darker(125), 1.0))
+                painter.setPen(_pen(old_pen.color().darker(125), 1.0))
                 painter.drawLine(int(cx - 26), int(join_y + 12), int(cx + 26), int(join_y + 12))
                 painter.drawLine(int(cx - 30), int(join_y + 24), int(cx + 30), int(join_y + 24))
 
@@ -839,7 +895,7 @@ class TemplateGenerator:
 
         if variant in ("stepped", "fukiishi", "tsumishizuka"):
             old_pen = painter.pen()
-            step_pen = QPen(old_pen.color().darker(130), 1.1)
+            step_pen = _pen(old_pen.color().darker(130), 1.1)
             painter.setPen(step_pen)
             for i in range(3):
                 y = int(join_y + 14 + (i * 16))
@@ -862,7 +918,7 @@ class TemplateGenerator:
         """Kofun plan-view variants for regional map symbols."""
         old_pen = painter.pen()
         old_brush = painter.brush()
-        painter.setPen(QPen(color.darker(160), 2.0))
+        painter.setPen(_pen(color.darker(160), 2.0))
         painter.setBrush(color)
 
         cx = s / 2.0
@@ -871,7 +927,7 @@ class TemplateGenerator:
         elif variant == "makimuku_en":
             self._draw_keyhole_tomb(painter, s, m, "normal", color)
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(color.darker(175), 1.2))
+            painter.setPen(_pen(color.darker(175), 1.2))
             painter.drawLine(int(cx - 24), int(s * 0.55), int(cx + 24), int(s * 0.55))
             painter.drawLine(int(cx - 30), int(s * 0.63), int(cx + 30), int(s * 0.63))
         elif variant == "enpun":
@@ -915,7 +971,7 @@ class TemplateGenerator:
             p.closeSubpath()
             painter.drawPath(p)
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(color.darker(178), 1.2))
+            painter.setPen(_pen(color.darker(178), 1.2))
             painter.drawLine(int(cx - 30), int(s * 0.62), int(cx + 30), int(s * 0.62))
         elif variant == "yosumi":
             p = QPainterPath()
@@ -1012,7 +1068,7 @@ class TemplateGenerator:
         p.closeSubpath()
         painter.drawPath(p)
         old_pen = painter.pen()
-        hatch_pen = QPen(old_pen.color().darker(140), 1.0)
+        hatch_pen = _pen(old_pen.color().darker(140), 1.0)
         painter.setPen(hatch_pen)
         span = float(s - (2 * m) - 36)
         for i in range(8):
@@ -1091,7 +1147,7 @@ class TemplateGenerator:
         painter.drawRect(s - m - 24 - post_w, top_y, post_w, bottom_y - top_y)
         painter.drawRect(m + 16, m + 16, s - 2 * m - 32, 24)
         painter.setBrush(Qt.NoBrush)
-        arch_pen = QPen(old_pen.color().darker(130), 1.4)
+        arch_pen = _pen(old_pen.color().darker(130), 1.4)
         painter.setPen(arch_pen)
         painter.drawArc(m + 40, top_y + 10, s - 2 * m - 80, 70, 0, 180 * 16)
         painter.setBrush(old_brush)
@@ -1121,7 +1177,7 @@ class TemplateGenerator:
         """Workshop icon: dwelling body + crossed tool cue."""
         self._draw_dwelling(painter, s, m)
         old_pen = painter.pen()
-        tool_pen = QPen(old_pen.color().darker(145), 1.8)
+        tool_pen = _pen(old_pen.color().darker(145), 1.8)
         painter.setPen(tool_pen)
         cx = s / 2
         y = int(s * 0.6)
@@ -1133,7 +1189,7 @@ class TemplateGenerator:
     def _draw_pit(self, painter, s, m, color):
         """Pit — dashed circle."""
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 60))
-        pen = QPen(color.darker(120), 2.5, Qt.DashLine)
+        pen = _pen(color.darker(120), 2.5, Qt.DashLine)
         painter.setPen(pen)
         painter.drawEllipse(m + 20, m + 20, s - 2*m - 40, s - 2*m - 40)
         # Cross inside
@@ -1158,9 +1214,9 @@ class TemplateGenerator:
         solid = QColor(color)
         fill = QColor(color.red(), color.green(), color.blue(), 110)
         faint = QColor(color.red(), color.green(), color.blue(), 55)
-        edge = QPen(color.darker(150), 2.6)
-        thin = QPen(color.darker(165), 1.4)
-        dashed = QPen(color.darker(140), 2.0, Qt.DashLine)
+        edge = _pen(color.darker(150), 2.6)
+        thin = _pen(color.darker(165), 1.4)
+        dashed = _pen(color.darker(140), 2.0, Qt.DashLine)
         cx = s / 2.0
         ground = s - m - 34
 
@@ -1389,9 +1445,9 @@ class TemplateGenerator:
         solid = QColor(color)
         fill = QColor(color.red(), color.green(), color.blue(), 110)
         faint = QColor(color.red(), color.green(), color.blue(), 55)
-        edge = QPen(color.darker(150), 2.6)
-        thin = QPen(color.darker(165), 1.4)
-        dashed = QPen(color.darker(140), 2.0, Qt.DashLine)
+        edge = _pen(color.darker(150), 2.6)
+        thin = _pen(color.darker(165), 1.4)
+        dashed = _pen(color.darker(140), 2.0, Qt.DashLine)
         cx, cy = s / 2.0, s / 2.0
         ground = s - m - 34
 
@@ -1574,7 +1630,7 @@ class TemplateGenerator:
             # 논: level plots divided by levees, with the water inlet.
             painter.setBrush(fill)
             painter.drawRect(QRectF(m, m + 14, s - 2 * m, s - 2 * m - 28))
-            painter.setPen(QPen(color.darker(150), 3.4))
+            painter.setPen(_pen(color.darker(150), 3.4))
             painter.setBrush(Qt.NoBrush)
             for i in range(1, 3):
                 y = int(m + 14 + i * (s - 2 * m - 28) / 3.0)
@@ -1591,7 +1647,7 @@ class TemplateGenerator:
             # 밭: ridge and furrow.
             painter.setBrush(fill)
             painter.drawRect(QRectF(m, m + 20, s - 2 * m, s - 2 * m - 40))
-            painter.setPen(QPen(color.darker(155), 3.0))
+            painter.setPen(_pen(color.darker(155), 3.0))
             for i in range(6):
                 x = int(m + 16 + i * (s - 2 * m - 32) / 5.0)
                 painter.drawLine(x, int(m + 26), x, int(s - m - 26))
@@ -1657,7 +1713,7 @@ class TemplateGenerator:
                 contour.moveTo(m + inset, s - m - 10)
                 contour.quadTo(cx, m + 10 + i * 34, s - m - inset, s - m - 10)
                 painter.drawPath(contour)
-            painter.setPen(QPen(color.darker(150), 4.0))
+            painter.setPen(_pen(color.darker(150), 4.0))
             wall = QPainterPath()
             wall.moveTo(m + 6, s - m - 10)
             wall.quadTo(cx, m - 12, s - m - 6, s - m - 10)
@@ -1683,7 +1739,7 @@ class TemplateGenerator:
                 post.lineTo(x - 13, m + 46)
                 post.closeSubpath()
                 painter.drawPath(post)
-            painter.setPen(QPen(color.darker(160), 3.4))
+            painter.setPen(_pen(color.darker(160), 3.4))
             painter.drawLine(int(m + 4), int(m + 80), int(s - m - 4), int(m + 80))
             painter.setPen(thin)
             painter.drawLine(int(m - 6), int(ground + 6), int(s - m + 6), int(ground + 6))
@@ -1720,7 +1776,7 @@ class TemplateGenerator:
             painter.drawPath(base)
             painter.setBrush(solid)
             painter.drawRect(QRectF(cx - 32, cy - 26, 64, 32))
-            painter.setPen(QPen(color.darker(150), 3.4))
+            painter.setPen(_pen(color.darker(150), 3.4))
             painter.setBrush(Qt.NoBrush)
             smoke = QPainterPath()
             smoke.moveTo(cx, cy - 30)
@@ -1739,7 +1795,7 @@ class TemplateGenerator:
             basin.lineTo(m + 40, ground + 10)
             basin.closeSubpath()
             painter.drawPath(basin)
-            painter.setPen(QPen(color.darker(150), 3.0))
+            painter.setPen(_pen(color.darker(150), 3.0))
             painter.setBrush(Qt.NoBrush)
             for i in range(3):
                 y = int(m + 74 + i * 26)
@@ -1767,8 +1823,8 @@ class TemplateGenerator:
         """
         old_pen, old_brush = painter.pen(), painter.brush()
         solid = QColor(color)
-        edge = QPen(color.darker(150), 2.6)
-        thin = QPen(color.darker(170), 1.3)
+        edge = _pen(color.darker(150), 2.6)
+        thin = _pen(color.darker(170), 1.3)
         cx = s / 2.0
         top, bottom = m + 6, s - m - 6
 
@@ -1784,14 +1840,18 @@ class TemplateGenerator:
             body.quadTo(cx, bottom + 6, cx - 12, bottom)
             body.closeSubpath()
             painter.drawPath(body)
+            _clip_detail(painter, body)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            for row in range(5):
-                y = top + 18 + row * 30
-                half = 70 - row * 12
-                for i in range(5):
-                    x = cx - half + (2.0 * half / 4.0) * i
-                    painter.drawLine(int(x), int(y), int(x + 10), int(y + 14))
+            # Four rows read as comb impressions; the twenty-five the shape
+            # could hold turn into mud once the symbol is map-sized.
+            for row in range(4):
+                y = top + 30 + row * 34
+                half = 64 - row * 13
+                for i in range(4):
+                    x = cx - half + (2.0 * half / 3.0) * i
+                    painter.drawLine(int(x), int(y), int(x + 9), int(y + 15))
+            painter.restore()
 
         elif variant == "plain_coarse":
             # 민무늬토기: a deep flat-based vessel, undecorated.
@@ -1801,9 +1861,11 @@ class TemplateGenerator:
             body.quadTo(cx + 62, s * 0.5, cx + 68, top)
             body.closeSubpath()
             painter.drawPath(body)
+            _clip_detail(painter, body)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(int(cx - 66), int(top + 16), int(cx + 66), int(top + 16))
+            painter.restore()
 
         elif variant == "red_burnished":
             # 붉은간토기: a globular jar with a short everted neck.
@@ -1815,11 +1877,13 @@ class TemplateGenerator:
             body.quadTo(cx + 34, top + 18, cx + 26, top)
             body.closeSubpath()
             painter.drawPath(body)
+            _clip_detail(painter, body)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
             for i in range(4):
                 x = cx - 46 + i * 22
                 painter.drawLine(int(x), int(s * 0.42), int(x + 16), int(s * 0.62))
+            painter.restore()
 
         elif variant == "black_burnished":
             # 검은간토기: the tall-necked burnished jar.
@@ -1847,11 +1911,13 @@ class TemplateGenerator:
             body.quadTo(cx + 40, top + 28, cx + 34, top + 10)
             body.closeSubpath()
             painter.drawPath(body)
+            _clip_detail(painter, body)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            for i in range(6):
-                x = cx - 60 + i * 24
-                painter.drawLine(int(x), int(s * 0.46), int(x + 18), int(s * 0.68))
+            for i in range(4):
+                x = cx - 48 + i * 30
+                painter.drawLine(int(x), int(s * 0.46), int(x + 18), int(s * 0.66))
+            painter.restore()
 
         elif variant == "gyeongjil":
             # 경질토기: a hard-fired jar on a ring foot, paddled.
@@ -1952,7 +2018,7 @@ class TemplateGenerator:
             body.lineTo(cx + 16, top)
             body.closeSubpath()
             painter.drawPath(body)
-            painter.setPen(QPen(color.lighter(155), 4.0))
+            painter.setPen(_pen(color.lighter(155), 4.0))
             painter.setBrush(Qt.NoBrush)
             for i in range(3):
                 y = s * 0.56 + i * 22
@@ -2013,8 +2079,8 @@ class TemplateGenerator:
         """
         old_pen, old_brush = painter.pen(), painter.brush()
         solid = QColor(color)
-        edge = QPen(color.darker(150), 2.4)
-        thin = QPen(color.darker(170), 1.3)
+        edge = _pen(color.darker(150), 2.4)
+        thin = _pen(color.darker(170), 1.3)
         cx, cy = s / 2.0, s / 2.0
         top, bottom = m + 4, s - m - 4
 
@@ -2047,7 +2113,7 @@ class TemplateGenerator:
             body.quadTo(cx - 58, top + 20, cx - 20, top + 10)
             body.closeSubpath()
             painter.drawPath(body)
-            painter.setPen(QPen(color.darker(175), 2.6))
+            painter.setPen(_pen(color.darker(175), 2.6))
             painter.setBrush(Qt.NoBrush)
             zigzag = QPainterPath()
             zigzag.moveTo(cx - 58, cy - 20)
@@ -2171,7 +2237,7 @@ class TemplateGenerator:
             body.quadTo(cx - 56, cy + 52, cx - 46, cy - 62)
             body.closeSubpath()
             painter.drawPath(body)
-            painter.setPen(QPen(color.darker(180), 3.2))
+            painter.setPen(_pen(color.darker(180), 3.2))
             painter.setBrush(Qt.NoBrush)
             painter.drawArc(int(cx - 56), int(cy - 60), 30, 34, 90 * 16, 180 * 16)
             painter.drawArc(int(cx + 28), int(cy + 22), 30, 34, -90 * 16, 180 * 16)
@@ -2205,7 +2271,7 @@ class TemplateGenerator:
             # 청동방울: a ring of bells radiating from a disc.
             import math
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(color.darker(150), 3.4))
+            painter.setPen(_pen(color.darker(150), 3.4))
             painter.drawEllipse(QRectF(cx - 34, cy - 34, 68, 68))
             painter.setBrush(solid)
             painter.setPen(edge)
@@ -2290,7 +2356,7 @@ class TemplateGenerator:
             painter.setBrush(Qt.NoBrush)
             painter.setPen(thin)
             painter.drawRect(QRectF(cx - 24, top + 22, 48, 34))
-            painter.setPen(QPen(color.darker(175), 2.6))
+            painter.setPen(_pen(color.darker(175), 2.6))
             painter.drawLine(int(cx - 40), int(bottom - 30), int(cx + 40), int(bottom - 30))
 
         elif variant == "iron_ard":
@@ -2313,7 +2379,7 @@ class TemplateGenerator:
         elif variant == "iron_sickle":
             # 낫: a curved blade with its tang.
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(color.darker(150), 9.0))
+            painter.setPen(_pen(color.darker(150), 9.0))
             blade = QPainterPath()
             blade.moveTo(cx + 62, top + 26)
             blade.quadTo(cx - 4, top + 6, cx - 62, cy + 6)
@@ -2375,10 +2441,10 @@ class TemplateGenerator:
         elif variant == "horse_bit":
             # 재갈: two cheek rings and the jointed mouthpiece.
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(color.darker(150), 7.0))
+            painter.setPen(_pen(color.darker(150), 7.0))
             painter.drawEllipse(QRectF(m + 2, cy - 46, 92, 92))
             painter.drawEllipse(QRectF(s - m - 94, cy - 46, 92, 92))
-            painter.setPen(QPen(color.darker(150), 8.0))
+            painter.setPen(_pen(color.darker(150), 8.0))
             painter.drawLine(int(m + 90), int(cy), int(cx + 2), int(cy - 14))
             painter.drawLine(int(cx - 2), int(cy - 14), int(s - m - 90), int(cy))
             painter.setBrush(solid)
@@ -2388,7 +2454,7 @@ class TemplateGenerator:
         elif variant == "stirrup":
             # 등자: the suspension loop over a flat footplate.
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(color.darker(150), 8.0))
+            painter.setPen(_pen(color.darker(150), 8.0))
             loop = QPainterPath()
             loop.moveTo(cx - 8, top + 6)
             loop.lineTo(cx - 8, top + 34)
@@ -2436,8 +2502,8 @@ class TemplateGenerator:
         """
         old_pen, old_brush = painter.pen(), painter.brush()
         solid = QColor(color)
-        edge = QPen(color.darker(150), 2.4)
-        thin = QPen(color.darker(170), 1.3)
+        edge = _pen(color.darker(150), 2.4)
+        thin = _pen(color.darker(170), 1.3)
         hollow = Qt.NoBrush   # fill="none": never picked up as the fallback colour
         cx, cy = s / 2.0, s / 2.0
         top, bottom = m + 4, s - m - 4
@@ -2464,7 +2530,7 @@ class TemplateGenerator:
 
         elif variant == "gwanok":
             # 관옥: tubular beads threaded on a cord.
-            painter.setPen(QPen(color.darker(170), 2.4))
+            painter.setPen(_pen(color.darker(170), 2.4))
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(int(m + 2), int(cy), int(s - m - 2), int(cy))
             painter.setPen(edge)
@@ -2481,7 +2547,7 @@ class TemplateGenerator:
 
         elif variant == "glass_bead":
             # 유리구슬: a strung line of small round beads.
-            painter.setPen(QPen(color.darker(170), 2.2))
+            painter.setPen(_pen(color.darker(170), 2.2))
             painter.setBrush(Qt.NoBrush)
             cord = QPainterPath()
             cord.moveTo(m, cy - 30)
@@ -2498,9 +2564,9 @@ class TemplateGenerator:
         elif variant == "gold_earring":
             # 금귀걸이: the thick main ring, its link and the drop.
             painter.setBrush(hollow)
-            painter.setPen(QPen(color.darker(150), 11.0))
+            painter.setPen(_pen(color.darker(150), 11.0))
             painter.drawEllipse(QRectF(cx - 54, top + 6, 108, 96))
-            painter.setPen(QPen(color.darker(150), 5.0))
+            painter.setPen(_pen(color.darker(150), 5.0))
             painter.drawEllipse(QRectF(cx - 20, top + 96, 40, 38))
             painter.setPen(edge)
             painter.setBrush(solid)
@@ -2518,7 +2584,7 @@ class TemplateGenerator:
             # scaffolding rather than a crown.
             painter.setBrush(solid)
             painter.drawRect(QRectF(m + 2, bottom - 44, s - 2 * m - 4, 32))
-            painter.setPen(QPen(color.darker(150), 7.0))
+            painter.setPen(_pen(color.darker(150), 7.0))
             painter.setBrush(Qt.NoBrush)
             for offset, height in ((-64, 118), (0, 146), (64, 118)):
                 stem = cx + offset
@@ -2553,7 +2619,7 @@ class TemplateGenerator:
             painter.setBrush(solid)
             for i in range(2):
                 painter.drawRect(QRectF(m + 82 + i * 60, cy - 30, 52, 60))
-            painter.setPen(QPen(color.darker(150), 4.0))
+            painter.setPen(_pen(color.darker(150), 4.0))
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(int(m + 108), int(cy + 30), int(m + 108), int(cy + 60))
             painter.setPen(edge)
@@ -2575,7 +2641,7 @@ class TemplateGenerator:
             body.lineTo(cx - 34, cy - 26)
             body.closeSubpath()
             painter.drawPath(body)
-            painter.setPen(QPen(color.darker(190), 3.0))
+            painter.setPen(_pen(color.darker(190), 3.0))
             painter.setBrush(Qt.NoBrush)
             for i in range(5):
                 y = top + 24 + i * 30
@@ -2666,7 +2732,7 @@ class TemplateGenerator:
             trunk.quadTo(cx - 44, cy + 40, cx - 30, top + 58)
             trunk.closeSubpath()
             painter.drawPath(trunk)
-            painter.setPen(QPen(color.darker(150), 9.0))
+            painter.setPen(_pen(color.darker(150), 9.0))
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(int(cx - 30), int(top + 74), int(cx - 72), int(cy + 26))
             painter.drawLine(int(cx + 30), int(top + 74), int(cx + 72), int(cy + 26))
@@ -2733,7 +2799,7 @@ class TemplateGenerator:
     def _draw_burial(self, painter, s, m, color):
         """Burial — body outline (flexed position)."""
         painter.setBrush(Qt.NoBrush)
-        pen = QPen(color, 3.0)
+        pen = _pen(color, 3.0)
         painter.setPen(pen)
         # Head
         painter.drawEllipse(int(s * 0.35), m + 10, 35, 35)
@@ -2795,7 +2861,7 @@ class TemplateGenerator:
         painter.drawPath(p2)
         painter.setBrush(old_brush)
         old_pen = painter.pen()
-        stipple_pen = QPen(old_pen.color().darker(135), 1.0)
+        stipple_pen = _pen(old_pen.color().darker(135), 1.0)
         painter.setPen(stipple_pen)
         for i in range(14):
             x = int(m + 20 + (i * 14))
@@ -2806,7 +2872,7 @@ class TemplateGenerator:
     def _draw_ditch(self, painter, s, m, color):
         """Ditch/moat — concentric dashed arcs."""
         painter.setBrush(Qt.NoBrush)
-        pen = QPen(color, 3.0, Qt.DashLine)
+        pen = _pen(color, 3.0, Qt.DashLine)
         painter.setPen(pen)
         painter.drawArc(m + 20, m + 20, s - 2*m - 40, s - 2*m - 40, 30 * 16, 300 * 16)
         pen.setWidth(2)
@@ -2820,7 +2886,7 @@ class TemplateGenerator:
         old_brush = painter.brush()
         old_pen = painter.pen()
         painter.setBrush(Qt.NoBrush)
-        flow_pen = QPen(color.darker(120), 2.4)
+        flow_pen = _pen(color.darker(120), 2.4)
         painter.setPen(flow_pen)
         painter.drawArc(m + 18, m + 30, s - 2 * m - 36, s - 2 * m - 60, 40 * 16, 270 * 16)
         painter.drawArc(m + 36, m + 48, s - 2 * m - 72, s - 2 * m - 96, 40 * 16, 270 * 16)
@@ -2857,7 +2923,7 @@ class TemplateGenerator:
         p.closeSubpath()
         painter.drawPath(p)
         painter.setBrush(Qt.NoBrush)
-        peck_pen = QPen(color.darker(145), 1.0)
+        peck_pen = _pen(color.darker(145), 1.0)
         painter.setPen(peck_pen)
         for i in range(5):
             y = int(m + 42 + i * 28)
@@ -2884,7 +2950,7 @@ class TemplateGenerator:
     def _draw_rock_art(self, painter, s, m, color):
         """Rock art — spiral petroglyph."""
         painter.setBrush(Qt.NoBrush)
-        pen = QPen(color, 3.0)
+        pen = _pen(color, 3.0)
         painter.setPen(pen)
         cx, cy = s / 2, s / 2
         import math
@@ -2911,7 +2977,7 @@ class TemplateGenerator:
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 85))
         painter.drawRect(m + 14, top, s - 2 * m - 28, band_h)
         painter.setBrush(Qt.NoBrush)
-        stipple_pen = QPen(color.darker(150), 1.0)
+        stipple_pen = _pen(color.darker(150), 1.0)
         painter.setPen(stipple_pen)
         for i in range(9):
             y = top + 12 + i * 12
@@ -2937,7 +3003,7 @@ class TemplateGenerator:
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 95))
         painter.drawPath(p)
         painter.setBrush(Qt.NoBrush)
-        char_pen = QPen(color.darker(160), 1.2)
+        char_pen = _pen(color.darker(160), 1.2)
         painter.setPen(char_pen)
         for i in range(12):
             x = int(m + 38 + i * 13)
@@ -2955,7 +3021,7 @@ class TemplateGenerator:
         """Excavation area — square with grid lines."""
         painter.drawRect(m + 15, m + 15, s - 2*m - 30, s - 2*m - 30)
         painter.setBrush(Qt.NoBrush)
-        pen = QPen(color.darker(130), 1.5, Qt.DotLine)
+        pen = _pen(color.darker(130), 1.5, Qt.DotLine)
         painter.setPen(pen)
         sz = s - 2*m - 30
         step = sz / 3
@@ -2966,7 +3032,7 @@ class TemplateGenerator:
             painter.drawLine(int(x), m + 15, int(x), s - m - 15)
         painter.setBrush(color)
         old_pen = painter.pen()
-        n_pen = QPen(color.darker(150), 1.6)
+        n_pen = _pen(color.darker(150), 1.6)
         painter.setPen(n_pen)
         nx = s - m - 34
         ny = m + 24
@@ -2979,7 +3045,7 @@ class TemplateGenerator:
         """Map-style north arrow used in archaeological figures."""
         old_pen = painter.pen()
         old_brush = painter.brush()
-        painter.setPen(QPen(color.darker(165), 2.0))
+        painter.setPen(_pen(color.darker(165), 2.0))
         painter.setBrush(color)
         cx = s / 2.0
         arrow = QPainterPath()
@@ -2993,7 +3059,7 @@ class TemplateGenerator:
         arrow.closeSubpath()
         painter.drawPath(arrow)
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(color.darker(185), 1.6))
+        painter.setPen(_pen(color.darker(185), 1.6))
         painter.drawText(int(cx - 10), m + 26, "N")
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
@@ -3002,7 +3068,7 @@ class TemplateGenerator:
         """Segmented scale bar convention for map figures."""
         old_pen = painter.pen()
         old_brush = painter.brush()
-        painter.setPen(QPen(color.darker(160), 1.8))
+        painter.setPen(_pen(color.darker(160), 1.8))
         seg_w = 34
         bar_h = 18
         x0 = int(s / 2 - (seg_w * 2))
@@ -3025,7 +3091,7 @@ class TemplateGenerator:
         """Simplified Harris matrix context box + relation connectors."""
         old_pen = painter.pen()
         old_brush = painter.brush()
-        painter.setPen(QPen(color.darker(160), 1.8))
+        painter.setPen(_pen(color.darker(160), 1.8))
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 70))
 
         top = QRectF(m + 40, m + 28, s - 2 * m - 80, 36)
@@ -3048,7 +3114,7 @@ class TemplateGenerator:
         """Layered context symbol inspired by section stratigraphy notation."""
         old_pen = painter.pen()
         old_brush = painter.brush()
-        painter.setPen(QPen(color.darker(160), 1.5))
+        painter.setPen(_pen(color.darker(160), 1.5))
         x = m + 16
         y = m + 24
         w = s - 2 * m - 32
@@ -3060,9 +3126,9 @@ class TemplateGenerator:
             shade = 70 + (i * 35)
             painter.setBrush(QColor(color.red(), color.green(), color.blue(), min(190, shade)))
             painter.drawRect(x, top, w, lh)
-            painter.setPen(QPen(color.darker(170), 1.0))
+            painter.setPen(_pen(color.darker(170), 1.0))
             painter.drawLine(x + 8, top + lh - 4, x + w - 8, top + lh - 10)
-            painter.setPen(QPen(color.darker(160), 1.5))
+            painter.setPen(_pen(color.darker(160), 1.5))
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
 
@@ -3072,7 +3138,7 @@ class TemplateGenerator:
         r = s/2 - m - 20
         painter.drawEllipse(int(cx - r), int(cy - r), int(r * 2), int(r * 2))
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(color.darker(130), 2.0))
+        painter.setPen(_pen(color.darker(130), 2.0))
         ext = 15
         painter.drawLine(int(cx), int(cy - r - ext), int(cx), int(cy + r + ext))
         painter.drawLine(int(cx - r - ext), int(cy), int(cx + r + ext), int(cy))
@@ -3106,7 +3172,7 @@ class TemplateGenerator:
         h = int(s * 0.28)
         painter.drawRect(x, y, w, h)
         painter.setBrush(Qt.NoBrush)
-        hatch_pen = QPen(color.darker(145), 1.0, Qt.DashLine)
+        hatch_pen = _pen(color.darker(145), 1.0, Qt.DashLine)
         painter.setPen(hatch_pen)
         for i in range(8):
             dx = int(x + 8 + i * (w - 16) / 7.0)
@@ -3132,7 +3198,7 @@ class TemplateGenerator:
         painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(int(cx - 8), int(s / 2 - 8), 16, 16)
         painter.setBrush(Qt.NoBrush)
-        x_pen = QPen(color.darker(145), 1.4)
+        x_pen = _pen(color.darker(145), 1.4)
         painter.setPen(x_pen)
         painter.drawLine(int(cx), int(s / 2 - 18), int(cx), int(s / 2 + 18))
         painter.drawLine(int(cx - 18), int(s / 2), int(cx + 18), int(s / 2))
@@ -3151,7 +3217,7 @@ class TemplateGenerator:
         painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(int(s / 2 - 16), int(body_y + 12), 32, 32)
         painter.drawRect(int(body_x + 8), int(body_y - 10), 18, 10)
-        cone_pen = QPen(color.darker(150), 1.2, Qt.DotLine)
+        cone_pen = _pen(color.darker(150), 1.2, Qt.DotLine)
         painter.setPen(cone_pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawLine(int(s / 2), int(body_y + body_h / 2), s - m - 6, int(s * 0.28))
@@ -3164,13 +3230,13 @@ class TemplateGenerator:
         old_pen = painter.pen()
         old_brush = painter.brush()
         painter.setBrush(Qt.NoBrush)
-        grid_pen = QPen(color.darker(145), 3.0)
+        grid_pen = _pen(color.darker(145), 3.0)
         painter.setPen(grid_pen)
         x0 = m + 26
         y0 = s - m - 26
         painter.drawLine(x0, y0, x0 + 120, y0)
         painter.drawLine(x0, y0, x0, y0 - 120)
-        tick_pen = QPen(color.darker(150), 1.3)
+        tick_pen = _pen(color.darker(150), 1.3)
         painter.setPen(tick_pen)
         for i in range(1, 4):
             painter.drawLine(x0 + i * 30, y0 - 6, x0 + i * 30, y0 + 6)
@@ -3205,11 +3271,11 @@ class TemplateGenerator:
         old_pen = painter.pen()
         old_brush = painter.brush()
         painter.setBrush(Qt.NoBrush)
-        edge_pen = QPen(color.darker(130), 2.2)
+        edge_pen = _pen(color.darker(130), 2.2)
         painter.setPen(edge_pen)
         painter.drawArc(m + 12, m + 34, s - 2 * m - 24, s - 2 * m - 68, 25 * 16, 310 * 16)
         painter.drawArc(m + 40, m + 56, s - 2 * m - 80, s - 2 * m - 112, 25 * 16, 310 * 16)
-        center_pen = QPen(color.darker(150), 1.3, Qt.DashLine)
+        center_pen = _pen(color.darker(150), 1.3, Qt.DashLine)
         painter.setPen(center_pen)
         painter.drawArc(m + 26, m + 45, s - 2 * m - 52, s - 2 * m - 90, 25 * 16, 310 * 16)
         painter.setBrush(old_brush)
@@ -3225,7 +3291,7 @@ class TemplateGenerator:
         painter.drawArc(m + 28, deck_y + 8, int((s - 2 * m - 56) / 2), 80, 0, 180 * 16)
         painter.drawArc(int(s / 2), deck_y + 8, int((s - 2 * m - 56) / 2), 80, 0, 180 * 16)
         painter.setBrush(Qt.NoBrush)
-        water_pen = QPen(color.darker(145), 1.1, Qt.DotLine)
+        water_pen = _pen(color.darker(145), 1.1, Qt.DotLine)
         painter.setPen(water_pen)
         painter.drawLine(m + 24, int(s * 0.78), s - m - 24, int(s * 0.78))
         painter.drawLine(m + 30, int(s * 0.84), s - m - 30, int(s * 0.84))
@@ -3237,7 +3303,7 @@ class TemplateGenerator:
         old_pen = painter.pen()
         old_brush = painter.brush()
         painter.setBrush(Qt.NoBrush)
-        contour_pen = QPen(color.darker(140), 2.0)
+        contour_pen = _pen(color.darker(140), 2.0)
         painter.setPen(contour_pen)
         for i in range(4):
             y = int(m + 36 + i * 40)
@@ -3257,11 +3323,11 @@ class TemplateGenerator:
         cy = s / 2.0
         r = s / 2.0 - m - 24
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 65))
-        ring_pen = QPen(color.darker(125), 2.2, Qt.DashLine)
+        ring_pen = _pen(color.darker(125), 2.2, Qt.DashLine)
         painter.setPen(ring_pen)
         painter.drawEllipse(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 245))
-        painter.setPen(QPen(color.darker(150), 1.0))
+        painter.setPen(_pen(color.darker(150), 1.0))
         painter.drawEllipse(int(cx - 8), int(cy - 8), 16, 16)
         for i in range(6):
             rad = (math.pi / 3.0) * i
@@ -3279,11 +3345,11 @@ class TemplateGenerator:
         y = m + 28
         w = s - 2 * m - 56
         painter.setBrush(QColor(color.red(), color.green(), color.blue(), 55))
-        pit_pen = QPen(color.darker(130), 2.0, Qt.DashLine)
+        pit_pen = _pen(color.darker(130), 2.0, Qt.DashLine)
         painter.setPen(pit_pen)
         painter.drawRect(x, y, w, w)
         painter.setBrush(Qt.NoBrush)
-        cross_pen = QPen(color.darker(145), 1.4)
+        cross_pen = _pen(color.darker(145), 1.4)
         painter.setPen(cross_pen)
         painter.drawLine(x + 8, y + 8, x + w - 8, y + w - 8)
         painter.drawLine(x + w - 8, y + 8, x + 8, y + w - 8)

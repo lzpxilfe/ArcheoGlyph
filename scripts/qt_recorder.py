@@ -34,6 +34,12 @@ class Qt:
     DashLine = "DashLine"
     DotLine = "DotLine"
     DashDotLine = "DashDotLine"
+    RoundCap = "RoundCap"
+    FlatCap = "FlatCap"
+    SquareCap = "SquareCap"
+    RoundJoin = "RoundJoin"
+    MiterJoin = "MiterJoin"
+    BevelJoin = "BevelJoin"
     transparent = "transparent"
     AlignCenter = "AlignCenter"
     white = "white"
@@ -111,6 +117,14 @@ class Pen:
         self._color = color if isinstance(color, Color) else Color()
         self.width = float(width)
         self._style = style
+        self.cap = Qt.FlatCap
+        self.join = Qt.MiterJoin
+
+    def setCapStyle(self, cap):
+        self.cap = cap
+
+    def setJoinStyle(self, join):
+        self.join = join
 
     def color(self):
         return self._color
@@ -274,8 +288,11 @@ class Painter:
 
     def __init__(self):
         self.calls = []      # (kind, payload, brush, pen)
+        self.brushes = []    # every setBrush, for the fill-tone contract
         self._pen = Pen()
         self._brush = None
+        self._clip = None
+        self._stack = []
 
     # -- state ---------------------------------------------------------
     def pen(self):
@@ -287,14 +304,30 @@ class Painter:
     def setPen(self, pen):
         self._pen = pen if isinstance(pen, Pen) else Pen(color=_as_color(pen))
 
+    def save(self):
+        self._stack.append((self._pen, self._brush, self._clip))
+
+    def restore(self):
+        if self._stack:
+            self._pen, self._brush, self._clip = self._stack.pop()
+
+    def setClipPath(self, path):
+        """Internal detail is clipped to the silhouette; record which one."""
+        self._clip = path
+
+    def setClipping(self, on):
+        if not on:
+            self._clip = None
+
     def setBrush(self, brush):
         self._brush = brush
+        self.brushes.append(brush)
 
     def setRenderHint(self, *_args):
         pass
 
     def _record(self, kind, payload):
-        self.calls.append((kind, payload, self._brush, self._pen))
+        self.calls.append((kind, payload, self._brush, self._pen, self._clip))
 
     # -- drawing -------------------------------------------------------
     def drawPath(self, path):
@@ -327,7 +360,7 @@ class Painter:
     def points(self):
         """Every coordinate touched, for the geometry contracts."""
         out = []
-        for kind, payload, _brush, _pen in self.calls:
+        for kind, payload, _brush, _pen, _clip in self.calls:
             if kind == "path":
                 out.extend(payload.points())
             elif kind == "polygon":
@@ -348,7 +381,7 @@ class Painter:
 
     def fills(self):
         """The brush in effect at each draw call, in document order."""
-        return [brush for _kind, _payload, brush, _pen in self.calls]
+        return [call[2] for call in self.calls]
 
 
 def _as_color(value):
