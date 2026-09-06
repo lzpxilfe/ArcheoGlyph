@@ -395,7 +395,7 @@ class ArcheoGlyphDialog(QDialog):
         mode_layout.addWidget(self.template_radio)
         
         # Mode description label
-        self.mode_info_label = QLabel(self.MODE_DESCRIPTION["autotrace"])
+        self.mode_info_label = QLabel(tr(self.MODE_DESCRIPTION["autotrace"]))
         self.mode_info_label.setStyleSheet(
             "color: #555; font-size: 11px; background: #f0f8ff; "
             "padding: 4px; border-radius: 3px;"
@@ -601,7 +601,7 @@ class ArcheoGlyphDialog(QDialog):
         category_row.addWidget(QLabel(tr("Category:")))
         self.template_category_combo = QComboBox()
         for value, label in self.TEMPLATE_CATEGORY_LABELS:
-            self.template_category_combo.addItem(label, value)
+            self.template_category_combo.addItem(tr(label), value)
         self.template_category_combo.currentIndexChanged.connect(self._refresh_template_list)
         category_row.addWidget(self.template_category_combo, 1)
         template_layout.addLayout(category_row)
@@ -934,7 +934,8 @@ class ArcheoGlyphDialog(QDialog):
         self._set_mode_info_with_controls(
             show_controls=True,
             base_text=(
-                "Simple symbol preset applied: stable silhouette, bold outline, minimal structure lines."
+                tr("Simple symbol preset applied: stable silhouette, bold outline, "
+                   "minimal structure lines.")
             ),
         )
 
@@ -960,7 +961,8 @@ class ArcheoGlyphDialog(QDialog):
         self._set_mode_info_with_controls(
             show_controls=True,
             base_text=(
-                "Fast preset applied: speed priority (Fast mode, image-first, upscale off)."
+                tr("Fast preset applied: speed priority "
+                   "(Fast mode, image-first, upscale off).")
             ),
         )
 
@@ -1018,11 +1020,17 @@ class ArcheoGlyphDialog(QDialog):
 
         problems = []
         if short_side < weak_short_px:
-            problems.append(f"the short side is {short_side}px (recommended {recommended_short_px}px)")
+            problems.append(
+                tr("the short side is {actual}px (recommended {recommended}px)").format(
+                    actual=short_side, recommended=recommended_short_px
+                )
+            )
         elif short_side < recommended_short_px:
-            problems.append(f"the short side is only {short_side}px")
+            problems.append(
+                tr("the short side is only {actual}px").format(actual=short_side)
+            )
         if sharpness is not None and sharpness < min_sharpness:
-            problems.append("the image looks blurred or heavily compressed")
+            problems.append(tr("the image looks blurred or heavily compressed"))
 
         if not problems:
             self.image_quality_hint_label.setVisible(False)
@@ -1030,14 +1038,16 @@ class ArcheoGlyphDialog(QDialog):
             return
 
         self.image_quality_hint_label.setText(
-            f"<b>Input may trace poorly</b> ({width}x{height}): " + "; ".join(problems)
-            + ". A tighter crop of a sharper photo gives cleaner symbols."
+            tr(
+                "<b>Input may trace poorly</b> ({width}x{height}): {problems}. "
+                "A tighter crop of a sharper photo gives cleaner symbols."
+            ).format(width=width, height=height, problems=tr("; ").join(problems))
         )
         self.image_quality_hint_label.setVisible(True)
 
     def pick_color(self):
         """Open color picker dialog."""
-        color = QColorDialog.getColor(self.current_color, self, "Select Symbol Color")
+        color = QColorDialog.getColor(self.current_color, self, tr("Select Symbol Color"))
         if color.isValid():
             self.current_color = color
             self.update_color_preview()
@@ -1210,7 +1220,7 @@ class ArcheoGlyphDialog(QDialog):
         self._set_mode_info_with_controls(show_controls=True)
         
         if cancelled:
-            self._set_mode_info_with_controls(show_controls=False, base_text="Generation cancelled.")
+            self._set_mode_info_with_controls(show_controls=False, base_text=tr("Generation cancelled."))
             return
 
         if error_message:
@@ -1245,7 +1255,7 @@ class ArcheoGlyphDialog(QDialog):
 
                 vectorize_result(result, style=result.style)
             except Exception as e:
-                result.add_warning(f"Vectorisation failed: {e}")
+                result.add_warning(tr("Vectorisation failed: {error}").format(error=e))
 
         pixmap = self._result_to_pixmap(result)
         if pixmap is None or pixmap.isNull():
@@ -1257,10 +1267,10 @@ class ArcheoGlyphDialog(QDialog):
         self.save_btn.setEnabled(True)
         self.apply_btn.setEnabled(True)
 
-        kind = "vector SVG" if result.is_vector else "raster PNG"
-        info = f"Result: {kind} from {result.source}"
+        kind = tr("vector SVG") if result.is_vector else tr("raster PNG")
+        info = tr("Result: {kind} from {source}").format(kind=kind, source=result.source)
         if result.warnings:
-            info += " | " + "; ".join(result.warnings[:3])
+            info += " | " + tr("; ").join(result.warnings[:3])
         self._set_mode_info_with_controls(show_controls=False, base_text=info)
 
     def cancel_generation(self):
@@ -1268,7 +1278,7 @@ class ArcheoGlyphDialog(QDialog):
         if self.generation_thread is not None and self.generation_thread.isRunning():
             self.generation_thread.cancel()
             self.cancel_btn.setEnabled(False)
-            self._set_mode_info_with_controls(show_controls=False, base_text="Cancelling...")
+            self._set_mode_info_with_controls(show_controls=False, base_text=tr("Cancelling..."))
 
     def closeEvent(self, event):
         """Never let the dialog die while its worker thread is still running."""
@@ -1334,7 +1344,7 @@ class ArcheoGlyphDialog(QDialog):
             return
 
         name, ok = QInputDialog.getText(
-            self, tr("Save to Library"), tr("Symbol name:"), text="ArchaeoGlyph Symbol"
+            self, tr("Save to Library"), tr("Symbol name:"), text=tr("ArchaeoGlyph Symbol")
         )
         if not ok:
             return
@@ -1441,22 +1451,29 @@ class ArcheoGlyphDialog(QDialog):
         )
 
     def _active_mode_description(self):
-        """Return current mode description text."""
+        """
+        The description of the mode that is selected.
+
+        MODE_DESCRIPTION holds the English source; it is translated here rather
+        than at class-definition time, when the language is not yet known.
+        """
         if self.gemini_radio.isChecked():
-            return self.MODE_DESCRIPTION["gemini"]
+            return tr(self.MODE_DESCRIPTION["gemini"])
         if self.hf_radio.isChecked():
-            return self.MODE_DESCRIPTION["hf"]
+            return tr(self.MODE_DESCRIPTION["hf"])
         if self.local_radio.isChecked():
-            return self.MODE_DESCRIPTION["local"]
+            return tr(self.MODE_DESCRIPTION["local"])
         if self.template_radio.isChecked():
-            return self.MODE_DESCRIPTION["template"]
-        return self.MODE_DESCRIPTION["autotrace"]
+            return tr(self.MODE_DESCRIPTION["template"])
+        return tr(self.MODE_DESCRIPTION["autotrace"])
 
     def _set_mode_info_with_controls(self, show_controls=False, base_text=None):
         """Update mode info label, optionally appending style-control values."""
         text = str(base_text or self._active_mode_description())
         if show_controls:
-            text += f" | Controls: {style_controls_short_text(self._current_style_controls())}"
+            text += tr(" | Controls: {values}").format(
+                values=style_controls_short_text(self._current_style_controls())
+            )
         self.mode_info_label.setText(text)
 
     def _persist_style_parameters(self):

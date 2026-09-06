@@ -56,6 +56,27 @@ def _translated_literals():
     return found
 
 
+def _class_level_ui_strings():
+    """
+    User-facing text held in class-level tables in the dialogs.
+
+    These reach tr() as a variable, so scanning for tr("...") cannot see them;
+    they are collected from the source instead.
+    """
+    tables = ("MODE_DESCRIPTION", "TEMPLATE_CATEGORY_LABELS")
+    found = set()
+    tree = ast.parse((ROOT / "ui/main_dialog.py").read_text(encoding="utf-8-sig"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(getattr(t, "id", "") in tables for t in node.targets):
+            continue
+        for value in ast.walk(node.value):
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                found.add(value.value)
+    return found
+
+
 def _template_names():
     """
     Template names reach tr() through template_display_name(), so they are
@@ -149,6 +170,7 @@ def test_no_orphaned_entries():
         | set(_template_names())
         # Language labels reach tr() as a variable too.
         | {label for _code, label in i18n.LANGUAGES}
+        | _class_level_ui_strings()
     )
     orphans = sorted(key for key in CATALOG if key not in used)
     assert not orphans, "Korean entries no longer used by the code:\n" + "\n".join(orphans)
@@ -189,3 +211,28 @@ def test_template_display_names_are_unique():
             clashes.append(f"{seen[label]} and {name} both show as {label!r}")
         seen[label] = name
     assert not clashes, "\n".join(clashes)
+
+
+def test_help_documents_are_provided_in_both_languages():
+    """
+    The two long help pages live outside the catalogue, so nothing else checks
+    that the Korean version exists or that it switched.
+    """
+    from archeoglyph.ui import help_text
+
+    for producer in (help_text.local_sd_setup_html, help_text.help_html):
+        i18n.set_language("en")
+        english = producer()
+        i18n.set_language("ko")
+        korean = producer()
+
+        assert english.strip() and korean.strip()
+        assert english != korean, f"{producer.__name__} returns English for Korean"
+        assert any("가" <= ch <= "힣" for ch in korean), (
+            f"{producer.__name__} has no Hangul in its Korean version"
+        )
+        # Both must stay valid fragments that Qt's rich text can render.
+        for document in (english, korean):
+            assert document.count("<ul>") == document.count("</ul>")
+            assert document.count("<ol>") == document.count("</ol>")
+            assert document.count("<li>") == document.count("</li>")

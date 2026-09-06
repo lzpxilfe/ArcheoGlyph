@@ -1069,9 +1069,9 @@ class TemplateGenerator:
         color = color or template_info['default_color']
         result = SymbolResult(source="template", style=str(template_type))
 
-        template_path = os.path.join(self.template_dir, template_info['file'])
+        template_path = self._template_file(template_info)
         svg_data = None
-        if os.path.exists(template_path):
+        if template_path:
             svg_data = self._load_and_colorize_svg(template_path, color)
         if not svg_data:
             svg_data = self._create_placeholder_svg(template_type, color)
@@ -1088,6 +1088,20 @@ class TemplateGenerator:
         if result.is_empty:
             return None
         return result
+
+    def _template_file(self, template_info):
+        """
+        Path to an SVG file shipped for this template, or "" when there is none.
+
+        Most templates are drawn in code and carry no ``file`` key at all, and
+        an entry that has one may still have no file on disk, so this must
+        never assume either.
+        """
+        filename = str((template_info or {}).get("file") or "").strip()
+        if not filename:
+            return ""
+        path = os.path.join(self.template_dir, filename)
+        return path if os.path.exists(path) else ""
 
     def _normalize_template_type(self, template_type):
         """Normalize template names for backward compatibility."""

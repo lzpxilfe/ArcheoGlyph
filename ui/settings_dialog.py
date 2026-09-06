@@ -18,6 +18,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox, QScrollArea, QFrame, QApplication,
     QCheckBox, QComboBox, QFileDialog, QSpinBox, QProgressBar
 )
+from .help_text import help_html, local_sd_setup_html
 from ..i18n import (
     LANGUAGE_SETTING,
     apply_settings_language,
@@ -560,8 +561,8 @@ class SettingsDialog(QDialog):
         
         # Introduction
         intro = InfoLabel(
-            "Google Gemini can generate archaeological symbols from reference images. "
-            "API availability depends on your project quota and billing state.",
+            tr("Google Gemini can generate archaeological symbols from reference images. "
+               "API availability depends on your project quota and billing state."),
             "Info"
         )
         layout.addWidget(intro)
@@ -727,9 +728,9 @@ class SettingsDialog(QDialog):
         
         # Usage info
         usage_info = InfoLabel(
-            "Gemini text models can return SVG. Image models such as Nano Banana return raster "
-            "images that are post-processed into factual symbols. If you encounter HTTP 429, "
-            "check Gemini quota limits and retry after cooldown.",
+            tr("Gemini text models can return SVG. Image models such as Nano Banana return "
+               "raster images that are post-processed into factual symbols. If you encounter "
+               "HTTP 429, check Gemini quota limits and retry after cooldown."),
             "Tip"
         )
         layout.addWidget(usage_info)
@@ -750,17 +751,18 @@ class SettingsDialog(QDialog):
         
         # Introduction
         intro = InfoLabel(
-            "Local Stable Diffusion runs AI on YOUR computer - no internet required! "
-            "Great for offline field work or sensitive data. Requires a GPU with 6GB+ VRAM.",
+            tr("Local Stable Diffusion runs AI on YOUR computer - no internet required! "
+               "Great for offline field work or sensitive data. "
+               "Requires a GPU with 6GB+ VRAM."),
             "Info"
         )
         layout.addWidget(intro)
         
         # Warning
         warning = WarningLabel(
-            "Advanced Setup Required: This option requires installing additional software "
-            "and downloading large model files (4-8 GB). If you're not comfortable with this, "
-            "use Google Gemini or Templates instead."
+            tr("Advanced Setup Required: This option requires installing additional software "
+               "and downloading large model files (4-8 GB). If you're not comfortable with "
+               "this, use Google Gemini or Templates instead.")
         )
         layout.addWidget(warning)
         
@@ -806,27 +808,7 @@ class SettingsDialog(QDialog):
         setup_text = QTextBrowser()
         setup_text.setOpenExternalLinks(True)
         setup_text.setMaximumHeight(250)
-        setup_text.setHtml("""
-        <h4>Prerequisites</h4>
-        <ul>
-            <li>NVIDIA GPU with 6GB+ VRAM (RTX 2060 or better recommended)</li>
-            <li>Windows 10/11 with updated drivers</li>
-            <li>~15 GB free disk space</li>
-        </ul>
-        
-        <h4>Installation Steps</h4>
-        <ol>
-            <li><b>Install Python 3.10.6</b> from <a href="https://www.python.org/downloads/release/python-3106/">python.org</a></li>
-            <li><b>Download Automatic1111 WebUI</b>:
-                <br><code>git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git</code></li>
-            <li><b>Download a model</b> from <a href="https://civitai.com">Civitai</a>
-                <br>Recommended: "Anything V5" or "Deliberate V2"</li>
-            <li><b>Place the model</b> (.safetensors file) in <code>models/Stable-diffusion/</code></li>
-            <li><b>Edit webui-user.bat</b> and add: <code>set COMMANDLINE_ARGS=--api</code></li>
-            <li><b>Run webui-user.bat</b> and wait for it to start</li>
-            <li><b>Enter URL above</b> and test the connection</li>
-        </ol>
-        """)
+        setup_text.setHtml(local_sd_setup_html())
         setup_layout.addWidget(setup_text)
         
         guide_btn = QPushButton(tr("Open Full Setup Guide (GitHub)"))
@@ -900,7 +882,7 @@ class SettingsDialog(QDialog):
         
         # Tips
         tips = InfoLabel(
-            "Tip: Start with Templates to try the plugin, then add AI features later!",
+            tr("Tip: Start with Templates to try the plugin, then add AI features later!"),
             "Tip"
         )
         layout.addWidget(tips)
@@ -916,79 +898,7 @@ class SettingsDialog(QDialog):
         
         help_text = QTextBrowser()
         help_text.setOpenExternalLinks(True)
-        help_text.setHtml("""
-        <h2>ArchaeoGlyph Help</h2>
-
-        <h3>What is ArchaeoGlyph?</h3>
-        <p>ArchaeoGlyph helps archaeologists create accurate, standardized symbols for GIS maps. 
-        Upload an artifact photo or select a template, and the plugin generates a precise, 
-        recognizable symbol perfect for archaeological documentation.</p>
-
-        <h3>Generation Modes</h3>
-        <table border="1" cellpadding="8" style="border-collapse: collapse;">
-            <tr style="background: #f0f0f0;">
-                <th>Mode</th>
-                <th>Requires</th>
-                <th>Best For</th>
-            </tr>
-            <tr>
-                <td><b>Auto Trace</b></td>
-                <td>Nothing!</td>
-                <td>Fast & accurate silhouette from photo</td>
-            </tr>
-            <tr>
-                <td><b>AI (Hugging Face)</b></td>
-                <td>HF Token</td>
-                <td>Icon generation</td>
-            </tr>
-            <tr>
-                <td><b>AI (Gemini)</b></td>
-                <td>API Key + Internet</td>
-                <td>Custom stylized symbols (Smart)</td>
-            </tr>
-            <tr>
-                <td><b>AI (Local SD)</b></td>
-                <td>GPU + Setup</td>
-                <td>Offline use, sensitive data</td>
-            </tr>
-            <tr>
-                <td><b>Template</b></td>
-                <td>Nothing!</td>
-                <td>Standardized category symbols</td>
-            </tr>
-        </table>
-        
-        <h3>Symbol Styles</h3>
-        <ul>
-            <li><b>Simple Symbol</b> - map-friendly icon with bold contour, 2-tone fill, and minimal structure lines</li>
-            <li><b>Line</b> - contour and major internal lines, monochrome</li>
-            <li><b>Measured</b> - monochrome measured drawing style for reports</li>
-        </ul>
-        
-        <h3>Size Scaling Options</h3>
-        <ul>
-            <li><b>Fixed Size</b> - All symbols same size</li>
-            <li><b>Natural Breaks</b> - Sizes based on data clustering</li>
-            <li><b>Equal Interval</b> - Evenly distributed size ranges</li>
-            <li><b>Quantile</b> - Equal number of features per size class</li>
-        </ul>
-        
-        <h3>Saving Symbols</h3>
-        <ul>
-            <li><b>Save to Library</b> - Stores in QGIS symbol library for reuse</li>
-            <li><b>Apply to Layer</b> - Immediately applies to selected vector layer</li>
-        </ul>
-        
-        <h3>Links</h3>
-        <ul>
-            <li><a href="https://github.com/lzpxilfe/ArcheoGlyph">GitHub Repository</a></li>
-            <li><a href="https://github.com/lzpxilfe/ArcheoGlyph/issues">Report Issues / Request Features</a></li>
-            <li><a href="https://github.com/lzpxilfe/ArcheoGlyph/blob/main/docs/ai_setup_guide.md">Full AI Setup Guide</a></li>
-        </ul>
-        
-        <h3>Author</h3>
-        <p>Created by <b>Jinseo Hwang</b></p>
-        """)
+        help_text.setHtml(help_html())
         layout.addWidget(help_text)
         
         return tab
@@ -1125,7 +1035,7 @@ class SettingsDialog(QDialog):
             normalized = self._normalize_hf_model_id(recommended_hf)
             if normalized and normalized != self._normalize_hf_model_id(self.hf_model_input.text()):
                 self.hf_model_input.setText(normalized)
-                changed.append(f"HF model -> {normalized}")
+                changed.append(tr("HF model -> {model}").format(model=normalized))
             if normalized:
                 self.settings.setValue("ArcheoGlyph/hf_model_id", normalized)
 
@@ -1138,13 +1048,13 @@ class SettingsDialog(QDialog):
                 current_sam = str(self.sam_model_type_combo.currentData() or "").strip()
                 if current_sam != recommended_sam:
                     self.sam_model_type_combo.setCurrentIndex(idx)
-                    changed.append(f"SAM model -> {recommended_sam}")
+                    changed.append(tr("SAM model -> {model}").format(model=recommended_sam))
                 self.settings.setValue("ArcheoGlyph/sam_model_type", recommended_sam)
 
         if recommended_gemini:
             previous_gemini = str(self.settings.value("ArcheoGlyph/gemini_model_id", "") or "").strip()
             if recommended_gemini != previous_gemini:
-                changed.append(f"Gemini preferred -> {recommended_gemini}")
+                changed.append(tr("Gemini preferred -> {model}").format(model=recommended_gemini))
             self.settings.setValue("ArcheoGlyph/gemini_model_id", recommended_gemini)
 
         return changed
@@ -1157,19 +1067,23 @@ class SettingsDialog(QDialog):
             normalized = self._normalize_hf_model_id(recommended_hf)
             current_hf = self._normalize_hf_model_id(self.hf_model_input.text())
             if normalized and normalized != current_hf:
-                pending.append(f"HF model: {current_hf or '(empty)'} -> {normalized}")
+                pending.append(tr("HF model: {current} -> {new}").format(
+                    current=current_hf or tr("(empty)"), new=normalized
+                ))
 
         if recommended_sam:
             current_sam = str(self.sam_model_type_combo.currentData() or "").strip()
             if current_sam != recommended_sam:
-                pending.append(f"SAM model: {current_sam or '(empty)'} -> {recommended_sam}")
+                pending.append(tr("SAM model: {current} -> {new}").format(
+                    current=current_sam or tr("(empty)"), new=recommended_sam
+                ))
 
         if recommended_gemini:
             previous_gemini = str(self.settings.value("ArcheoGlyph/gemini_model_id", "") or "").strip()
             if previous_gemini != recommended_gemini:
-                pending.append(
-                    f"Gemini preferred: {previous_gemini or '(empty)'} -> {recommended_gemini}"
-                )
+                pending.append(tr("Gemini preferred: {current} -> {new}").format(
+                    current=previous_gemini or tr("(empty)"), new=recommended_gemini
+                ))
 
         return pending
 
@@ -1182,7 +1096,7 @@ class SettingsDialog(QDialog):
         # dropping the last reference here can destroy a still-running QThread.
 
         if not isinstance(result, dict):
-            result = {"status": "error", "message": "Invalid model refresh result payload."}
+            result = {"status": "error", "message": tr("Invalid model refresh result payload.")}
 
         status = str(result.get("status", "")).strip().lower()
         message = str(result.get("message", "")).strip()
@@ -1209,10 +1123,14 @@ class SettingsDialog(QDialog):
                 if changed:
                     summary.extend(changed)
                 else:
-                    summary.append("No setting changes were needed (already up to date).")
+                    summary.append(
+                        tr("No setting changes were needed (already up to date).")
+                    )
                 if recommended_gemini:
-                    summary.append(f"Gemini best available: {recommended_gemini}")
-                title = "Latest Models Applied"
+                    summary.append(
+                        tr("Gemini best available: {model}").format(model=recommended_gemini)
+                    )
+                title = tr("Latest Models Applied")
             else:
                 preview = self._preview_model_recommendations(
                     recommended_hf=recommended_hf,
@@ -1220,11 +1138,13 @@ class SettingsDialog(QDialog):
                     recommended_gemini=recommended_gemini,
                 )
                 if preview:
-                    summary.append("Preview only (not applied):")
+                    summary.append(tr("Preview only (not applied):"))
                     summary.extend(preview)
                 else:
-                    summary.append("Preview only: current settings are already up to date.")
-                title = "Latest Models Preview"
+                    summary.append(
+                        tr("Preview only: current settings are already up to date.")
+                    )
+                title = tr("Latest Models Preview")
 
             self.model_refresh_status.setText(" | ".join(summary))
             self.model_refresh_status.setStyleSheet("color: #2f6f44; font-size: 11px;")
@@ -1235,7 +1155,7 @@ class SettingsDialog(QDialog):
                     msg.setIcon(QMessageBox.Information)
                     msg.setWindowTitle(title)
                     msg.setText("\n".join(summary))
-                    apply_now_btn = msg.addButton("Apply Now", QMessageBox.AcceptRole)
+                    apply_now_btn = msg.addButton(tr("Apply Now"), QMessageBox.AcceptRole)
                     msg.addButton(QMessageBox.Close)
                     msg.exec_()
 
@@ -1250,10 +1170,14 @@ class SettingsDialog(QDialog):
                             applied_summary.extend(applied_lines)
                         else:
                             applied_summary.append(
-                                "No setting changes were needed (already up to date)."
+                                tr("No setting changes were needed (already up to date).")
                             )
                         if recommended_gemini:
-                            applied_summary.append(f"Gemini best available: {recommended_gemini}")
+                            applied_summary.append(
+                                tr("Gemini best available: {model}").format(
+                                    model=recommended_gemini
+                                )
+                            )
 
                         self.model_refresh_status.setText(" | ".join(applied_summary))
                         self.model_refresh_status.setStyleSheet("color: #2f6f44; font-size: 11px;")
@@ -1265,7 +1189,7 @@ class SettingsDialog(QDialog):
                 else:
                     QMessageBox.information(self, title, "\n".join(summary))
         else:
-            fallback_msg = message or "Latest model refresh failed."
+            fallback_msg = message or tr("Latest model refresh failed.")
             self.model_refresh_status.setText(fallback_msg)
             self.model_refresh_status.setStyleSheet("color: #b00020; font-size: 11px;")
             if manual:
@@ -1486,17 +1410,21 @@ class SettingsDialog(QDialog):
 
         parts = []
         if runtime:
-            parts.append("onnxruntime installed")
+            parts.append(tr("onnxruntime installed"))
         else:
-            parts.append("onnxruntime missing - press 'Install onnxruntime'")
+            parts.append(tr("onnxruntime missing - press 'Install onnxruntime'"))
         if ready:
-            parts.append(f"model downloaded ({spec.size // (1024 * 1024)} MB)")
+            parts.append(tr("model downloaded ({size} MB)").format(
+                size=spec.size // (1024 * 1024)
+            ))
         elif spec:
-            parts.append(f"model not downloaded ({spec.size // (1024 * 1024)} MB)")
+            parts.append(tr("model not downloaded ({size} MB)").format(
+                size=spec.size // (1024 * 1024)
+            ))
 
         colour = "green" if (runtime and ready) else "#9a6700"
         if runtime and ready:
-            parts.append("Auto Trace will use it for photographs.")
+            parts.append(tr("Auto Trace will use it for photographs."))
         self.onnx_status_label.setText(" | ".join(parts))
         self.onnx_status_label.setStyleSheet(f"color: {colour}; font-size: 11px;")
 
@@ -1546,9 +1474,14 @@ class SettingsDialog(QDialog):
         self.onnx_download_btn.setEnabled(True)
         message = str((result or {}).get("message", ""))
         if (result or {}).get("ok"):
-            QMessageBox.information(self, tr("Model ready"), message or "Download complete.")
+            QMessageBox.information(
+                self, tr("Model ready"), message or tr("Download complete.")
+            )
         else:
-            QMessageBox.warning(self, tr("Download failed"), message or "The download did not complete.")
+            QMessageBox.warning(
+                self, tr("Download failed"),
+                message or tr("The download did not complete."),
+            )
         self._refresh_onnx_status()
 
     def verify_onnx_model(self):
@@ -1611,8 +1544,10 @@ class SettingsDialog(QDialog):
                 dep_missing.append("transformers")
             if dep_missing:
                 self.sam_status_label.setText(
-                    "SAM2/3 not ready (missing package(s): " + ", ".join(dep_missing) + "). "
-                    "OpenCV backend will be used until setup is complete."
+                    tr("SAM2/3 not ready (missing package(s): {packages}). "
+                       "OpenCV backend will be used until setup is complete.").format(
+                        packages=tr(", ").join(dep_missing)
+                    )
                 )
                 self.sam_status_label.setStyleSheet("color: #9a6700; font-size: 11px;")
                 return
@@ -1635,13 +1570,17 @@ class SettingsDialog(QDialog):
 
         issues = []
         if not checkpoint_ok:
-            issues.append("checkpoint missing")
+            issues.append(tr("checkpoint missing"))
         if dep_missing:
-            issues.append("missing package(s): " + ", ".join(dep_missing))
+            issues.append(tr("missing package(s): {packages}").format(
+                packages=tr(", ").join(dep_missing)
+            ))
 
         self.sam_status_label.setText(
-            "SAM not ready (" + "; ".join(issues) + "). "
-            "OpenCV backend will be used until SAM setup is complete."
+            tr("SAM not ready ({issues}). "
+               "OpenCV backend will be used until SAM setup is complete.").format(
+                issues=tr("; ").join(issues)
+            )
         )
         self.sam_status_label.setStyleSheet("color: #9a6700; font-size: 11px;")
 
@@ -1655,7 +1594,8 @@ class SettingsDialog(QDialog):
             self,
             tr("Select SAM Checkpoint"),
             start_dir,
-            "SAM Checkpoint (sam_vit_*.pth *.pth *.pt);;PyTorch Checkpoint (*.pth *.pt);;All Files (*)"
+            tr("SAM Checkpoint (sam_vit_*.pth *.pth *.pt);;"
+               "PyTorch Checkpoint (*.pth *.pt);;All Files (*)")
         )
         if file_path:
             self.sam_checkpoint_input.setText(file_path)
@@ -2007,7 +1947,9 @@ class SettingsDialog(QDialog):
         if status == "error":
             self.hf_test_result.setText(tr("Failed"))
             self.hf_test_result.setStyleSheet("color: red;")
-            QMessageBox.warning(self, tr("Connection Failed"), message or "Unknown error")
+            QMessageBox.warning(
+                self, tr("Connection Failed"), message or tr("Unknown error")
+            )
             return
 
         self.hf_test_result.setText(tr("Failed"))
@@ -2187,7 +2129,7 @@ class SettingsDialog(QDialog):
             msg.setText(tr("Installation failed (Exit Code: {code}).").format(code=exit_code))
             msg.setInformativeText(tr("Check the 'ArcheoGlyph' tab in QGIS Log Messages panel for full details."))
             msg.setDetailedText(full_log)
-            copy_button = msg.addButton("Copy Command", QMessageBox.ActionRole)
+            copy_button = msg.addButton(tr("Copy Command"), QMessageBox.ActionRole)
             msg.addButton(QMessageBox.Ok)
 
             msg.exec_()
@@ -2522,7 +2464,10 @@ class LatestModelRefreshThread(QThread):
             if not hf_model and not sam_model_type and not gemini_model:
                 self.result_ready.emit({
                     "status": "error",
-                    "message": "Could not resolve latest model recommendations (check network/API keys).",
+                    "message": tr(
+                        "Could not resolve latest model recommendations "
+                        "(check network/API keys)."
+                    ),
                 })
                 return
 
@@ -2569,7 +2514,10 @@ class ModelDownloadThread(QThread):
                 progress=lambda received, total: self.progress.emit(int(received), int(total)),
                 cancel_check=lambda: self._cancel,
             )
-            self.result_ready.emit({"ok": True, "message": f"Model ready:\n{path}"})
+            self.result_ready.emit({
+                "ok": True,
+                "message": tr("Model ready:\n{path}").format(path=path),
+            })
         except Exception as e:
             self.result_ready.emit({"ok": False, "message": str(e)})
 
@@ -2592,7 +2540,11 @@ class GeminiTestThread(QThread):
         try:
             from google import genai
         except ImportError:
-            self.result_ready.emit(False, f"Package '{GEMINI_INSTALL_PACKAGE}' not installed")
+            self.result_ready.emit(
+                False, tr("Package '{package}' not installed").format(
+                    package=GEMINI_INSTALL_PACKAGE
+                )
+            )
             return
 
         try:
@@ -2604,18 +2556,24 @@ class GeminiTestThread(QThread):
                     continue
                 available.append(name)
         except Exception as e:
-            self.result_ready.emit(False, f"Connection/Auth Error: {e}")
+            self.result_ready.emit(
+                False, tr("Connection/Auth Error: {error}").format(error=e)
+            )
             return
 
         if not available:
-            self.result_ready.emit(False, "The key works, but no Gemini models are available for it.")
+            self.result_ready.emit(
+                False, tr("The key works, but no Gemini models are available for it.")
+            )
             return
 
         available.sort(key=_rank_gemini_model, reverse=True)
         image_models = [name for name in available if _is_image_gemini_model(name)]
-        summary = f"Key valid. {len(available)} models available; best: {available[0]}"
+        summary = tr("Key valid. {count} models available; best: {model}").format(
+            count=len(available), model=available[0]
+        )
         if image_models:
-            summary += f"; image model: {image_models[0]}"
+            summary += tr("; image model: {model}").format(model=image_models[0])
         self.result_ready.emit(True, summary)
 
 
@@ -2640,7 +2598,10 @@ class HfConnectionTestThread(QThread):
         except Exception:
             self.result_ready.emit({
                 "status": "error",
-                "message": "The 'huggingface_hub' package is required. Install it with: pip install huggingface_hub",
+                "message": tr(
+                    "The 'huggingface_hub' package is required. "
+                    "Install it with: pip install huggingface_hub"
+                ),
             })
             return
 
@@ -2687,4 +2648,7 @@ class HfConnectionTestThread(QThread):
         if saw_missing:
             self.result_ready.emit({"status": "not_found"})
             return
-        self.result_ready.emit({"status": "error", "message": last_error or "No model could be reached."})
+        self.result_ready.emit({
+            "status": "error",
+            "message": last_error or tr("No model could be reached."),
+        })

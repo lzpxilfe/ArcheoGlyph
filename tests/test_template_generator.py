@@ -57,3 +57,30 @@ def test_categories_cover_the_catalog():
         assert info.get("default_color", "").startswith("#"), f"{name} has no default colour"
         covered.add(info["category"])
     assert covered <= {"artifacts", "structures", "remains", "features", "survey"}
+
+
+def test_the_optional_svg_file_key_is_never_assumed(tmp_path):
+    """
+    Templates drawn in code carry no `file` key, and an entry that has one may
+    still have no file on disk. Indexing it directly raised KeyError for every
+    code-drawn template, which is most of the catalogue.
+    """
+    generator = TemplateGenerator(str(tmp_path))
+    for name, info in TemplateGenerator.TEMPLATE_INFO.items():
+        assert generator._template_file(info) == "", f"{name} resolved a file that is absent"
+
+    (tmp_path / "resources" / "templates").mkdir(parents=True)
+    (tmp_path / "resources" / "templates" / "pottery.svg").write_text("<svg/>", encoding="utf-8")
+    assert generator._template_file({"file": "pottery.svg"}).endswith("pottery.svg")
+    assert generator._template_file({}) == ""
+    assert generator._template_file({"file": ""}) == ""
+    assert generator._template_file(None) == ""
+
+
+def test_generate_does_not_index_optional_catalog_keys():
+    """The crash was a direct subscript; keep it from coming back."""
+    import inspect
+
+    source = inspect.getsource(TemplateGenerator.generate)
+    assert "template_info['file']" not in source
+    assert 'template_info["file"]' not in source

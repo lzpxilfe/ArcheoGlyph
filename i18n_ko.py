@@ -778,4 +778,131 @@ CATALOG = {
     "Clay Figurine": "토우",
     "Ridge-end Roof Ornament (Chimi)": "치미",
     "Building Foundation Stone": "초석",
+    # -- Mode descriptions and category labels -----------------------------
+    # These live in class-level tables and are translated where they are shown.
+    "Extracts contour + internal feature lines from photo (fast, offline)":
+        "사진에서 윤곽선과 내부 세부선을 추출합니다 (빠르고 오프라인).",
+    "Google Gemini generates reference-constrained symbols (factual mode)":
+        "Google Gemini가 참조 이미지에 맞춰 심볼을 생성합니다 (사실 모드).",
+    "Hugging Face generates factual symbols from the reference image (token required)":
+        "Hugging Face가 참조 이미지로 사실적인 심볼을 생성합니다 (토큰 필요).",
+    "Local Stable Diffusion generates symbols (GPU required)":
+        "로컬 Stable Diffusion이 심볼을 생성합니다 (GPU 필요).",
+    "Uses built-in SVG templates by category": "분류별 내장 SVG 템플릿을 사용합니다.",
+    "All Categories": "전체 분류",
+    "Artifacts": "유물",
+    "Structures": "유구·건물",
+    "Remains": "인골·동물유체",
+    "Features": "유구 흔적",
+    "Survey": "조사·기록",
+    " | Controls: {values}": " | 조정값: {values}",
+    "Select Symbol Color": "심볼 색상 선택",
+    "the short side is {actual}px (recommended {recommended}px)":
+        "짧은 변이 {actual}px입니다 (권장 {recommended}px)",
+    "the short side is only {actual}px": "짧은 변이 {actual}px밖에 되지 않습니다",
+    "the image looks blurred or heavily compressed":
+        "이미지가 흐리거나 심하게 압축된 것으로 보입니다",
+    "; ": "; ",
+    "<b>Input may trace poorly</b> ({width}x{height}): {problems}. "
+    "A tighter crop of a sharper photo gives cleaner symbols.":
+        "<b>추적 결과가 나쁠 수 있습니다</b> ({width}x{height}): {problems}. "
+        "더 선명한 사진을 유물에 맞춰 잘라 쓰면 심볼이 깔끔해집니다.",
+    # -- Status lines and progress messages --------------------------------
+    "Simple symbol preset applied: stable silhouette, bold outline, "
+    "minimal structure lines.":
+        "단순 심볼 설정을 적용했습니다: 안정적인 실루엣, 굵은 외곽선, 최소한의 구조선.",
+    "Fast preset applied: speed priority (Fast mode, image-first, upscale off).":
+        "빠른 변환 설정을 적용했습니다: 속도 우선 (빠르게, 이미지 우선, 확대 끔).",
+    "Generation cancelled.": "생성을 취소했습니다.",
+    "Cancelling...": "취소하는 중...",
+    "Vectorisation failed: {error}": "벡터화 실패: {error}",
+    "vector SVG": "벡터 SVG",
+    "raster PNG": "래스터 PNG",
+    "Result: {kind} from {source}": "결과: {source}에서 만든 {kind}",
+    "ArchaeoGlyph Symbol": "ArchaeoGlyph 심볼",
+
+    # -- Settings: info panels and help ------------------------------------
+    "Google Gemini can generate archaeological symbols from reference images. "
+    "API availability depends on your project quota and billing state.":
+        "Google Gemini는 참조 이미지로 고고학 심볼을 생성할 수 있습니다. "
+        "사용 가능 여부는 프로젝트 사용량과 결제 상태에 따라 달라집니다.",
+    "Gemini text models can return SVG. Image models such as Nano Banana return "
+    "raster images that are post-processed into factual symbols. If you encounter "
+    "HTTP 429, check Gemini quota limits and retry after cooldown.":
+        "Gemini 텍스트 모델은 SVG를 반환할 수 있습니다. Nano Banana 같은 이미지 모델은 "
+        "래스터 이미지를 반환하며, 이는 후처리를 거쳐 사실적인 심볼이 됩니다. HTTP 429가 "
+        "나오면 Gemini 사용량 한도를 확인하고 잠시 뒤 다시 시도하세요.",
+    "Local Stable Diffusion runs AI on YOUR computer - no internet required! "
+    "Great for offline field work or sensitive data. Requires a GPU with 6GB+ VRAM.":
+        "로컬 Stable Diffusion은 AI를 사용자의 컴퓨터에서 직접 실행합니다. 인터넷이 필요 "
+        "없어 현장 작업이나 민감한 자료에 적합합니다. VRAM 6GB 이상의 GPU가 필요합니다.",
+    "Advanced Setup Required: This option requires installing additional software "
+    "and downloading large model files (4-8 GB). If you're not comfortable with "
+    "this, use Google Gemini or Templates instead.":
+        "고급 설정이 필요합니다: 이 방식은 추가 소프트웨어 설치와 대용량 모델 파일 "
+        "(4-8 GB) 내려받기가 필요합니다. 부담스럽다면 Google Gemini나 템플릿을 쓰세요.",
+    "Tip: Start with Templates to try the plugin, then add AI features later!":
+        "도움말: 먼저 템플릿으로 플러그인을 사용해 보고, AI 기능은 나중에 추가하세요.",
+    "SAM Checkpoint (sam_vit_*.pth *.pth *.pt);;"
+    "PyTorch Checkpoint (*.pth *.pt);;All Files (*)":
+        "SAM 체크포인트 (sam_vit_*.pth *.pth *.pt);;"
+        "PyTorch 체크포인트 (*.pth *.pt);;모든 파일 (*)",
+
+    # -- Settings: model refresh ------------------------------------------
+    "Invalid model refresh result payload.": "모델 갱신 결과 형식이 올바르지 않습니다.",
+    "Latest model refresh failed.": "최신 모델 갱신에 실패했습니다.",
+    "Latest Models Preview": "최신 모델 미리보기",
+    "HF model -> {model}": "Hugging Face 모델 -> {model}",
+    "SAM model -> {model}": "SAM 모델 -> {model}",
+    "Gemini preferred -> {model}": "Gemini 우선 모델 -> {model}",
+    "HF model: {current} -> {new}": "Hugging Face 모델: {current} -> {new}",
+    "SAM model: {current} -> {new}": "SAM 모델: {current} -> {new}",
+    "Gemini preferred: {current} -> {new}": "Gemini 우선 모델: {current} -> {new}",
+    "(empty)": "(비어 있음)",
+    "No setting changes were needed (already up to date).":
+        "변경할 설정이 없습니다 (이미 최신입니다).",
+    "Gemini best available: {model}": "사용 가능한 최적 Gemini 모델: {model}",
+    "Preview only (not applied):": "미리보기 (적용하지 않음):",
+    "Preview only: current settings are already up to date.":
+        "미리보기: 현재 설정이 이미 최신입니다.",
+    "Apply Now": "지금 적용",
+    "Could not resolve latest model recommendations (check network/API keys).":
+        "최신 추천 모델을 확인하지 못했습니다 (네트워크와 API 키를 확인하세요).",
+
+    # -- Settings: model and SAM status ------------------------------------
+    "onnxruntime installed": "onnxruntime 설치됨",
+    "onnxruntime missing - press 'Install onnxruntime'":
+        "onnxruntime 없음 - 'onnxruntime 설치'를 누르세요",
+    "model downloaded ({size} MB)": "모델 내려받음 ({size} MB)",
+    "model not downloaded ({size} MB)": "모델 내려받지 않음 ({size} MB)",
+    "Auto Trace will use it for photographs.": "자동 추적이 사진에 이 모델을 사용합니다.",
+    "Download complete.": "내려받기를 마쳤습니다.",
+    "The download did not complete.": "내려받기를 마치지 못했습니다.",
+    "Model ready:\n{path}": "모델 준비 완료:\n{path}",
+    "checkpoint missing": "체크포인트 없음",
+    "missing package(s): {packages}": "없는 패키지: {packages}",
+    ", ": ", ",
+    "SAM2/3 not ready (missing package(s): {packages}). "
+    "OpenCV backend will be used until setup is complete.":
+        "SAM2/3을 쓸 수 없습니다 (없는 패키지: {packages}). "
+        "설정을 마칠 때까지 OpenCV를 사용합니다.",
+    "SAM not ready ({issues}). "
+    "OpenCV backend will be used until SAM setup is complete.":
+        "SAM을 쓸 수 없습니다 ({issues}). SAM 설정을 마칠 때까지 OpenCV를 사용합니다.",
+
+    # -- Settings: connection tests and installation -----------------------
+    "Copy Command": "명령 복사",
+    "Unknown error": "알 수 없는 오류",
+    "Package '{package}' not installed": "'{package}' 패키지가 설치되지 않았습니다",
+    "Connection/Auth Error: {error}": "연결/인증 오류: {error}",
+    "The key works, but no Gemini models are available for it.":
+        "키는 유효하지만 사용할 수 있는 Gemini 모델이 없습니다.",
+    "Key valid. {count} models available; best: {model}":
+        "키가 유효합니다. 사용 가능한 모델 {count}개, 최적 모델: {model}",
+    "; image model: {model}": "; 이미지 모델: {model}",
+    "The 'huggingface_hub' package is required. "
+    "Install it with: pip install huggingface_hub":
+        "'huggingface_hub' 패키지가 필요합니다. "
+        "다음으로 설치하세요: pip install huggingface_hub",
+    "No model could be reached.": "어떤 모델에도 연결하지 못했습니다.",
 }

@@ -156,6 +156,9 @@ def test_translated_combos_are_read_by_data_not_by_label():
 TRANSLATED_WIDGETS = {
     "QLabel", "QPushButton", "QGroupBox", "QCheckBox", "QRadioButton",
     "QAction", "QToolButton", "QCommandLinkButton",
+    # The dialog's own label classes; missing these is how several info
+    # panels stayed English.
+    "InfoLabel", "WarningLabel",
 }
 TRANSLATED_METHODS = {
     "setText", "setToolTip", "setWindowTitle", "setPlaceholderText", "setTitle",
@@ -223,4 +226,74 @@ def test_every_user_facing_string_goes_through_tr():
             problems.append(f"{path}:{line} ({why}) {text[:60]!r} is not inside tr(...)")
     assert not problems, (
         "user-facing strings that bypass translation:\n" + "\n".join(problems)
+    )
+
+
+# Prose that is deliberately not translated, with the reason.
+NOT_USER_FACING = {
+    # Sent to a model, not shown to anyone.
+    "archaeological artifact from reference photo",
+    # Matched against an API error string, so it must stay English.
+    "quota exceeded",
+    # Written to the QGIS log, which is English by convention.
+    "ArcheoGlyph: Package installed successfully.",
+    "ArcheoGlyph Install Failed:\n",
+    # Part of a shell command the user pastes into a terminal.
+    '" -m pip install --user ',
+    " -m pip install --user segment-anything transformers huggingface_hub pillow",
+}
+PROSE = re.compile(r"[A-Za-z]{2,}[^{}]*\s+[A-Za-z]{2,}")
+
+
+def _prose_literals(path):
+    """
+    String literals in a dialog that read like sentences.
+
+    Stylesheets, log messages and docstrings are excluded; everything else
+    that looks like prose is something a user can read.
+    """
+    tree = ast.parse((ROOT / path).read_text(encoding="utf-8-sig"))
+    exempt = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name in ("tr", "log", "log_exception", "logMessage", "setStyleSheet"):
+                for argument in node.args:
+                    for child in ast.walk(argument):
+                        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+                            exempt.add(id(child))
+        # A module, class or function docstring.
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            exempt.add(id(node.value))
+
+    return [
+        (node.lineno, node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in exempt
+        and PROSE.search(node.value)
+    ]
+
+
+def test_no_readable_sentence_escapes_translation():
+    """
+    The wider net behind test_every_user_facing_string_goes_through_tr.
+
+    That test only sees literals sitting directly at a known Qt call site, so
+    prose held in a class-level table, joined into a status line, or handed to
+    a custom label class slipped past it — which is exactly what happened. Any
+    sentence in a dialog must be inside tr(), already have a catalogue entry,
+    or be listed above with a reason.
+    """
+    from archeoglyph.i18n_ko import CATALOG
+
+    problems = []
+    for path in DIALOGS:
+        for line, text in _prose_literals(path):
+            if text in CATALOG or text in NOT_USER_FACING:
+                continue
+            problems.append(f"{path}:{line} {text[:70]!r}")
+    assert not problems, (
+        "readable text that is neither translated nor explained:\n" + "\n".join(problems)
     )
