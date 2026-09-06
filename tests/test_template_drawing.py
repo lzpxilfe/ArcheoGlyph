@@ -35,7 +35,9 @@ FakeColor = qr.Color
 @pytest.fixture
 def painter(monkeypatch):
     """Point the template module's Qt names at the recording stand-ins."""
-    qr.install(monkeypatch, tg)
+    from archeoglyph.generators import icon_grid
+
+    qr.install(monkeypatch, tg, icon_grid)
     return qr.Painter()
 
 

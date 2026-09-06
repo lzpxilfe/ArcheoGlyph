@@ -12,7 +12,7 @@ from qgis.PyQt.QtSvg import QSvgGenerator, QSvgRenderer
 
 from ..i18n import tr
 from ..log import log_exception
-from . import template_catalog
+from . import icon_grid, template_catalog
 
 
 # -- House style -----------------------------------------------------------
@@ -22,12 +22,15 @@ from . import template_catalog
 # drawing look scratchy rather than drawn. Every stroke in this module goes
 # through _pen() so the whole catalogue is drawn in one hand.
 
-DETAIL_WIDTH = 3.0      # internal lines: section marks, hatching, decoration
-OUTLINE_WIDTH = 4.8     # the silhouette and anything that carries the shape
+#: One grid unit at the 256px canvas the templates are painted on.
+_UNIT = 256.0 / icon_grid.UNITS
+
+DETAIL_WIDTH = icon_grid.DETAIL * _UNIT       # internal lines: 2 units
+OUTLINE_WIDTH = icon_grid.OUTLINE * _UNIT     # the silhouette: 3 units
 
 
 def _weight(width):
-    """Lift a requested stroke width onto the house steps."""
+    """Lift a requested stroke width onto the grid's two steps."""
     width = float(width)
     if width <= 2.0:
         return DETAIL_WIDTH
@@ -781,10 +784,19 @@ class TemplateGenerator:
         polygon_points = right + list(reversed(left))
         painter.drawPolygon(QPolygonF(polygon_points))
 
+        blade = QPainterPath()
+        blade.moveTo(polygon_points[0].x(), polygon_points[0].y())
+        for point in polygon_points[1:]:
+            blade.lineTo(point.x(), point.y())
+        blade.closeSubpath()
+
         old_pen = painter.pen()
         ridge_pen = _pen(old_pen.color().darker(135), 1.20)
+        _clip_detail(painter, blade)
         painter.setPen(ridge_pen)
         painter.drawLine(int(cx), int(top + (height * 0.08)), int(cx), int(bottom + 8))
+        painter.restore()
+        painter.setPen(ridge_pen)
 
         if variant == "flat":
             shoulder_y = int(top + (height * 0.30))
@@ -831,10 +843,18 @@ class TemplateGenerator:
             points.append(QPointF(cx - float(x_off), float(y)))
         painter.drawPolygon(QPolygonF(points))
 
-        # Midrib line for legibility in typology-like symbols.
+        head = QPainterPath()
+        head.moveTo(points[0].x(), points[0].y())
+        for point in points[1:]:
+            head.lineTo(point.x(), point.y())
+        head.closeSubpath()
+
+        # The midrib belongs inside the head, not running out through its tip.
         old_pen = painter.pen()
+        _clip_detail(painter, head)
         painter.setPen(_pen(old_pen.color().darker(135), 1.1))
         painter.drawLine(int(cx), int(top + 6), int(cx), int(bottom - 6))
+        painter.restore()
         painter.setPen(old_pen)
 
     def _draw_keyhole_tomb(self, painter, s, m, variant, color):
@@ -1847,24 +1867,21 @@ class TemplateGenerator:
         body = QPainterPath()
 
         if variant == "comb_pattern":
-            # 빗살무늬토기: a deep conical vessel with a pointed base.
-            body.moveTo(cx - 74, top)
-            body.lineTo(cx + 74, top)
-            body.lineTo(cx + 12, bottom)
-            body.quadTo(cx, bottom + 6, cx - 12, bottom)
-            body.closeSubpath()
+            # 빗살무늬토기: the pointed-base cone with its rim band. Built on
+            # the grid, so its wall angle matches the other vessels instead of
+            # being whatever the curve happened to be.
+            g = icon_grid.Grid(s)
+            body = g.symmetric([(18, 6), (18, 11), (16, 13), (5, 54), (1, 58)])
             painter.drawPath(body)
             _clip_detail(painter, body)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            # Four rows read as comb impressions; the twenty-five the shape
-            # could hold turn into mud once the symbol is map-sized.
-            for row in range(4):
-                y = top + 30 + row * 34
-                half = 64 - row * 13
-                for i in range(4):
-                    x = cx - half + (2.0 * half / 3.0) * i
-                    painter.drawLine(int(x), int(y), int(x + 9), int(y + 15))
+            painter.drawPath(g.line(46, 13, 18, 13))
+            # Three courses of comb impressions. More reads as rain.
+            for row, (half, y) in enumerate(((14, 20), (11, 30), (8, 40))):
+                for i in range(3):
+                    x = 32 - half + (half * i)
+                    painter.drawPath(g.line(x, y, x + 3, y + 5))
             painter.restore()
 
         elif variant == "plain_coarse":
@@ -2555,8 +2572,10 @@ class TemplateGenerator:
             body.quadTo(hx - r, hy - r * 1.35, hx + 6, hy - r)
             body.quadTo(hx + r * 1.5, hy - r * 0.5, hx + r * 1.25, hy + r * 0.9)
             body.quadTo(hx + r * 0.95, bottom - 18, hx - r * 0.9, bottom - 10)
-            body.quadTo(hx - r * 0.2, bottom - 46, hx + r * 0.35, hy + r * 0.75)
-            body.quadTo(hx + r * 0.5, hy + r * 0.1, hx - r, hy)
+            # The tail has to stay fat enough to read at marker size; drawn
+            # thinner it turns into a figure 9 once the outline is on it.
+            body.quadTo(hx - r * 0.05, bottom - 40, hx + r * 0.15, hy + r * 0.8)
+            body.quadTo(hx + r * 0.28, hy + r * 0.05, hx - r, hy)
             body.closeSubpath()
             painter.drawPath(body)
             painter.setPen(thin)

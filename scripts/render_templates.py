@@ -193,25 +193,25 @@ def _element(kind, payload, brush, pen, clip_id=None):
 
 def render(name, colour):
     """The SVG body for one template, or "" when it draws nothing."""
-    from archeoglyph.generators import template_generator as tg
+    from archeoglyph.generators import icon_grid, template_generator as tg
     from archeoglyph.generators.template_generator import TemplateGenerator
 
-    saved = {
-        attr: getattr(tg, attr)
-        for attr in ("QColor", "QPen", "QPainterPath", "QPolygonF", "QPointF",
-                     "QRectF", "Qt")
-    }
-    tg.QColor, tg.QPen, tg.QPainterPath = qr.Color, qr.Pen, qr.Path
-    tg.QPolygonF, tg.QPointF, tg.QRectF, tg.Qt = (
-        qr.PolygonF, qr.PointF, qr.RectF, qr.Qt
-    )
+    modules = (tg, icon_grid)
+    saved = [
+        (module, attr, getattr(module, attr))
+        for module in modules
+        for attr, _stand_in in qr.STAND_INS
+        if hasattr(module, attr)
+    ]
+    for module, attr, _original in saved:
+        setattr(module, attr, dict(qr.STAND_INS)[attr])
     painter = qr.Painter()
     try:
         generator = TemplateGenerator.__new__(TemplateGenerator)
         generator._paint_template(painter, name, qr.Color(colour), SIZE)
     finally:
-        for attr, value in saved.items():
-            setattr(tg, attr, value)
+        for module, attr, original in saved:
+            setattr(module, attr, original)
 
     # Clipped detail needs a <clipPath> per distinct silhouette.
     clips, defs = {}, []

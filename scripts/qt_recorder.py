@@ -395,14 +395,19 @@ def _as_rect(args):
     return RectF(x, y, w, h)
 
 
-def install(monkeypatch, module):
-    """Point a module's Qt names at these stand-ins."""
-    for name, value in (
-        ("QColor", Color), ("QPen", Pen), ("QPainterPath", Path),
-        ("QPolygonF", PolygonF), ("QPointF", PointF), ("QRectF", RectF),
-        ("Qt", Qt),
-    ):
-        monkeypatch.setattr(module, name, value)
+STAND_INS = (
+    ("QColor", Color), ("QPen", Pen), ("QPainterPath", Path),
+    ("QPolygonF", PolygonF), ("QPointF", PointF), ("QRectF", RectF),
+    ("Qt", Qt),
+)
+
+
+def install(monkeypatch, *modules):
+    """Point each module's Qt names at these stand-ins."""
+    for module in modules:
+        for name, value in STAND_INS:
+            if hasattr(module, name):
+                monkeypatch.setattr(module, name, value)
 
 
 def arc_endpoints(x, y, w, h, start_deg, span_deg):
