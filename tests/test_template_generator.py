@@ -27,8 +27,9 @@ def test_every_catalog_entry_resolves_to_an_existing_painter():
 
 
 def test_hearth_is_not_captured_by_the_pit_keyword():
-    assert _resolve("Hearth / Fire Pit") == ("_draw_hearth", (COLOR,))
-    assert _resolve("Pit") == ("_draw_pit", (COLOR,))
+    assert _resolve("Hearth / Fire Pit") == ("_draw_general_landscape", ("hearth", COLOR))
+    assert _resolve("Pit") == ("_draw_general_structure", ("pit", COLOR))
+    assert _resolve("Storage Pit") == ("_draw_general_structure", ("storage_pit", COLOR))
     assert _resolve("Test Pit") == ("_draw_test_pit", (COLOR,))
 
 
@@ -40,7 +41,8 @@ def test_variant_dispatch_is_preserved():
 
 
 def test_explicit_draw_key_overrides_keyword_matching():
-    assert TemplateGenerator.TEMPLATE_INFO["Hearth / Fire Pit"]["draw"] == ("_draw_hearth", "COLOR")
+    assert TemplateGenerator.TEMPLATE_INFO["Hearth / Fire Pit"]["draw"] == (
+        "_draw_general_landscape", "hearth", "COLOR")
 
 
 def test_legacy_aliases_map_into_the_catalog():

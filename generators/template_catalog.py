@@ -417,7 +417,7 @@ TEMPLATE_INFO = {
 
     # Features
     "Hearth / Fire Pit": {
-        "draw": ("_draw_hearth", "COLOR"),
+        "draw": ("_draw_general_landscape", "hearth", "COLOR"),
         "file": "hearth.svg",
         "default_color": "#6D645A",
         "category": "features"

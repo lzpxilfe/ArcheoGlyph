@@ -7,8 +7,8 @@ Generates symbols from built-in SVG templates with comprehensive archaeological 
 import math
 import os
 import re
-from qgis.PyQt.QtGui import QImage, QColor, QPainter, QPainterPath, QPolygonF, QPen
-from qgis.PyQt.QtCore import Qt, QBuffer, QByteArray, QIODevice, QPointF, QRect, QRectF, QSize
+from qgis.PyQt.QtGui import QImage, QColor, QPainter, QPainterPath, QPen
+from qgis.PyQt.QtCore import Qt, QBuffer, QByteArray, QIODevice, QRect, QSize
 from qgis.PyQt.QtSvg import QSvgGenerator, QSvgRenderer
 
 from ..i18n import tr
@@ -413,59 +413,79 @@ class TemplateGenerator:
         elif "body sherd" in key:
             return ("_draw_pottery_sherd_section", ("body", COLOR))
         elif "pottery" in key:
-            return ("_draw_pottery", ())
-        elif "stone tool" in key or "arrowhead" in key or "scraper" in key:
-            return ("_draw_stone_tool", ())
+            return ("_draw_general_find", ("pottery", COLOR))
+        elif "scraper" in key:
+            return ("_draw_general_find", ("scraper", COLOR))
+        elif "arrowhead" in key:
+            return ("_draw_general_find", ("arrowhead", COLOR))
+        elif "stone tool" in key:
+            return ("_draw_general_find", ("stone_tool", COLOR))
         elif "bronze" in key:
-            return ("_draw_bronze", ())
-        elif "iron" in key or "chisel" in key:
-            return ("_draw_iron", ())
-        elif "ornament" in key or "bead" in key or "bracelet" in key or "ring" in key:
-            return ("_draw_ornament", ())
-        elif "coin" in key or "seal" in key or "stamp" in key or "spindle" in key:
-            return ("_draw_coin", (COLOR,))
-        elif "bone" in key or "needle" in key or "pin" in key or "animal remains" in key:
-            return ("_draw_bone_tool", ())
-        elif "weapon" in key or "blade" in key or "arrow shaft" in key:
-            return ("_draw_weapon", ())
-        elif "fortress" in key or "castle" in key or "gate" in key or "tower" in key:
-            if "gate" in key:
-                return ("_draw_gate", ())
-            elif "tower" in key:
-                return ("_draw_tower", ())
-            else:
-                return ("_draw_fortress", ())
-        elif "dwelling" in key or "house" in key or "workshop" in key:
-            if "workshop" in key:
-                return ("_draw_workshop", ())
-            else:
-                return ("_draw_dwelling", ())
+            return ("_draw_general_find", ("bronze", COLOR))
+        elif "chisel" in key:
+            return ("_draw_general_find", ("chisel", COLOR))
+        elif "iron" in key:
+            return ("_draw_general_find", ("iron", COLOR))
+        elif "bracelet" in key or "ring" in key:
+            return ("_draw_general_find", ("bracelet", COLOR))
+        elif "bead" in key:
+            return ("_draw_general_find", ("bead", COLOR))
+        elif "ornament" in key:
+            return ("_draw_general_find", ("ornament", COLOR))
+        elif "spindle" in key:
+            return ("_draw_general_find", ("whorl", COLOR))
+        elif "seal" in key or "stamp" in key:
+            return ("_draw_general_find", ("seal", COLOR))
+        elif "coin" in key:
+            return ("_draw_general_find", ("coin", COLOR))
+        elif "needle" in key or "pin" in key:
+            return ("_draw_general_find", ("needle", COLOR))
+        elif "animal remains" in key:
+            return ("_draw_general_find", ("animal_bone", COLOR))
+        elif "bone" in key:
+            return ("_draw_general_find", ("bone_tool", COLOR))
+        elif "weapon" in key or "arrow shaft" in key:
+            return ("_draw_general_find", ("weapon", COLOR))
+        elif "blade" in key:
+            return ("_draw_general_find", ("blade", COLOR))
+        elif "gate" in key:
+            return ("_draw_general_structure", ("gate", COLOR))
+        elif "tower" in key:
+            return ("_draw_general_structure", ("tower", COLOR))
+        elif "fortress" in key or "castle" in key:
+            return ("_draw_general_structure", ("fortress", COLOR))
+        elif "workshop" in key:
+            return ("_draw_general_structure", ("workshop", COLOR))
+        elif "dwelling" in key or "house" in key:
+            return ("_draw_general_structure", ("dwelling", COLOR))
         elif "road" in key or "pavement" in key:
-            return ("_draw_road", (COLOR,))
+            return ("_draw_general_structure", ("road", COLOR))
         elif "bridge" in key:
-            return ("_draw_bridge", (COLOR,))
+            return ("_draw_general_structure", ("bridge", COLOR))
         elif "terrace" in key:
-            return ("_draw_terrace", (COLOR,))
+            return ("_draw_general_landscape", ("terrace", COLOR))
         elif "wall" in key or "rampart" in key:
-            return ("_draw_wall", ())
+            return ("_draw_general_structure", ("wall", COLOR))
         elif "posthole" in key:
-            return ("_draw_posthole", (COLOR,))
+            return ("_draw_general_structure", ("posthole", COLOR))
         elif "test pit" in key:
             return ("_draw_test_pit", (COLOR,))
+        elif "storage pit" in key:
+            return ("_draw_general_structure", ("storage_pit", COLOR))
         elif "pit" in key:
-            return ("_draw_pit", (COLOR,))
+            return ("_draw_general_structure", ("pit", COLOR))
         elif "ash layer" in key:
             return ("_draw_ash_layer", (COLOR,))
         elif "burnt" in key:
-            return ("_draw_burnt_area", (COLOR,))
+            return ("_draw_general_landscape", ("burnt", COLOR))
         elif "canal" in key or "water channel" in key:
-            return ("_draw_canal", (COLOR,))
+            return ("_draw_general_landscape", ("canal", COLOR))
         elif "ditch" in key or "moat" in key:
-            return ("_draw_ditch", (COLOR,))
+            return ("_draw_general_landscape", ("ditch", COLOR))
         elif "standing stone" in key:
-            return ("_draw_standing_stone", (COLOR,))
+            return ("_draw_general_landscape", ("standing_stone", COLOR))
         elif "stone align" in key:
-            return ("_draw_stone_alignment", ())
+            return ("_draw_general_landscape", ("alignment", COLOR))
         elif "trench" in key:
             return ("_draw_trench", (COLOR,))
         elif "grid corner" in key:
@@ -490,26 +510,32 @@ class TemplateGenerator:
             return ("_draw_sample_location", (COLOR,))
         elif "find" in key:
             return ("_draw_find_spot", (COLOR,))
-        elif "tomb" in key or "barrow" in key or ("mound" in key and "shell" not in key and "midden" not in key):
-            return ("_draw_tomb", ())
+        elif "barrow" in key or ("mound" in key and "shell" not in key and "midden" not in key):
+            return ("_draw_general_structure", ("mound", COLOR))
+        elif "tomb" in key:
+            return ("_draw_general_structure", ("tomb", COLOR))
         elif "temple" in key or "shrine" in key:
-            return ("_draw_temple", (COLOR,))
+            return ("_draw_general_structure", ("temple", COLOR))
         elif "kiln" in key or "furnace" in key:
-            return ("_draw_kiln", ())
+            return ("_draw_general_structure", ("kiln", COLOR))
         elif "well" in key:
-            return ("_draw_well", (COLOR,))
-        elif "human" in key or "skull" in key or "skeleton" in key:
-            return ("_draw_skull", (COLOR,))
-        elif "burial" in key or "cremation" in key:
-            return ("_draw_burial", (COLOR,))
+            return ("_draw_general_structure", ("well", COLOR))
+        elif "skeleton" in key:
+            return ("_draw_general_landscape", ("skeleton", COLOR))
+        elif "human" in key or "skull" in key:
+            return ("_draw_general_landscape", ("skull", COLOR))
+        elif "cremation" in key:
+            return ("_draw_general_landscape", ("cremation", COLOR))
+        elif "burial" in key:
+            return ("_draw_general_landscape", ("burial", COLOR))
         elif "hearth" in key or "fire" in key:
-            return ("_draw_hearth", (COLOR,))
+            return ("_draw_general_landscape", ("hearth", COLOR))
         elif "midden" in key or "shell" in key:
-            return ("_draw_midden", ())
+            return ("_draw_general_landscape", ("midden", COLOR))
         elif "dolmen" in key:
-            return ("_draw_dolmen", ())
+            return ("_draw_general_landscape", ("dolmen", COLOR))
         elif "rock art" in key:
-            return ("_draw_rock_art", (COLOR,))
+            return ("_draw_general_landscape", ("rock_art", COLOR))
         else:
             return (None, ())
 
@@ -581,225 +607,657 @@ class TemplateGenerator:
     #  Drawing methods — Artifacts
     # ═══════════════════════════════════════════════════════
 
-    def _draw_pottery(self, painter, s, m):
-        """Vessel profile with section-style interior cues."""
-        p = QPainterPath()
-        cx = s / 2
-        p.moveTo(cx - 24, m + 22)
-        p.lineTo(cx + 24, m + 22)
-        p.quadTo(cx + 28, m + 36, cx + 24, m + 44)
-        p.quadTo(cx + 68, s * 0.56, cx + 52, s - m)
-        p.lineTo(cx - 52, s - m)
-        p.quadTo(cx - 68, s * 0.56, cx - 24, m + 44)
-        p.quadTo(cx - 28, m + 36, cx - 24, m + 22)
-        p.closeSubpath()
-        painter.drawPath(p)
-
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        line_pen = _pen(old_pen.color().darker(140), 1.1)
-        _clip_detail(painter, p)
-        painter.setPen(line_pen)
-        painter.setBrush(Qt.NoBrush)
-
-        # Split-profile convention used in ceramic illustration: the centre
-        # line, the rim and the base. The section hatching that used to fill
-        # the left half reads as scribble once the symbol is map-sized.
-        painter.drawLine(int(cx), int(m + 24), int(cx), int(s - m - 2))
-        painter.drawLine(int(cx - 24), int(m + 30), int(cx + 24), int(m + 30))
-        painter.drawLine(int(cx - 44), int(s - m - 8), int(cx + 44), int(s - m - 8))
-        painter.restore()
-
-        painter.setPen(old_pen)
-        painter.setBrush(old_brush)
-
     def _draw_pottery_sherd_section(self, painter, s, m, variant, color):
-        """Section-style ceramic sherd snippets used in typology figures."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        edge_pen = _pen(color.darker(145), 2.0)
-        hatch_pen = _pen(color.darker(165), 1.0)
-        painter.setPen(edge_pen)
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
+        """
+        The three sherd categories, drawn as the wall section each one is.
 
-        path = QPainterPath()
+        These used to be three lumpy outlines with the same field of hatching
+        inside, so nothing said which part of the pot a sherd came from. What
+        actually distinguishes them is where the profile ends: a rim has a
+        lip, a base has a foot, a body is cut at both ends.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.MID))
+
         if variant == "rim":
-            path.moveTo(m + 22, m + 52)
-            path.quadTo(s * 0.42, m + 24, s * 0.70, m + 34)
-            path.quadTo(s - m - 18, m + 50, s - m - 42, m + 70)
-            path.lineTo(m + 52, s - m - 28)
-            path.quadTo(m + 30, s * 0.62, m + 22, m + 52)
+            wall = g.poly([(42, 8), (32, 16), (30, 32), (32, 54),
+                           (22, 54), (20, 32), (22, 15), (32, 6)])
         elif variant == "base":
-            path.moveTo(m + 32, s - m - 68)
-            path.quadTo(s * 0.35, s - m - 24, s * 0.52, s - m - 16)
-            path.quadTo(s * 0.70, s - m - 24, s - m - 28, s - m - 66)
-            path.lineTo(s - m - 60, m + 42)
-            path.quadTo(s * 0.56, m + 30, m + 54, m + 44)
-            path.closeSubpath()
+            wall = g.poly([(21, 8), (31, 8), (31, 40), (52, 40),
+                           (52, 52), (21, 52)])
         else:
-            path.moveTo(m + 28, m + 46)
-            path.quadTo(s * 0.36, m + 20, s * 0.62, m + 32)
-            path.quadTo(s - m - 20, m + 54, s - m - 30, s * 0.62)
-            path.quadTo(s * 0.70, s - m - 18, s * 0.45, s - m - 16)
-            path.quadTo(m + 34, s - m - 20, m + 24, s * 0.60)
-            path.closeSubpath()
-        painter.drawPath(path)
+            wall = g.poly([(26, 7), (36, 7), (30, 31), (37, 55),
+                           (27, 55), (21, 31)])
+        painter.drawPath(wall)
 
-        _clip_detail(painter, path)
-        painter.setPen(hatch_pen)
+        # One hatch direction across all three, so they read as a set.
+        _clip_detail(painter, wall)
+        painter.setPen(_pen(color, 1.4))
         painter.setBrush(Qt.NoBrush)
-        for i in range(5):
-            x = int(m + 48 + i * 34)
-            y1 = int(m + 60 + (i % 3) * 14)
-            y2 = int(s - m - 28 - (i % 2) * 10)
-            painter.drawLine(x - 9, y1, x + 8, y2)
+        for offset in (0, 11, 21, 32):
+            painter.drawPath(g.line(10 + offset, 56, 28 + offset, 22))
         painter.restore()
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
+
+    def _draw_general_landscape(self, painter, s, m, variant, color):
+        """
+        Human remains, burials and the landscape features.
+
+        Six of these used to be three pictures. Both skull entries were the
+        same skull; both burial entries were the same crouched line figure,
+        which at marker size read as a numeral. They are drawn as separate
+        objects here - a skull against a body in plan, a grave cut against a
+        cinerary urn - and the general 지석묘 is a plan so it does not repeat
+        the three dolmen elevations.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        ground_tone = QColor(color.red(), color.green(), color.blue(),
+                             icon_grid.SOFT)
+        edge = _pen(color, 2.6)
+        thin = _pen(color, 1.4)
+        GROUND = 50
+
+        painter.setPen(edge)
+        painter.setBrush(body)
+
+        if variant == "skull":
+            # 인골: a skull - cranium, orbits, nasal aperture, jaw.
+            painter.drawPath(g.circle(32, 25, 17))
+            painter.setBrush(solid)
+            painter.drawPath(g.ellipse(25, 23, 4, 5))
+            painter.drawPath(g.ellipse(39, 23, 4, 5))
+            painter.drawPath(g.poly([(32, 29), (35, 35), (29, 35)]))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(23, 40, 18, 11, r=4))
+
+        elif variant == "skeleton":
+            # 전신 인골: an extended inhumation in plan.
+            painter.setBrush(solid)
+            painter.drawPath(g.circle(32, 12, 8))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(24, 20, 16, 22, r=3))
+            painter.drawPath(g.rect(15, 22, 7, 17, r=3))
+            painter.drawPath(g.rect(42, 22, 7, 17, r=3))
+            painter.drawPath(g.rect(25, 42, 6, 15, r=3))
+            painter.drawPath(g.rect(33, 42, 6, 15, r=3))
+
+        elif variant == "burial":
+            # 매장 유구: the grave cut, with what is in it.
+            painter.setBrush(ground_tone)
+            painter.setPen(_pen(color, 2.0, Qt.DashLine))
+            painter.drawPath(g.rect(13, 7, 38, 50))
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            painter.drawPath(g.circle(32, 18, 7))
+            painter.drawPath(g.rect(26, 26, 12, 24, r=5))
+
+        elif variant == "cremation":
+            # 화장묘: the urn, and the burnt bone in it.
+            urn = g.symmetric([(6, 15), (16, 27), (11, 51)], curved=True)
+            painter.drawPath(urn)
+            _clip_detail(painter, urn)
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            for cx, cy in ((27, 33), (37, 31), (32, 41)):
+                painter.drawPath(g.circle(cx, cy, 4))
+            painter.restore()
+            painter.setPen(edge)
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(21, 8, 22, 7, r=3))
+
+        elif variant == "hearth":
+            # 노지: the burnt centre inside its kerb of stones.
+            painter.setBrush(solid)
+            painter.drawPath(g.circle(32, 32, 13))
+            painter.setBrush(body)
+            for index in range(6):
+                angle = index * math.pi / 3.0
+                painter.drawPath(g.circle(32 + 20 * math.cos(angle),
+                                          32 + 20 * math.sin(angle), 5.5))
+
+        elif variant == "burnt":
+            # 소토 범위: a spread of scorched soil, not a stone.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.poly([(11, 21), (30, 11), (50, 18), (57, 34),
+                                     (44, 51), (22, 53), (8, 38)]))
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            for cx, cy, rx in ((24, 26, 5), (40, 33, 6), (27, 43, 4)):
+                painter.drawPath(g.ellipse(cx, cy, rx, rx * 0.7))
+
+        elif variant == "midden":
+            # 패총: the mound, and the shell it is made of.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.symmetric([(6, 22), (20, 32), (28, GROUND)],
+                                         curved=True))
+            painter.setBrush(body)
+            painter.setPen(thin)
+            for cx, cy in ((22, 40), (32, 32), (42, 40), (32, 45)):
+                painter.drawPath(g.ellipse(cx, cy, 6, 4))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(5, GROUND, 59, GROUND))
+
+        elif variant == "ditch":
+            # 구 / 해자: the channel itself, as a band with two banks.
+            channel = QPainterPath()
+            channel.moveTo(*g.pt(32 + 26 * math.cos(math.pi / 3.0),
+                                 32 + 26 * math.sin(math.pi / 3.0)))
+            g.arc(channel, 32, 32, 26, math.pi / 3.0, 1.33 * math.pi,
+                  segments=8)
+            channel.lineTo(*g.pt(32 + 15 * math.cos(-1.0 * math.pi / 3.0),
+                                 32 + 15 * math.sin(-1.0 * math.pi / 3.0)))
+            g.arc(channel, 32, 32, 15, -math.pi / 3.0, -1.33 * math.pi,
+                  segments=8)
+            channel.closeSubpath()
+            painter.setBrush(ground_tone)
+            painter.drawPath(channel)
+
+        elif variant == "canal":
+            # 수로: a cut channel, with the direction it runs.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.rect(5, 21, 54, 22))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 3.0))
+            # Two chevrons read as flow; one reads as a play button.
+            painter.drawPath(g.poly([(21, 25), (32, 32), (21, 39)],
+                                    close=False))
+            painter.drawPath(g.poly([(33, 25), (44, 32), (33, 39)],
+                                    close=False))
+
+        elif variant == "alignment":
+            # 열석: a row of set stones, standing on one line.
+            painter.setBrush(body)
+            for x, top in ((8, 24), (22, 18), (36, 26), (50, 21)):
+                painter.drawPath(g.rect(x, top, 9, GROUND - top, r=4))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(5, GROUND, 59, GROUND))
+
+        elif variant == "dolmen":
+            # 지석묘: the capstone in plan, over the chamber it covers -
+            # the three named dolmen types already carry the elevations.
+            painter.setBrush(body)
+            painter.drawPath(g.poly([(9, 19), (33, 10), (56, 20), (52, 43),
+                                     (28, 52), (11, 39)]))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.0, Qt.DashLine))
+            painter.drawPath(g.rect(24, 25, 18, 14))
+
+        elif variant == "rock_art":
+            # 암각화: a rock face with a pecked motif on it.
+            face = g.poly([(10, 16), (34, 8), (56, 19), (50, 45),
+                           (26, 54), (9, 40)])
+            painter.setBrush(ground_tone)
+            painter.drawPath(face)
+            _clip_detail(painter, face)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.2))
+            painter.drawPath(g.circle(30, 29, 13))
+            painter.drawPath(g.circle(30, 29, 7))
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            painter.drawPath(g.circle(30, 29, 3))
+            painter.drawPath(g.circle(46, 41, 4))
+            painter.restore()
+
+        elif variant == "standing_stone":
+            # 입석: a menhir, packed at the foot.
+            painter.setBrush(body)
+            painter.drawPath(g.symmetric([(6, 8), (10, 24), (8, 40), (11, 48)],
+                                         curved=False))
+            painter.setBrush(solid)
+            painter.drawPath(g.ellipse(17, 48, 7, 4))
+            painter.drawPath(g.ellipse(47, 48, 7, 4))
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(5, GROUND, 59, GROUND))
+
+        elif variant == "terrace":
+            # 단: worked ground, cut back in steps.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.poly([(6, 52), (6, 42), (23, 42), (23, 30),
+                                     (40, 30), (40, 17), (58, 17), (58, 52)]))
+            painter.setPen(_pen(color, 2.2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.poly([(6, 42), (23, 42), (23, 30), (40, 30),
+                                     (40, 17), (58, 17)], close=False))
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
-        
-    def _draw_stone_tool(self, painter, s, m):
-        """Arrowhead/point with flake-scar style internal lines."""
-        pts = [
-            QPointF(s/2, m),
-            QPointF(s - m, s - m - 40),
-            QPointF(s/2, s - m),
-            QPointF(m, s - m - 40),
-        ]
-        painter.drawPolygon(QPolygonF(pts))
 
-        cx = s / 2.0
-        old_pen = painter.pen()
-        scar_pen = _pen(old_pen.color().darker(145), 1.0)
-        painter.setPen(scar_pen)
-        painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 12))
-        for i in range(4):
-            y = int(m + 38 + i * 34)
-            offset = 12 + i * 2
-            painter.drawLine(int(cx - offset), y, int(cx - 4), y + 10)
-            painter.drawLine(int(cx + offset), y, int(cx + 4), y + 10)
+    def _draw_general_structure(self, painter, s, m, variant, color):
+        """
+        The general structure and feature categories.
+
+        As with the general finds, these are what a user picks when the
+        specific type is unknown, and they have to stay clear of the detailed
+        Korean entries they sit beside. So the general 무덤 is a section with
+        its chamber where 봉토분 is a tiered mound; the general 가마 is a
+        domed furnace where 토기가마 is a kiln in profile; 수혈 and 저장혈
+        differ by the shape of the cut, which is what defines a storage pit.
+
+        Sections share the ground line at y=50 with the rest of the
+        catalogue.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        ground_tone = QColor(color.red(), color.green(), color.blue(),
+                             icon_grid.SOFT)
+        edge = _pen(color, 2.6)
+        thin = _pen(color, 1.4)
+        GROUND = 50
+
+        painter.setPen(edge)
+        painter.setBrush(body)
+
+        def ground_line(y=GROUND, gap=0):
+            # A cut section needs the ground to stop at the lip of the cut.
+            # Run straight across and the line reads as a lid on a bowl.
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            if gap:
+                painter.drawPath(g.line(5, y, 32 - gap, y))
+                painter.drawPath(g.line(32 + gap, y, 59, y))
+            else:
+                painter.drawPath(g.line(5, y, 59, y))
+            painter.setPen(edge)
+            painter.setBrush(body)
+
+        if variant == "fortress":
+            # 성곽: a curtain wall, crenellated, with its gate.
+            painter.drawPath(g.rect(8, 20, 48, 32))
+            painter.setBrush(solid)
+            for x in (8, 22, 36, 50):
+                painter.drawPath(g.rect(x, 13, 6, 7, r=1))
+            painter.drawPath(g.rect(27, 38, 10, 14, r=1))
+
+        elif variant == "gate":
+            # 문지: two jambs under a lintel, on their threshold.
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(7, 10, 50, 9, r=1))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(12, 19, 11, 33))
+            painter.drawPath(g.rect(41, 19, 11, 33))
+            painter.drawPath(g.rect(7, 52, 50, 6, r=1))
+
+        elif variant == "tower":
+            # 망루: a tall crenellated stage.
+            painter.drawPath(g.rect(21, 15, 22, 39))
+            painter.setBrush(solid)
+            for x in (21, 30, 39):
+                painter.drawPath(g.rect(x, 8, 6, 7, r=1))
+            painter.drawPath(g.rect(28, 24, 8, 8, r=1))
+            painter.drawPath(g.rect(28, 38, 8, 8, r=1))
+
+        elif variant == "dwelling":
+            # 주거지: a gabled house.
+            painter.drawPath(g.poly([(32, 8), (55, 26), (55, 52),
+                                     (9, 52), (9, 26)]))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(27, 39, 10, 13, r=1))
+
+        elif variant == "workshop":
+            # 공방지: the same house with the tools that name it.
+            painter.drawPath(g.poly([(32, 8), (55, 26), (55, 52),
+                                     (9, 52), (9, 26)]))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.6))
+            painter.drawPath(g.line(22, 30, 42, 46))
+            painter.drawPath(g.line(42, 30, 22, 46))
+
+        elif variant == "temple":
+            # 사찰 / 사당: a hall under a wide gabled roof.
+            painter.setBrush(solid)
+            painter.drawPath(g.poly([(5, 27), (32, 10), (59, 27)]))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(13, 27, 38, 25))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(27, 39, 10, 13, r=1))
+
+        elif variant == "tomb":
+            # 무덤: a mound in section with the chamber it covers.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.symmetric([(4, 16), (17, 28), (28, GROUND)],
+                                         curved=True))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(22, 37, 20, 13, r=1))
+            ground_line()
+
+        elif variant == "mound":
+            # 분구 / 봉분: the mound in plan, hachured off its edge the way a
+            # survey drawing shows one. Two plain circles would be the well
+            # again in another colour.
+            painter.setBrush(body)
+            painter.drawPath(g.circle(32, 32, 21))
+            painter.setPen(_pen(color, 2.0))
+            painter.setBrush(Qt.NoBrush)
+            for index in range(6):
+                angle = index * math.pi / 3.0
+                painter.drawPath(g.line(32 + 21 * math.cos(angle),
+                                        32 + 21 * math.sin(angle),
+                                        32 + 28 * math.cos(angle),
+                                        32 + 28 * math.sin(angle)))
+            painter.setPen(edge)
+            painter.setBrush(body)
+
+        elif variant == "kiln":
+            # 가마 / 노: a domed furnace with its stoking arch.
+            painter.setBrush(body)
+            painter.drawPath(g.symmetric([(5, 13), (18, 26), (23, GROUND)],
+                                         curved=True))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(26, 36, 12, 14, r=6))
+            ground_line()
+
+        elif variant == "well":
+            # 우물: the shaft, dark, inside its kerb.
+            painter.drawPath(g.circle(32, 32, 24))
+            painter.setBrush(solid)
+            painter.drawPath(g.circle(32, 32, 13))
+
+        elif variant == "wall":
+            # 성벽: a length of walling with its return, coursed.
+            wall = g.poly([(7, 17), (57, 17), (57, 28), (18, 28),
+                           (18, 53), (7, 53)])
+            painter.drawPath(wall)
+            _clip_detail(painter, wall)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for x in (20, 33, 46):
+                painter.drawPath(g.line(x, 17, x, 28))
+            painter.drawPath(g.line(7, 40, 18, 40))
+            painter.restore()
+
+        elif variant == "pit":
+            # 수혈: an open bowl-shaped cut.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.symmetric([(20, 20), (20, 33), (11, 48)],
+                                         curved=True))
+            ground_line(20, gap=21)
+
+        elif variant == "storage_pit":
+            # 저장혈: the flask profile - a narrow mouth over a wide belly -
+            # which is what makes a pit a storage pit.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.symmetric([(9, 20), (23, 34), (18, 50)],
+                                         curved=True))
+            ground_line(20, gap=10)
+
+        elif variant == "posthole":
+            # 주혈: the post pipe inside its packing, in plan.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.circle(32, 32, 21))
+            painter.setBrush(solid)
+            painter.drawPath(g.circle(32, 32, 9))
+
+        elif variant == "road":
+            # 도로 / 포장면: a made surface with its centre line.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.rect(5, 19, 54, 26))
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            for x in (12, 28, 44):
+                painter.drawPath(g.rect(x, 30, 10, 5, r=2))
+
+        elif variant == "bridge":
+            # 교량: a deck on piers, over the water it crosses.
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(6, 22, 52, 9, r=1))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(16, 31, 9, 15))
+            painter.drawPath(g.rect(39, 31, 9, 15))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.0))
+            painter.drawPath(g.poly([(8, 51), (18, 47), (28, 51), (38, 47),
+                                     (48, 51), (56, 47)], close=False))
+
         painter.setPen(old_pen)
-        
-    def _draw_bronze(self, painter, s, m):
-        """Default bronze icon: medium typological dagger silhouette."""
-        color = painter.brush().color() if painter.brush().style() != Qt.NoBrush else QColor("#8C8C8C")
-        self._draw_bronze_dagger_typology(painter, s, m, "medium", color)
-        
-    def _draw_iron(self, painter, s, m):
-        """Axe head shape."""
-        p = QPainterPath()
-        p.moveTo(m + 20, s/2 - 60)
-        p.lineTo(s - m, s/2 - 30)
-        p.quadTo(s - m + 10, s/2, s - m, s/2 + 30)
-        p.lineTo(m + 20, s/2 + 60)
-        p.lineTo(m, s/2 + 40)
-        p.lineTo(m + 40, s/2)
-        p.lineTo(m, s/2 - 40)
-        p.closeSubpath()
-        painter.drawPath(p)
-        
-    def _draw_ornament(self, painter, s, m):
-        """Circular pendant with hole."""
-        om = m + 20
-        painter.drawEllipse(om, om, s - 2*om, s - 2*om)
-        painter.setBrush(Qt.NoBrush)
-        hs = 30
-        painter.drawEllipse(int(s/2 - hs/2), int(m + 40), hs, hs)
+        painter.setBrush(old_brush)
 
-    def _draw_coin(self, painter, s, m, color):
-        """Coin — double circle with cross."""
-        painter.drawEllipse(m + 10, m + 10, s - 2*m - 20, s - 2*m - 20)
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(_pen(color.darker(150), 2.5))
-        inner = 35
-        painter.drawEllipse(m + inner, m + inner, s - 2*m - 2*inner, s - 2*m - 2*inner)
-        cx, cy = s/2, s/2
-        r = s/2 - m - inner
-        painter.drawLine(int(cx), int(cy - r), int(cx), int(cy + r))
-        painter.drawLine(int(cx - r), int(cy), int(cx + r), int(cy))
+    def _draw_general_find(self, painter, s, m, variant, color):
+        """
+        The catalogue's general find categories.
 
-    def _draw_bone_tool(self, painter, s, m):
-        """Bone/awl shape — elongated with rounded ends."""
-        p = QPainterPath()
-        cx = s / 2
-        p.moveTo(cx, m)
-        p.quadTo(cx + 12, m + 40, cx + 8, s * 0.4)
-        p.quadTo(cx + 15, s * 0.7, cx + 6, s - m - 10)
-        p.quadTo(cx, s - m + 5, cx - 6, s - m - 10)
-        p.quadTo(cx - 15, s * 0.7, cx - 8, s * 0.4)
-        p.quadTo(cx - 12, m + 40, cx, m)
-        p.closeSubpath()
-        painter.drawPath(p)
+        These are the entries a user reaches for when the specific type is
+        unknown - "a stone tool", "a bead", "an iron artefact" - and they used
+        to be five shapes shared between sixteen names: one triangle served
+        석기, 화살촉 and 긁개, one disc served 장신구, 구슬 and 팔찌, one wheel
+        served 화폐, 인장 and 가락바퀴. On a legend that reads as a bug.
 
-    def _draw_weapon(self, painter, s, m):
-        """Spearhead shape."""
-        p = QPainterPath()
-        cx = s / 2
-        p.moveTo(cx, m)
-        p.quadTo(cx + 35, s * 0.35, cx + 20, s * 0.55)
-        p.lineTo(cx + 8, s * 0.55)
-        p.lineTo(cx + 8, s - m)
-        p.lineTo(cx - 8, s - m)
-        p.lineTo(cx - 8, s * 0.55)
-        p.lineTo(cx - 20, s * 0.55)
-        p.quadTo(cx - 35, s * 0.35, cx, m)
-        p.closeSubpath()
-        painter.drawPath(p)
-        old_pen = painter.pen()
-        ridge_pen = _pen(old_pen.color().darker(130), 1.25)
-        painter.setPen(ridge_pen)
-        painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 8))
+        Each is drawn as its own object here, and each is chosen to avoid the
+        detailed Korean types it sits beside - the general arrowhead is barbed
+        and tanged where 돌화살촉 is stemmed, the general iron artefact is a
+        single-edged knife where 철검 has a guard.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        edge = _pen(color, 2.6)
+        thin = _pen(color, 1.4)
+
+        painter.setPen(edge)
+        painter.setBrush(solid)
+
+        def detail(*shapes):
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            for shape in shapes:
+                painter.drawPath(shape)
+            painter.setPen(edge)
+            painter.setBrush(solid)
+
+        if variant == "pottery":
+            # 토기: the plainest jar in the series, since the named wares
+            # carry the shapes that mean something.
+            painter.drawPath(g.symmetric(
+                [(9, 7), (12, 12), (21, 28), (15, 50), (11, 57)], curved=True))
+
+        elif variant == "stone_tool":
+            # 석기: a worked nodule, scarred all round.
+            core = g.poly([(30, 6), (48, 15), (55, 33), (44, 51),
+                           (24, 55), (11, 41), (9, 22)])
+            painter.drawPath(core)
+            _clip_detail(painter, core)
+            detail(g.line(30, 6, 27, 30), g.line(9, 22, 30, 32),
+                   g.line(55, 33, 32, 34), g.line(24, 55, 29, 36))
+            painter.restore()
+
+        elif variant == "arrowhead":
+            # 화살촉: barbed and tanged, which is what tells the general
+            # point from the stemmed 돌화살촉 and the long-tanged 철촉.
+            painter.drawPath(g.poly([(32, 5), (46, 40), (37, 35), (36, 52),
+                                     (28, 52), (27, 35), (18, 40)]))
+
+        elif variant == "scraper":
+            # 긁개: a flake with one retouched convex edge.
+            flake = g.symmetric([(5, 12), (18, 23), (25, 37), (26, 48)],
+                                curved=True)
+            painter.drawPath(flake)
+            _clip_detail(painter, flake)
+            detail(g.line(11, 30, 18, 33), g.line(9, 38, 17, 39),
+                   g.line(9, 45, 17, 44))
+            painter.restore()
+
+        elif variant == "bronze":
+            # 청동기: a cast bronze vessel with its ring handles - the
+            # bronze weapons, mirrors and bells all have their own entries.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.4))
+            painter.drawPath(g.circle(14, 27, 6))
+            painter.drawPath(g.circle(50, 27, 6))
+            painter.setPen(edge)
+            painter.setBrush(body)
+            painter.drawPath(g.symmetric(
+                [(20, 21), (21, 32), (14, 44)], curved=True))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(23, 44, 18, 8, r=2))
+
+        elif variant == "iron":
+            # 철기: a single-edged knife - straight back, angled tip, no
+            # guard, so it does not collide with 철검 or with 날붙이.
+            painter.drawPath(g.poly([(38, 6), (41, 13), (41, 43), (24, 43),
+                                     (24, 21)]))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(28, 43, 9, 14, r=2))
+
+        elif variant == "chisel":
+            # 끌: a struck head over a bevelled edge.
+            painter.setBrush(body)
+            painter.drawPath(g.rect(24, 6, 16, 8, r=2))
+            painter.setBrush(solid)
+            bar = g.symmetric([(6, 14), (6, 44), (10, 50), (10, 57)],
+                              curved=False)
+            painter.drawPath(bar)
+            _clip_detail(painter, bar)
+            detail(g.line(22, 50, 42, 50))
+            painter.restore()
+
+        elif variant == "ornament":
+            # 장신구: a disc brooch with its pin.
+            # The pin runs behind the plate and out both sides, which is
+            # what says brooch rather than frying pan.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.4))
+            painter.drawPath(g.line(6, 38, 58, 38))
+            painter.setPen(edge)
+            painter.setBrush(body)
+            painter.drawPath(g.circle(32, 30, 18))
+            painter.setBrush(solid)
+            painter.drawPath(g.circle(32, 30, 6))
+
+        elif variant == "bead":
+            # 구슬: one bead on its cord, so the perforation is visible
+            # without having to knock a hole out of the fill.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.0))
+            painter.drawPath(g.line(32, 6, 32, 58))
+            painter.setPen(edge)
+            painter.setBrush(body)
+            painter.drawPath(g.ellipse(32, 32, 16, 21))
+
+        elif variant == "bracelet":
+            # 팔찌 / 반지: an annulus, drawn as the stroke it is.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 7.0))
+            painter.drawPath(g.circle(32, 32, 19))
+
+        elif variant == "coin":
+            # 화폐: the cash coin, square hole and all.
+            painter.setBrush(body)
+            painter.drawPath(g.circle(32, 32, 23))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(25, 25, 14, 14, r=1))
+
+        elif variant == "seal":
+            # 인장: the knob, the block, and the cut face.
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(27, 6, 10, 15, r=4))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(13, 21, 38, 32, r=2))
+            detail(g.line(21, 30, 43, 30), g.line(21, 38, 43, 38),
+                   g.line(32, 30, 32, 46))
+
+        elif variant == "whorl":
+            # 가락바퀴: the disc, on the spindle that explains it.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.6))
+            painter.drawPath(g.line(32, 5, 32, 59))
+            painter.setPen(edge)
+            painter.setBrush(body)
+            painter.drawPath(g.ellipse(32, 36, 23, 11))
+
+        elif variant == "bone_tool":
+            # 골각기: a bone point, the joint end left as the grip.
+            painter.setBrush(body)
+            painter.drawPath(g.symmetric(
+                [(1, 6), (4, 22), (7, 40), (11, 50)], curved=True))
+            painter.setBrush(solid)
+            painter.drawPath(g.ellipse(32, 50, 13, 7))
+
+        elif variant == "needle":
+            # 바늘 / 침: a shaft with an eye.
+            painter.setBrush(body)
+            painter.drawPath(g.symmetric(
+                [(4, 6), (4, 40), (1, 58)], curved=False))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 1.8))
+            painter.drawPath(g.ellipse(32, 15, 2.5, 5))
+
+        elif variant == "animal_bone":
+            # 동물유체: a long bone, knuckled at both ends.
+            painter.setBrush(body)
+            painter.drawPath(g.rect(26, 15, 12, 34, r=3))
+            painter.setBrush(solid)
+            for cx, cy in ((25, 13), (39, 13), (25, 51), (39, 51)):
+                painter.drawPath(g.circle(cx, cy, 7))
+
+        elif variant == "weapon":
+            # 무기: a hafted point. The shaft is what makes it a weapon
+            # rather than the loose blade next to it.
+            painter.setBrush(body)
+            painter.drawPath(g.rect(29, 22, 6, 35, r=1))
+            painter.setBrush(solid)
+            painter.drawPath(g.symmetric([(0, 5), (9, 17), (4, 25)],
+                                         curved=False))
+
+        elif variant == "blade":
+            # 날붙이: the blade on its own - two edges and a tang, no haft
+            # and no guard.
+            painter.drawPath(g.symmetric([(0, 6), (11, 20), (10, 40), (4, 45)],
+                                         curved=False))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(27, 45, 10, 12, r=2))
+
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_bronze_weapon_symbol(self, painter, s, m, variant, color):
-        """Bronze weapon symbol variants (sword, dagger-axe, spear)."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        cx = s / 2.0
-        painter.setPen(_pen(color.darker(170), 2.2))
-        painter.setBrush(color)
+        """
+        The three general bronze weapons.
 
-        path = QPainterPath()
+        These were three leaf blades of almost the same outline. A 과 is not
+        a blade on a line with the shaft - it is mounted across one - and
+        that is the difference the symbol has to carry.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(solid)
+
         if variant == "dagger_axe":
-            path.moveTo(cx, m + 8)
-            path.quadTo(cx + 28, s * 0.26, cx + 22, s * 0.48)
-            path.lineTo(cx + 30, s * 0.66)
-            path.quadTo(cx + 12, s - m - 26, cx + 4, s - m - 14)
-            path.lineTo(cx - 4, s - m - 14)
-            path.quadTo(cx - 12, s - m - 26, cx - 30, s * 0.66)
-            path.lineTo(cx - 22, s * 0.48)
-            path.quadTo(cx - 28, s * 0.26, cx, m + 8)
-            path.closeSubpath()
-        elif variant == "spear":
-            path.moveTo(cx, m + 6)
-            path.quadTo(cx + 14, s * 0.30, cx + 12, s * 0.66)
-            path.lineTo(cx + 9, s - m - 30)
-            path.lineTo(cx + 9, s - m - 18)
-            path.lineTo(cx - 9, s - m - 18)
-            path.lineTo(cx - 9, s - m - 30)
-            path.lineTo(cx - 12, s * 0.66)
-            path.quadTo(cx - 14, s * 0.30, cx, m + 6)
-            path.closeSubpath()
-        else:
-            path.moveTo(cx, m + 6)
-            path.quadTo(cx + 20, s * 0.26, cx + 18, s * 0.60)
-            path.lineTo(cx + 12, s * 0.75)
-            path.lineTo(cx + 12, s - m - 28)
-            path.lineTo(cx + 22, s - m - 28)
-            path.lineTo(cx + 22, s - m - 14)
-            path.lineTo(cx - 22, s - m - 14)
-            path.lineTo(cx - 22, s - m - 28)
-            path.lineTo(cx - 12, s - m - 28)
-            path.lineTo(cx - 12, s * 0.75)
-            path.lineTo(cx - 18, s * 0.60)
-            path.quadTo(cx - 20, s * 0.26, cx, m + 6)
-            path.closeSubpath()
+            # 동과: the blade is hafted at right angles to the shaft.
+            painter.setBrush(body)
+            painter.drawPath(g.rect(41, 6, 8, 52, r=1))
+            painter.setBrush(solid)
+            painter.drawPath(g.poly([(41, 17), (9, 26), (41, 35)]))
 
-        painter.drawPath(path)
-        painter.setPen(_pen(color.darker(185), 1.3))
-        painter.setBrush(Qt.NoBrush)
-        ridge_bottom = int(s - m - 22 if variant == "sword" else s - m - 20)
-        painter.drawLine(int(cx), int(m + 14), int(cx), ridge_bottom)
+        elif variant == "spear":
+            # 동모: a leaf blade over its socket.
+            painter.drawPath(g.symmetric(
+                [(0, 5), (9, 20), (8, 33), (5, 38), (5, 57)], curved=False))
+
+        else:
+            # 동검: the waisted Korean blade, with its guard and grip.
+            painter.drawPath(g.symmetric(
+                [(0, 5), (7, 13), (4, 23), (8, 33), (5, 40)], curved=False))
+            painter.setBrush(body)
+            painter.drawPath(g.rect(20, 39, 24, 5))
+            painter.drawPath(g.rect(28, 44, 8, 10))
+            painter.drawPath(g.rect(23, 54, 18, 4))
+
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
 
@@ -996,193 +1454,6 @@ class TemplateGenerator:
 
         painter.setBrush(old_brush)
         painter.setPen(old_pen)
-
-    def _draw_fortress(self, painter, s, m):
-        """Castle/fortress — crenellated rectangle."""
-        p = QPainterPath()
-        bw = s - 2 * m  # base width
-        cw = bw / 5     # crenel width
-        ch = 25          # crenel height
-        
-        # Bottom-left, go clockwise
-        p.moveTo(m, s - m)
-        p.lineTo(m, m + ch)
-        # Crenellations across the top
-        for i in range(5):
-            x = m + i * cw
-            if i % 2 == 0:
-                p.lineTo(x, m)
-                p.lineTo(x + cw, m)
-                p.lineTo(x + cw, m + ch)
-            else:
-                p.lineTo(x, m + ch)
-                p.lineTo(x + cw, m + ch)
-        p.lineTo(s - m, s - m)
-        p.closeSubpath()
-        painter.drawPath(p)
-        # Gate
-        painter.setBrush(Qt.NoBrush)
-        gw, gh = 30, 45
-        painter.drawRect(int(s/2 - gw/2), int(s - m - gh), gw, gh)
-
-    def _draw_dwelling(self, painter, s, m):
-        """House/dwelling — house shape with roof."""
-        p = QPainterPath()
-        cx = s / 2
-        # Roof
-        p.moveTo(cx, m)
-        p.lineTo(s - m, s * 0.45)
-        # Right wall
-        p.lineTo(s - m - 15, s - m)
-        # Bottom
-        p.lineTo(m + 15, s - m)
-        # Left wall
-        p.lineTo(m, s * 0.45)
-        p.closeSubpath()
-        painter.drawPath(p)
-        # Door
-        painter.setBrush(Qt.NoBrush)
-        dw, dh = 28, 40
-        painter.drawRect(int(cx - dw/2), int(s - m - dh), dw, dh)
-
-    def _draw_tomb(self, painter, s, m):
-        """Burial mound — dome/tumulus shape."""
-        p = QPainterPath()
-        p.moveTo(m, s - m)
-        p.quadTo(m, s * 0.3, s / 2, m + 10)
-        p.quadTo(s - m, s * 0.3, s - m, s - m)
-        p.closeSubpath()
-        painter.drawPath(p)
-        old_pen = painter.pen()
-        hatch_pen = _pen(old_pen.color().darker(140), 1.0)
-        painter.setPen(hatch_pen)
-        span = float(s - (2 * m) - 36)
-        for i in range(8):
-            x = int(m + 18 + ((span / 7.0) * i))
-            y = int((s - m - 26) - (18 - abs(3.5 - i) * 3.5))
-            painter.drawLine(x, y, x - 7, y + 11)
-        painter.setPen(old_pen)
-
-    def _draw_temple(self, painter, s, m, color):
-        """Temple — pagoda/traditional roof shape."""
-        p = QPainterPath()
-        cx = s / 2
-        # Roof
-        p.moveTo(cx, m)
-        p.lineTo(s - m - 10, m + 60)
-        p.lineTo(s - m - 30, m + 55)
-        p.lineTo(s - m, m + 110)
-        p.lineTo(s - m - 20, m + 105)
-        # Right pillar
-        p.lineTo(s - m - 30, s - m)
-        # Base
-        p.lineTo(m + 30, s - m)
-        # Left pillar
-        p.lineTo(m + 20, m + 105)
-        p.lineTo(m, m + 110)
-        p.lineTo(m + 30, m + 55)
-        p.lineTo(m + 10, m + 60)
-        p.closeSubpath()
-        painter.drawPath(p)
-
-    def _draw_kiln(self, painter, s, m):
-        """Kiln — dome with opening."""
-        p = QPainterPath()
-        p.moveTo(m + 20, s - m)
-        p.quadTo(m, s * 0.4, s / 2, m + 15)
-        p.quadTo(s - m, s * 0.4, s - m - 20, s - m)
-        p.closeSubpath()
-        painter.drawPath(p)
-        # Opening
-        painter.setBrush(Qt.NoBrush)
-        ow, oh = 35, 30
-        painter.drawEllipse(int(s/2 - ow/2), int(s - m - oh - 5), ow, oh)
-
-    def _draw_well(self, painter, s, m, color):
-        """Well — circle with inner circle."""
-        painter.drawEllipse(m + 15, m + 15, s - 2*m - 30, s - 2*m - 30)
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-        inner = 50
-        painter.drawEllipse(m + inner, m + inner, s - 2*m - 2*inner, s - 2*m - 2*inner)
-
-    def _draw_wall(self, painter, s, m):
-        """Wall segment — thick horizontal bar with stone texture hint."""
-        wall_h = 60
-        cy = s / 2
-        painter.drawRect(m, int(cy - wall_h/2), s - 2*m, wall_h)
-        # Stone lines
-        painter.setBrush(Qt.NoBrush)
-        pen = painter.pen()
-        pen.setWidth(1)
-        painter.setPen(pen)
-        painter.drawLine(m, int(cy), s - m, int(cy))
-        step = (s - 2*m) // 4
-        for i in range(1, 4):
-            x = m + i * step
-            painter.drawLine(x, int(cy - wall_h/2), x, int(cy))
-            painter.drawLine(x + step//2, int(cy), x + step//2, int(cy + wall_h/2))
-
-    def _draw_gate(self, painter, s, m):
-        """Gate icon with twin posts and lintel."""
-        old_brush = painter.brush()
-        old_pen = painter.pen()
-        post_w = 30
-        top_y = m + 40
-        bottom_y = s - m
-        painter.drawRect(m + 24, top_y, post_w, bottom_y - top_y)
-        painter.drawRect(s - m - 24 - post_w, top_y, post_w, bottom_y - top_y)
-        painter.drawRect(m + 16, m + 16, s - 2 * m - 32, 24)
-        painter.setBrush(Qt.NoBrush)
-        arch_pen = _pen(old_pen.color().darker(130), 1.4)
-        painter.setPen(arch_pen)
-        painter.drawArc(m + 40, top_y + 10, s - 2 * m - 80, 70, 0, 180 * 16)
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
-
-    def _draw_tower(self, painter, s, m):
-        """Tower icon with crenellation and slit windows."""
-        old_brush = painter.brush()
-        old_pen = painter.pen()
-        x = int(s / 2 - 40)
-        y = m + 20
-        w = 80
-        h = s - 2 * m - 20
-        painter.drawRect(x, y, w, h)
-        crenel_w = 16
-        for i in range(5):
-            if i % 2 == 0:
-                painter.drawRect(x + i * crenel_w, y - 14, crenel_w, 14)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRect(x + 32, y + 32, 16, 18)
-        painter.drawRect(x + 32, y + 66, 16, 18)
-        painter.drawRect(x + 30, y + h - 42, 20, 28)
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
-
-    def _draw_workshop(self, painter, s, m):
-        """Workshop icon: dwelling body + crossed tool cue."""
-        self._draw_dwelling(painter, s, m)
-        old_pen = painter.pen()
-        tool_pen = _pen(old_pen.color().darker(145), 1.8)
-        painter.setPen(tool_pen)
-        cx = s / 2
-        y = int(s * 0.6)
-        painter.drawLine(int(cx - 34), y - 8, int(cx + 18), y + 20)
-        painter.drawLine(int(cx + 34), y - 8, int(cx - 18), y + 20)
-        painter.drawRect(int(cx + 14), y + 16, 12, 6)
-        painter.setPen(old_pen)
-
-    def _draw_pit(self, painter, s, m, color):
-        """Pit — dashed circle."""
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-        pen = _pen(color.darker(120), 2.5, Qt.DashLine)
-        painter.setPen(pen)
-        painter.drawEllipse(m + 20, m + 20, s - 2*m - 40, s - 2*m - 40)
-        # Cross inside
-        cx, cy = s/2, s/2
-        r = 30
-        painter.drawLine(int(cx - r), int(cy), int(cx + r), int(cy))
-        painter.drawLine(int(cx), int(cy - r), int(cx), int(cy + r))
 
     # ═══════════════════════════════════════════════════════
     #  Drawing methods — Korean tomb types (한국 무덤)
@@ -2222,204 +2493,9 @@ class TemplateGenerator:
     #  Drawing methods — Human Remains
     # ═══════════════════════════════════════════════════════
 
-    def _draw_skull(self, painter, s, m, color):
-        """Skull — cranium + jaw."""
-        p = QPainterPath()
-        cx = s / 2
-        # Cranium
-        p.addEllipse(QRectF(m + 30, m + 10, s - 2*m - 60, s * 0.55))
-        painter.drawPath(p)
-        # Jaw
-        p2 = QPainterPath()
-        p2.moveTo(cx - 35, s * 0.5)
-        p2.quadTo(cx - 30, s * 0.75, cx, s - m - 20)
-        p2.quadTo(cx + 30, s * 0.75, cx + 35, s * 0.5)
-        painter.drawPath(p2)
-        # Eyes
-        painter.setBrush(Qt.NoBrush)
-        ew, eh = 22, 20
-        painter.drawEllipse(int(cx - 28), int(s * 0.32), ew, eh)
-        painter.drawEllipse(int(cx + 6), int(s * 0.32), ew, eh)
-
-    def _draw_burial(self, painter, s, m, color):
-        """Burial — body outline (flexed position)."""
-        painter.setBrush(Qt.NoBrush)
-        pen = _pen(color, 3.0)
-        painter.setPen(pen)
-        # Head
-        painter.drawEllipse(int(s * 0.35), m + 10, 35, 35)
-        # Spine curve
-        p = QPainterPath()
-        p.moveTo(s * 0.52, m + 45)
-        p.quadTo(s * 0.6, s * 0.4, s * 0.55, s * 0.6)
-        p.quadTo(s * 0.45, s * 0.8, s * 0.35, s - m - 10)
-        painter.drawPath(p)
-        # Legs (flexed)
-        p2 = QPainterPath()
-        p2.moveTo(s * 0.35, s - m - 10)
-        p2.quadTo(s * 0.55, s - m + 5, s * 0.65, s * 0.7)
-        painter.drawPath(p2)
-        # Arms
-        p3 = QPainterPath()
-        p3.moveTo(s * 0.55, s * 0.35)
-        p3.quadTo(s * 0.35, s * 0.45, s * 0.38, s * 0.55)
-        painter.drawPath(p3)
-        painter.setBrush(color)
-
     # ═══════════════════════════════════════════════════════
     #  Drawing methods — Features
     # ═══════════════════════════════════════════════════════
-
-    def _draw_hearth(self, painter, s, m, color):
-        """Hearth — flame inside circle."""
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-        painter.drawEllipse(m + 20, m + 20, s - 2*m - 40, s - 2*m - 40)
-        # Flame
-        painter.setBrush(color)
-        p = QPainterPath()
-        cx = s / 2
-        p.moveTo(cx, m + 40)
-        p.quadTo(cx + 30, s * 0.4, cx + 15, s * 0.55)
-        p.quadTo(cx + 25, s * 0.65, cx, s - m - 30)
-        p.quadTo(cx - 25, s * 0.65, cx - 15, s * 0.55)
-        p.quadTo(cx - 30, s * 0.4, cx, m + 40)
-        painter.drawPath(p)
-
-    def _draw_midden(self, painter, s, m):
-        """Shell mound — layered mound."""
-        # Bottom layer
-        p1 = QPainterPath()
-        p1.moveTo(m, s - m)
-        p1.quadTo(s/2, s * 0.5, s - m, s - m)
-        p1.closeSubpath()
-        painter.drawPath(p1)
-        # Top layer, lightened through opacity rather than a second colour:
-        # QGIS gives every param(fill) the same value, so a lighter colour
-        # would vanish the moment the symbol is recoloured.
-        old_brush = painter.brush()
-        base = old_brush.color()
-        painter.setBrush(QColor(base.red(), base.green(), base.blue(), icon_grid.MID))
-        p2 = QPainterPath()
-        p2.moveTo(m + 30, s - m - 30)
-        p2.quadTo(s/2, s * 0.35, s - m - 30, s - m - 30)
-        p2.closeSubpath()
-        painter.drawPath(p2)
-        painter.setBrush(old_brush)
-        old_pen = painter.pen()
-        stipple_pen = _pen(old_pen.color().darker(135), 1.0)
-        painter.setPen(stipple_pen)
-        for i in range(14):
-            x = int(m + 20 + (i * 14))
-            y = int(s - m - 16 - ((i % 3) * 9))
-            painter.drawEllipse(x, y, 4, 3)
-        painter.setPen(old_pen)
-
-    def _draw_ditch(self, painter, s, m, color):
-        """Ditch/moat — concentric dashed arcs."""
-        painter.setBrush(Qt.NoBrush)
-        pen = _pen(color, 3.0, Qt.DashLine)
-        painter.setPen(pen)
-        painter.drawArc(m + 20, m + 20, s - 2*m - 40, s - 2*m - 40, 30 * 16, 300 * 16)
-        pen.setWidth(2)
-        painter.setPen(pen)
-        inner = 50
-        painter.drawArc(m + inner, m + inner, s - 2*m - 2*inner, s - 2*m - 2*inner, 30 * 16, 300 * 16)
-        painter.setBrush(color)
-
-    def _draw_canal(self, painter, s, m, color):
-        """Canal/water-channel with paired lines and flow arrows."""
-        old_brush = painter.brush()
-        old_pen = painter.pen()
-        cx = s / 2.0
-        # A channel is two banks and the direction of flow. Three small
-        # arrowheads down the middle just filled it with clutter.
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(_pen(color.darker(120), 2.6))
-        painter.drawArc(m + 18, m + 30, s - 2 * m - 36, s - 2 * m - 60, 40 * 16, 270 * 16)
-        painter.drawArc(m + 36, m + 48, s - 2 * m - 72, s - 2 * m - 96, 40 * 16, 270 * 16)
-        painter.setPen(_pen(color.darker(150), 3.0))
-        arrow = QPainterPath()
-        arrow.moveTo(cx - 24, s / 2.0)
-        arrow.lineTo(cx + 22, s / 2.0)
-        arrow.moveTo(cx + 8, s / 2.0 - 13)
-        arrow.lineTo(cx + 22, s / 2.0)
-        arrow.lineTo(cx + 8, s / 2.0 + 13)
-        painter.drawPath(arrow)
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
-
-    def _draw_stone_alignment(self, painter, s, m):
-        """Standing stones — row of vertical rectangles."""
-        stones = 5
-        gap = (s - 2 * m) / (stones * 2 - 1)
-        sw = gap * 0.8
-        for i in range(stones):
-            x = m + i * gap * 2
-            h = 50 + (i % 3) * 25
-            y = s - m - h
-            painter.drawRect(int(x), int(y), int(sw), int(h))
-
-    def _draw_standing_stone(self, painter, s, m, color):
-        """Single monolith with pecked face marks."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        p = QPainterPath()
-        p.moveTo(s * 0.42, s - m)
-        p.quadTo(s * 0.32, s * 0.62, s * 0.36, s * 0.34)
-        p.quadTo(s * 0.41, m + 6, s * 0.50, m + 14)
-        p.quadTo(s * 0.62, m + 22, s * 0.64, s * 0.42)
-        p.quadTo(s * 0.66, s * 0.66, s * 0.58, s - m)
-        p.closeSubpath()
-        painter.drawPath(p)
-        painter.setBrush(Qt.NoBrush)
-        peck_pen = _pen(color.darker(145), 1.0)
-        painter.setPen(peck_pen)
-        for i in range(5):
-            y = int(m + 42 + i * 28)
-            painter.drawLine(int(s * 0.46), y, int(s * 0.54), y + 5)
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
-
-    def _draw_dolmen(self, painter, s, m):
-        """Dolmen — capstone on two uprights."""
-        # Two uprights
-        uw, uh = 30, 90
-        painter.drawRect(m + 30, int(s - m - uh), uw, uh)
-        painter.drawRect(int(s - m - 30 - uw), int(s - m - uh), uw, uh)
-        # Capstone
-        p = QPainterPath()
-        top_y = s - m - uh - 25
-        p.moveTo(m + 10, s - m - uh + 5)
-        p.lineTo(m + 40, top_y)
-        p.lineTo(s - m - 40, top_y)
-        p.lineTo(s - m - 10, s - m - uh + 5)
-        p.closeSubpath()
-        painter.drawPath(p)
-
-    def _draw_rock_art(self, painter, s, m, color):
-        """Rock art — spiral petroglyph."""
-        import math
-
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(_pen(color, 4.0))
-        cx, cy = s / 2.0, s / 2.0
-        # One path, four quarter-turns per revolution. Eighty line segments
-        # drew the same curve but as eighty marks, which is what made it
-        # scratchy - and the joins showed at map size.
-        spiral = QPainterPath()
-        outer = s / 2.0 - m - 8
-        steps = 11
-        spiral.moveTo(cx, cy)
-        for i in range(1, steps + 1):
-            a0 = (i - 1) * math.pi / 2.0
-            a1 = i * math.pi / 2.0
-            r0 = 6 + (i - 1) / steps * outer
-            r1 = 6 + i / steps * outer
-            rm = (r0 + r1) / 2.0 * 1.22
-            am = (a0 + a1) / 2.0
-            spiral.quadTo(cx + rm * math.cos(am), cy + rm * math.sin(am),
-                          cx + r1 * math.cos(a1), cy + r1 * math.sin(a1))
-        painter.drawPath(spiral)
 
     def _draw_ash_layer(self, painter, s, m, color):
         """
@@ -2442,33 +2518,6 @@ class TemplateGenerator:
         painter.drawPath(g.line(41, 43, 52, 43))
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
-
-    def _draw_burnt_area(self, painter, s, m, color):
-        """Burnt feature with charred irregular boundary."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        p = QPainterPath()
-        p.moveTo(m + 30, s * 0.72)
-        p.quadTo(s * 0.28, s * 0.36, s * 0.46, m + 24)
-        p.quadTo(s * 0.70, m + 34, s - m - 20, s * 0.54)
-        p.quadTo(s * 0.72, s * 0.78, s * 0.52, s - m - 12)
-        p.quadTo(s * 0.34, s - m - 4, m + 30, s * 0.72)
-        p.closeSubpath()
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-        painter.drawPath(p)
-        # A darker core inside the scorched outline says "burnt" more
-        # plainly than a field of char marks.
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.MID))
-        painter.setPen(_pen(color.darker(160), 1.2))
-        core = QPainterPath()
-        core.moveTo(m + 62, s * 0.66)
-        core.quadTo(s * 0.40, s * 0.44, s * 0.54, m + 62)
-        core.quadTo(s * 0.68, s * 0.52, s * 0.56, s * 0.74)
-        core.quadTo(s * 0.44, s * 0.80, m + 62, s * 0.66)
-        core.closeSubpath()
-        painter.drawPath(core)
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
 
     # ═══════════════════════════════════════════════════════
     #  Drawing methods — Survey / General
@@ -2682,81 +2731,6 @@ class TemplateGenerator:
         painter.drawPath(g.rect(21, 6, 22, 8, r=2))
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
-
-    def _draw_road(self, painter, s, m, color):
-        """Road/pavement with carriageway edges and center line."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        painter.setBrush(Qt.NoBrush)
-        edge_pen = _pen(color.darker(130), 2.2)
-        painter.setPen(edge_pen)
-        painter.drawArc(m + 12, m + 34, s - 2 * m - 24, s - 2 * m - 68, 25 * 16, 310 * 16)
-        painter.drawArc(m + 40, m + 56, s - 2 * m - 80, s - 2 * m - 112, 25 * 16, 310 * 16)
-        center_pen = _pen(color.darker(150), 1.3, Qt.DashLine)
-        painter.setPen(center_pen)
-        painter.drawArc(m + 26, m + 45, s - 2 * m - 52, s - 2 * m - 90, 25 * 16, 310 * 16)
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
-
-    def _draw_bridge(self, painter, s, m, color):
-        """Bridge with deck and two arch openings."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        deck_y = int(s * 0.42)
-        painter.drawRect(m + 16, deck_y, s - 2 * m - 32, 22)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawArc(m + 28, deck_y + 8, int((s - 2 * m - 56) / 2), 80, 0, 180 * 16)
-        painter.drawArc(int(s / 2), deck_y + 8, int((s - 2 * m - 56) / 2), 80, 0, 180 * 16)
-        painter.setBrush(Qt.NoBrush)
-        water_pen = _pen(color.darker(145), 1.1, Qt.DotLine)
-        painter.setPen(water_pen)
-        painter.drawLine(m + 24, int(s * 0.78), s - m - 24, int(s * 0.78))
-        painter.drawLine(m + 30, int(s * 0.84), s - m - 30, int(s * 0.84))
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
-
-    def _draw_terrace(self, painter, s, m, color):
-        """Terrace with stepped contour bands."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        # The stepped profile is the type; a stack of rules with ticks is not.
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-        painter.setPen(_pen(color.darker(140), 2.6))
-        steps = QPainterPath()
-        steps.moveTo(m + 4, s - m - 8)
-        for i in range(3):
-            y = s - m - 8 - i * 46
-            steps.lineTo(m + 30 + i * 54, y)
-            steps.lineTo(m + 30 + i * 54, y - 46)
-        steps.lineTo(s - m - 4, m + 12)
-        steps.lineTo(s - m - 4, s - m - 8)
-        steps.closeSubpath()
-        painter.drawPath(steps)
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
-
-    def _draw_posthole(self, painter, s, m, color):
-        """Posthole with center post and packing stones."""
-        import math
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        cx = s / 2.0
-        cy = s / 2.0
-        r = s / 2.0 - m - 24
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-        ring_pen = _pen(color.darker(125), 2.2, Qt.DashLine)
-        painter.setPen(ring_pen)
-        painter.drawEllipse(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOLID))
-        painter.setPen(_pen(color.darker(150), 1.0))
-        painter.drawEllipse(int(cx - 8), int(cy - 8), 16, 16)
-        for i in range(6):
-            rad = (math.pi / 3.0) * i
-            px = cx + (r - 10) * math.cos(rad)
-            py = cy + (r - 10) * math.sin(rad)
-            painter.drawEllipse(int(px - 4), int(py - 3), 8, 6)
-        painter.setBrush(old_brush)
-        painter.setPen(old_pen)
 
     def _draw_test_pit(self, painter, s, m, color):
         """

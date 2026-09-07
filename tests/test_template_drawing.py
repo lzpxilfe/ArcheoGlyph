@@ -151,7 +151,6 @@ def test_no_template_fills_with_a_fully_transparent_colour():
 MARK_CAP = 10
 REPETITION_IS_THE_TYPE = {
     "Comb-pattern Pottery": "the comb impressions are the ware",
-    "Midden / Shell Mound": "a shell mound is a mass of shells",
 }
 
 
@@ -225,7 +224,21 @@ GRID_NATIVE = sorted(
        "North Arrow (Map Standard)", "Scale Bar (Map Standard)",
        "Harris Matrix Context", "Stratigraphic Unit", "Survey Point",
        "Find Spot", "Trench", "Datum Point", "Photo Point", "Grid Corner",
-       "Sample Location", "Ash Layer", "Excavation Area", "Test Pit"]
+       "Sample Location", "Ash Layer", "Excavation Area", "Test Pit",
+       "Pottery", "Stone Tool", "Arrowhead", "Scraper", "Bronze Artifact",
+       "Iron Artifact", "Chisel", "Ornament", "Bead", "Bracelet / Ring",
+       "Coin", "Seal / Stamp", "Spindle Whorl", "Bone Tool", "Needle / Pin",
+       "Animal Remains", "Weapon", "Blade",
+       "Pottery Rim Sherd (Section)", "Pottery Base Sherd (Section)",
+       "Pottery Body Sherd (Section)", "Bronze Sword", "Bronze Dagger-axe",
+       "Bronze Spear", "Fortress / Castle", "Gate", "Tower",
+       "Dwelling / House", "Workshop", "Temple / Shrine", "Tomb",
+       "Mound / Barrow", "Kiln / Furnace", "Well", "Wall / Rampart",
+       "Pit", "Storage Pit", "Posthole", "Road / Pavement", "Bridge",
+       "Human Remains", "Skeleton", "Burial", "Cremation Burial",
+       "Hearth / Fire Pit", "Burnt Area", "Midden / Shell Mound",
+       "Ditch / Moat", "Canal / Water Channel", "Stone Alignment", "Dolmen",
+       "Rock Art", "Standing Stone", "Terrace"]
 )
 
 
