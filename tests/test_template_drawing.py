@@ -154,10 +154,7 @@ REPETITION_IS_THE_TYPE = {
     "Gold Crown": "three uprights, each with its own branching arms",
     "Comb-pattern Pottery": "the comb impressions are the ware",
     "Midden / Shell Mound": "a shell mound is a mass of shells",
-    "Charcoal Kiln": "the charcoal inside is the point",
-    "Raised-floor Building": "the building survives only as its posthole grid",
     "Plate Armour": "the rivets down each plate",
-    "Dry Field": "ridge and furrow is the feature",
 }
 
 
@@ -208,7 +205,14 @@ GRID_NATIVE = sorted(
        "Stone Cist Tomb", "Stone-lined Tomb", "Wooden Coffin Tomb",
        "Wooden Chamber Tomb", "Jar Coffin Tomb",
        "Stone-mounded Wooden Chamber Tomb", "Corridor-style Stone Chamber Tomb",
-       "Earthen Mounded Tomb", "Ditch-encircled Tomb", "Earthen Pit Tomb"]
+       "Earthen Mounded Tomb", "Ditch-encircled Tomb", "Earthen Pit Tomb",
+       "Pit Dwelling (Round)", "Pit Dwelling (Square)",
+       "Pit Dwelling (Protruding Entrance)", "Pit Dwelling (Twin-room)",
+       "Raised-floor Building", "Cooking Stove (Kamado)", "Ondol Heating Flue",
+       "Pottery Kiln", "Roof Tile Kiln", "Iron Smelting Feature",
+       "Charcoal Kiln", "Paddy Field", "Dry Field", "Earthen Rampart Fortress",
+       "Stone Rampart Fortress", "Mountain Fortress", "Palisade",
+       "Encircling Ditch", "Beacon Station", "Water Collection Basin"]
 )
 
 

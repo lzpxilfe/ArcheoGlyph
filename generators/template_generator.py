@@ -1373,387 +1373,280 @@ class TemplateGenerator:
         """
         Settlement, production and defence features as excavated plans.
 
-        Plan view for dwellings, kilns and fields — that is how they appear on
-        a site drawing — and section view for the ramparts and the basin,
-        where the profile is what identifies them.
+        Plan view for the dwellings, the fields and the kiln floors - that is
+        how a site drawing shows them - and section view for the ramparts,
+        the ovens and the climbing kilns, where the profile is what names the
+        feature. Section types share one ground line at y=50, so the group
+        sits on a single horizon.
+
+        Repetition is the trap in this family. Sixteen postholes for a
+        raised-floor building, thirteen billets in a charcoal kiln and eight
+        furrows in a dry field all say "many" at drawing size and "grey" at
+        marker size, so each is cut to the smallest count that still reads as
+        a series.
         """
+        g = icon_grid.Grid(s)
         old_pen, old_brush = painter.pen(), painter.brush()
         solid = QColor(color)
-        fill = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
-        faint = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
-        edge = _pen(color.darker(150), 2.6)
-        thin = _pen(color.darker(165), 1.4)
-        dashed = _pen(color.darker(140), 2.0, Qt.DashLine)
-        cx, cy = s / 2.0, s / 2.0
-        ground = s - m - 34
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        ground_tone = QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT)
+        edge = _pen(color, 2.6)
+        thin = _pen(color, 1.4)
+        GROUND = 50
+
+        def floor(outline, posts, hearth=(32, 32)):
+            """A pit dwelling: the cut, its postholes and its hearth."""
+            painter.setPen(edge)
+            painter.setBrush(body)
+            painter.drawPath(outline)
+            painter.setBrush(solid)
+            painter.setPen(thin)
+            for px, py in posts:
+                painter.drawPath(g.circle(px, py, 3))
+            painter.setPen(edge)
+            painter.drawPath(g.circle(hearth[0], hearth[1], 5))
+
+        def ground_line():
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(5, GROUND, 59, GROUND))
+
+        def climbing_kiln(marks):
+            """
+            A kiln in section: firebox at one end, domed chamber, flue at the
+            other. Both kilns are this one silhouette - the reference plates
+            make variants differ by their mark, not their shape - so ``marks``
+            is what says pottery or roof tile.
+
+            Drawn as a sloping tube, which is what this used to be, the whole
+            thing reads as a diagonal bar: nothing in it says which end is
+            the fire. The asymmetry is the information.
+            """
+            painter.setPen(edge)
+            painter.setBrush(body)
+            dome = g.symmetric([(5, 19), (15, 27), (17, GROUND)],
+                               curved=True, cx=32)
+            painter.drawPath(dome)
+            painter.setBrush(solid)
+            painter.drawPath(g.circle(12, 42, 7))          # firebox
+            painter.drawPath(g.rect(48, 13, 8, 37))        # flue
+            _clip_detail(painter, dome)
+            painter.setPen(thin)
+            painter.setBrush(Qt.NoBrush if marks == "tile" else solid)
+            if marks == "tile":
+                painter.drawPath(g.line(26, 40, 34, 33))
+                painter.drawPath(g.line(30, 45, 38, 38))
+            else:
+                painter.drawPath(g.circle(28, 38, 4))
+                painter.drawPath(g.circle(38, 42, 4))
+            painter.restore()
+            ground_line()
 
         painter.setPen(edge)
-        painter.setBrush(fill)
-
-        def postholes(points, radius=7):
-            painter.setBrush(solid)
-            painter.setPen(thin)
-            for px, py in points:
-                painter.drawEllipse(QRectF(px - radius, py - radius, radius * 2, radius * 2))
-            painter.setPen(edge)
-            painter.setBrush(fill)
-
-        def hearth(hx, hy, radius=14):
-            painter.setPen(thin)
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.MID))
-            painter.drawEllipse(QRectF(hx - radius, hy - radius, radius * 2, radius * 2))
-            painter.setPen(edge)
-            painter.setBrush(fill)
+        painter.setBrush(body)
 
         if variant == "pit_house_round":
-            # 원형 수혈주거지: a round cut with postholes and a central hearth.
-            painter.drawEllipse(QRectF(m + 4, m + 4, s - 2 * m - 8, s - 2 * m - 8))
-            r = (s - 2 * m - 8) / 2.0 - 30
-            postholes([
-                (cx - r * 0.71, cy - r * 0.71), (cx + r * 0.71, cy - r * 0.71),
-                (cx - r * 0.71, cy + r * 0.71), (cx + r * 0.71, cy + r * 0.71),
-            ])
-            hearth(cx, cy)
+            # 원형 수혈주거지
+            floor(g.circle(32, 32, 24),
+                  [(20, 20), (44, 20), (20, 44), (44, 44)])
 
         elif variant == "pit_house_square":
-            # 방형 수혈주거지.
-            painter.drawRect(QRectF(m + 6, m + 6, s - 2 * m - 12, s - 2 * m - 12))
-            inset = 44
-            postholes([
-                (m + inset, m + inset), (s - m - inset, m + inset),
-                (m + inset, s - m - inset), (s - m - inset, s - m - inset),
-            ])
-            hearth(cx, cy)
+            # 방형 수혈주거지
+            floor(g.rect(9, 9, 46, 46),
+                  [(19, 19), (45, 19), (19, 45), (45, 45)])
 
         elif variant == "pit_house_convex":
-            # 凸자형: a square room with a short entrance passage.
-            body = QPainterPath()
-            body.moveTo(m + 6, m + 34)
-            body.lineTo(s - m - 6, m + 34)
-            body.lineTo(s - m - 6, s - m - 40)
-            body.lineTo(cx + 26, s - m - 40)
-            body.lineTo(cx + 26, s - m - 6)
-            body.lineTo(cx - 26, s - m - 6)
-            body.lineTo(cx - 26, s - m - 40)
-            body.lineTo(m + 6, s - m - 40)
-            body.closeSubpath()
-            painter.drawPath(body)
-            postholes([
-                (m + 40, m + 66), (s - m - 40, m + 66),
-                (m + 40, s - m - 68), (s - m - 40, s - m - 68),
-            ])
-            hearth(cx, cy - 10)
+            # 철(凸)자형: the same floor with an entrance passage added.
+            floor(g.poly([(9, 11), (55, 11), (55, 43), (39, 43), (39, 53),
+                          (25, 53), (25, 43), (9, 43)]),
+                  [(19, 19), (45, 19), (19, 36), (45, 36)], hearth=(32, 27))
 
         elif variant == "pit_house_twin":
-            # 呂자형: a main room and a smaller front room, joined.
-            # Drawn as one outline: two rooms joined by a neck, which is what
-            # the 呂 shape is. Two separate rectangles read as two dwellings.
-            twin = QPainterPath()
-            twin.moveTo(m + 12, m + 4)
-            twin.lineTo(s - m - 12, m + 4)
-            twin.lineTo(s - m - 12, m + 96)
-            twin.lineTo(cx + 26, m + 96)
-            twin.lineTo(cx + 26, s - m - 96)
-            twin.lineTo(s - m - 34, s - m - 96)
-            twin.lineTo(s - m - 34, s - m - 4)
-            twin.lineTo(m + 34, s - m - 4)
-            twin.lineTo(m + 34, s - m - 96)
-            twin.lineTo(cx - 26, s - m - 96)
-            twin.lineTo(cx - 26, m + 96)
-            twin.lineTo(m + 12, m + 96)
-            twin.closeSubpath()
-            painter.drawPath(twin)
-            hearth(cx, m + 50)
+            # 여(呂)자형: two rooms joined by a short passage.
+            floor(g.poly([(11, 8), (53, 8), (53, 30), (37, 30), (37, 36),
+                          (46, 36), (46, 56), (18, 56), (18, 36), (27, 36),
+                          (27, 30), (11, 30)]),
+                  [(20, 15), (44, 15), (24, 49), (40, 49)], hearth=(32, 20))
 
         elif variant == "raised_floor":
-            # 굴립주건물: known only from its posthole grid.
-            painter.setBrush(faint)
-            painter.setPen(dashed)
-            painter.drawRect(QRectF(m + 4, m + 26, s - 2 * m - 8, s - 2 * m - 52))
-            grid = []
-            for row in range(3):
-                for col in range(4):
-                    grid.append((m + 30 + col * (s - 2 * m - 60) / 3.0,
-                                 m + 52 + row * (s - 2 * m - 104) / 2.0))
-            postholes(grid, radius=9)
+            # 굴립주건물: the floor stands on earth-fast posts. Drawn in
+            # section, because raised is the whole point and a plan of it is
+            # a field of dots - which is what this used to be.
+            painter.setBrush(body)
+            painter.drawPath(g.poly([(12, 21), (32, 9), (52, 21)]))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(8, 21, 48, 8))
+            painter.setBrush(body)
+            for x in (16, 29, 42):
+                painter.drawPath(g.rect(x, 29, 6, GROUND - 29))
+            ground_line()
 
         elif variant == "kamado":
-            # 부뚜막: the clay body seen in plan, with the pot seat cut into
-            # it and the stoke opening at the front. Drawn as one outline -
-            # a rectangle with a circle on top read as neither.
-            painter.setBrush(fill)
-            stove = QPainterPath()
-            stove.moveTo(m + 12, cy + 54)
-            stove.lineTo(m + 12, cy - 30)
-            stove.quadTo(cx, cy - 78, s - m - 12, cy - 30)
-            stove.lineTo(s - m - 12, cy + 54)
-            stove.lineTo(cx + 26, cy + 54)
-            stove.lineTo(cx + 26, cy + 18)
-            stove.lineTo(cx - 26, cy + 18)
-            stove.lineTo(cx - 26, cy + 54)
-            stove.closeSubpath()
-            painter.drawPath(stove)
+            # 부뚜막: a clay stove block with an arched fire mouth and a flue.
+            painter.setBrush(body)
+            painter.drawPath(g.poly([(9, GROUND), (14, 22), (48, 22),
+                                     (53, GROUND)]))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(43, 12, 8, 10))
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(_pen(color.darker(150), 2.6))
-            painter.drawEllipse(QRectF(cx - 40, cy - 44, 80, 62))
+            painter.setPen(_pen(color, 2.2))
+            painter.drawPath(g.rect(22, 33, 16, 17, r=8))
+            ground_line()
 
         elif variant == "ondol":
-            # 온돌: the heated floor as a long flue run - firebox at one end,
-            # chimney rising at the other. Drawn with notched flues it read as
-            # a plumbing fitting.
-            painter.setBrush(fill)
-            flue = QPainterPath()
-            flue.moveTo(m + 8, cy + 34)
-            flue.lineTo(m + 8, cy - 34)
-            flue.lineTo(s - m - 62, cy - 34)
-            flue.lineTo(s - m - 62, m + 10)
-            flue.lineTo(s - m - 8, m + 10)
-            flue.lineTo(s - m - 8, cy + 34)
-            flue.closeSubpath()
-            painter.drawPath(flue)
-            _clip_detail(painter, flue)
-            painter.setPen(_pen(color.darker(150), 2.0))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawLine(int(m + 30), int(cy), int(s - m - 40), int(cy))
-            painter.restore()
+            # 온돌: firebox, the flues that run under the floor, and the
+            # chimney at the far end - in plan, left to right.
+            # A stubby block at each end reads as a barbell, so the firebox
+            # is a wide arch and the chimney a narrow stack: the shape says
+            # which way the smoke runs.
             painter.setBrush(solid)
-            painter.setPen(edge)
-            painter.drawEllipse(QRectF(m + 2, cy - 26, 52, 52))
+            painter.drawPath(g.rect(6, 22, 14, 20, r=7))
+            painter.setBrush(body)
+            for y in (24, 31, 38):
+                painter.drawPath(g.rect(20, y, 27, 5, r=1))
+            painter.setBrush(solid)
+            painter.drawPath(g.rect(47, 12, 8, 40))
 
-        elif variant in ("pottery_kiln", "tile_kiln"):
-            # 토기가마 / 기와가마: the sloping tunnel kiln in section - the
-            # firebox low at one end, the chamber climbing to the flue at the
-            # other. The two differ by how tall the chamber is, and by colour.
-            # A tile kiln has the broader chamber; that width is what tells
-            # the two apart, since they share a colour and a profile.
-            width = 62 if variant == "tile_kiln" else 38
-            rise = 60
-            painter.setBrush(fill)
-            kiln = QPainterPath()
-            kiln.moveTo(m + 6, s - m - 22)
-            kiln.lineTo(m + 6, s - m - 22 - width)
-            kiln.quadTo(cx - 10, s - m - 72 - rise, s - m - 54, m + 30)
-            kiln.lineTo(s - m - 12, m + 30)
-            kiln.lineTo(s - m - 12, m + 30 + width)
-            kiln.quadTo(cx, s - m - 30 - rise * 0.5, m + 58, s - m - 22)
-            kiln.closeSubpath()
-            painter.drawPath(kiln)
-            painter.setBrush(solid)
-            painter.setPen(edge)
-            painter.drawRect(QRectF(m + 2, s - m - 44, 44, 34))
+        elif variant == "pottery_kiln":
+            climbing_kiln("pot")
+
+        elif variant == "tile_kiln":
+            climbing_kiln("tile")
 
         elif variant == "iron_smelting":
-            # 제철유구: the shaft furnace in section, waisted, on its wider
-            # base. Adding the slag run turned the silhouette into a boot.
-            painter.setBrush(fill)
-            furnace = QPainterPath()
-            furnace.moveTo(cx - 40, m + 10)
-            furnace.lineTo(cx + 40, m + 10)
-            furnace.quadTo(cx + 28, cy, cx + 46, s - m - 46)
-            furnace.lineTo(cx + 74, s - m - 10)
-            furnace.lineTo(cx - 74, s - m - 10)
-            furnace.lineTo(cx - 46, s - m - 46)
-            furnace.quadTo(cx - 28, cy, cx - 40, m + 10)
-            furnace.closeSubpath()
-            painter.drawPath(furnace)
-            _clip_detail(painter, furnace)
+            # 제철유구: a shaft furnace with its tap hole, not the cooling
+            # tower the old hourglass profile read as.
+            painter.setBrush(body)
+            painter.drawPath(g.symmetric(
+                [(8, 12), (13, 24), (11, 38), (16, GROUND)], curved=True))
             painter.setBrush(solid)
             painter.setPen(edge)
-            # The tap hole at the base of the shaft.
-            painter.drawEllipse(QRectF(cx - 22, s - m - 62, 44, 40))
-            painter.restore()
+            painter.drawPath(g.circle(32, 43, 5))
+            ground_line()
 
         elif variant == "charcoal_kiln":
-            # 숯가마: an oval chamber, its stoke hole, and charcoal inside.
-            painter.setBrush(fill)
-            painter.drawEllipse(QRectF(m + 10, m + 40, s - 2 * m - 20, s - 2 * m - 80))
+            # 숯가마: an elongated chamber in plan, fired from one end and
+            # vented at the other.
+            painter.setBrush(body)
+            painter.drawPath(g.symmetric(
+                [(7, 15), (19, 26), (19, 41), (9, 49)], curved=True))
             painter.setBrush(solid)
-            painter.drawRect(QRectF(cx - 22, s - m - 56, 44, 44))
-            painter.setPen(thin)
-            for row, count in ((cy - 26, 4), (cy + 6, 5), (cy + 36, 3)):
-                span = 30.0 * (count - 1)
-                for i in range(count):
-                    painter.drawEllipse(QRectF(cx - span / 2 + 30 * i - 9, row - 9, 18, 18))
-            painter.setPen(edge)
+            painter.drawPath(g.rect(27, 47, 10, 11))       # stoking mouth
+            painter.drawPath(g.circle(32, 10, 5))          # vent
 
         elif variant == "paddy_field":
-            # 논: level plots divided by levees, with the water inlet.
-            painter.setBrush(fill)
-            painter.drawRect(QRectF(m, m + 14, s - 2 * m, s - 2 * m - 28))
-            painter.setPen(_pen(color.darker(150), 3.4))
-            painter.setBrush(Qt.NoBrush)
-            for i in range(1, 3):
-                y = int(m + 14 + i * (s - 2 * m - 28) / 3.0)
-                painter.drawLine(int(m), y, int(s - m), y)
-            painter.drawLine(int(cx), int(m + 14), int(cx), int(s - m - 14))
+            # 논: basins held by bunds, so the cells are what is drawn.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.rect(7, 13, 50, 38))
+            painter.setBrush(body)
             painter.setPen(thin)
-            for i in range(3):
-                y = int(m + 34 + i * (s - 2 * m - 28) / 3.0)
-                painter.drawLine(int(m + 14), y, int(m + 74), y)
-                painter.drawLine(int(cx + 14), y, int(cx + 74), y)
-            painter.setPen(edge)
+            for row in (17, 33):
+                for col in (11, 27, 43):
+                    painter.drawPath(g.rect(col, row, 10, 13, r=1))
 
         elif variant == "dry_field":
-            # 밭: ridge and furrow.
-            painter.setBrush(fill)
-            painter.drawRect(QRectF(m, m + 20, s - 2 * m, s - 2 * m - 40))
-            painter.setPen(_pen(color.darker(155), 3.0))
-            for i in range(6):
-                x = int(m + 16 + i * (s - 2 * m - 32) / 5.0)
-                painter.drawLine(x, int(m + 26), x, int(s - m - 26))
+            # 밭: ridge and furrow. Four ridges read as ploughing; eight read
+            # as a barcode.
+            painter.setBrush(ground_tone)
+            painter.drawPath(g.rect(8, 13, 48, 38))
+            painter.setBrush(body)
             painter.setPen(thin)
-            for i in range(5):
-                x = int(m + 32 + i * (s - 2 * m - 32) / 5.0)
-                painter.drawLine(x, int(m + 34), x, int(s - m - 34))
-            painter.setPen(edge)
+            for i in range(4):
+                painter.drawPath(g.rect(12 + i * 11, 17, 6, 30, r=1))
 
         elif variant == "earthen_rampart":
-            # 토성: a rammed-earth bank in section, with its outer ditch.
-            bank = QPainterPath()
-            bank.moveTo(m + 4, ground)
-            bank.lineTo(m + 54, m + 34)
-            bank.lineTo(s - m - 74, m + 34)
-            bank.lineTo(s - m - 30, ground)
-            bank.closeSubpath()
+            # 토성: an earth bank, wide and sloping, raised in layers.
+            bank = g.poly([(6, GROUND), (19, 17), (45, 17), (58, GROUND)])
+            painter.setBrush(body)
             painter.drawPath(bank)
+            _clip_detail(painter, bank)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            for i in range(1, 4):
-                y = m + 34 + i * (ground - m - 34) / 4.0
-                shrink = 14 * (4 - i)
-                painter.drawLine(int(m + 10 + shrink), int(y), int(s - m - 36 - shrink), int(y))
-            painter.setPen(edge)
-            painter.drawLine(int(m - 6), int(ground), int(s - m + 6), int(ground))
-            painter.setPen(dashed)
-            ditch = QPainterPath()
-            ditch.moveTo(s - m - 26, ground)
-            ditch.lineTo(s - m - 14, ground + 30)
-            ditch.lineTo(s - m, ground + 30)
-            painter.drawPath(ditch)
+            painter.drawPath(g.line(11, 39, 53, 39))
+            painter.drawPath(g.line(16, 28, 48, 28))
+            painter.restore()
+            ground_line()
 
         elif variant == "stone_rampart":
-            # 석성: a stone-faced wall in section, coursed.
-            wall = QPainterPath()
-            wall.moveTo(m + 10, ground)
-            wall.lineTo(m + 40, m + 30)
-            wall.lineTo(s - m - 40, m + 30)
-            wall.lineTo(s - m - 10, ground)
-            wall.closeSubpath()
+            # 석성: the same section built in stone - steeper, and topped
+            # with its crenellation.
+            wall = g.poly([(13, GROUND), (19, 18), (45, 18), (51, GROUND)])
+            painter.setBrush(body)
             painter.drawPath(wall)
+            painter.setBrush(solid)
+            for x in (18, 29, 40):
+                painter.drawPath(g.rect(x, 11, 7, 7))
+            _clip_detail(painter, wall)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            courses = 5
-            for i in range(1, courses):
-                y = m + 30 + i * (ground - m - 30) / courses
-                inset = 30 - i * 4
-                painter.drawLine(int(m + inset), int(y), int(s - m - inset), int(y))
-            painter.setBrush(solid)
-            for i in range(4):
-                painter.drawRect(QRectF(m + 46 + i * 42, m + 12, 30, 18))
-            painter.setPen(edge)
-            painter.drawLine(int(m - 6), int(ground), int(s - m + 6), int(ground))
+            painter.drawPath(g.line(14, 38, 50, 38))
+            painter.drawPath(g.line(16, 28, 48, 28))
+            painter.restore()
+            ground_line()
 
         elif variant == "mountain_fortress":
-            # 산성: a wall line following the ridge, over contour lines.
+            # 산성: a wall carried along a ridge. The ridge is what makes it
+            # a mountain fortress rather than a town wall.
+            painter.setBrush(ground_tone)
+            painter.setPen(thin)
+            painter.drawPath(g.poly([(5, GROUND), (20, 16), (32, 35),
+                                     (44, 23), (57, GROUND)]))
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(thin)
-            for i in range(3):
-                inset = 16 + i * 26
-                contour = QPainterPath()
-                contour.moveTo(m + inset, s - m - 10)
-                contour.quadTo(cx, m + 10 + i * 34, s - m - inset, s - m - 10)
-                painter.drawPath(contour)
-            painter.setPen(_pen(color.darker(150), 4.0))
-            wall = QPainterPath()
-            wall.moveTo(m + 6, s - m - 10)
-            wall.quadTo(cx, m - 12, s - m - 6, s - m - 10)
-            painter.drawPath(wall)
-            painter.setPen(thin)
+            painter.setPen(_pen(color, 3.0))
+            painter.drawPath(g.poly([(9, 45), (20, 20), (32, 39), (44, 27),
+                                     (53, 45)], close=False))
             painter.setBrush(solid)
-            painter.drawRect(QRectF(cx - 16, m + 24, 32, 26))
             painter.setPen(edge)
+            painter.drawPath(g.rect(28, 35, 8, 8, r=1))
 
         elif variant == "palisade":
-            # 목책: a line of pointed timbers with its tie beam.
-            painter.setBrush(solid)
-            painter.setPen(edge)
-            count = 6
-            step = (s - 2 * m - 24) / (count - 1.0)
-            for i in range(count):
-                x = m + 12 + step * i
-                post = QPainterPath()
-                post.moveTo(x, m + 26)
-                post.lineTo(x + 13, m + 46)
-                post.lineTo(x + 13, ground + 6)
-                post.lineTo(x - 13, ground + 6)
-                post.lineTo(x - 13, m + 46)
-                post.closeSubpath()
-                painter.drawPath(post)
-            painter.setPen(_pen(color.darker(160), 3.4))
-            painter.drawLine(int(m + 4), int(m + 80), int(s - m - 4), int(m + 80))
+            # 목책: a line of sharpened stakes behind a rail.
+            painter.setBrush(body)
+            for i in range(5):
+                x = 8 + i * 10
+                painter.drawPath(g.poly([(x, 20), (x + 4, 13), (x + 8, 20),
+                                         (x + 8, GROUND), (x, GROUND)]))
+            painter.setBrush(Qt.NoBrush)
             painter.setPen(thin)
-            painter.drawLine(int(m - 6), int(ground + 6), int(s - m + 6), int(ground + 6))
-            painter.setPen(edge)
+            painter.drawPath(g.line(6, 32, 58, 32))
 
         elif variant == "encircling_ditch":
-            # 환호: a broad cut ditch ringing a settlement, with its entrance.
-            # Two thin circles and a few dots read as a shirt button, so the
-            # ditch is drawn as a filled band and the houses as buildings.
-            outer = QPainterPath()
-            outer.addEllipse(QRectF(m - 2, m - 2, s - 2 * m + 4, s - 2 * m + 4))
-            inner = QPainterPath()
-            inner.addEllipse(QRectF(m + 26, m + 26, s - 2 * m - 52, s - 2 * m - 52))
-            entrance = QPainterPath()
-            entrance.addRect(QRectF(cx - 26, m - 8, 52, 42))
-            painter.setBrush(fill)
-            painter.setPen(edge)
-            painter.drawPath(outer.subtracted(inner).subtracted(entrance))
+            # 환호: a ditch ringing a settlement. Drawn as the stroke it is,
+            # with the houses it encloses.
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 3.0))
+            painter.drawPath(g.circle(32, 32, 25))
             painter.setBrush(solid)
-            painter.setPen(thin)
-            for dx, dy in ((-30, -14), (26, -20), (-16, 30), (30, 24)):
-                painter.drawRect(QRectF(cx + dx - 15, cy + dy - 13, 30, 26))
             painter.setPen(edge)
+            for cx, cy in ((25, 26), (41, 29), (31, 41)):
+                painter.drawPath(g.circle(cx, cy, 5))
 
         elif variant == "beacon":
-            # 봉수: the stone platform and its smoke.
-            painter.setBrush(fill)
-            base = QPainterPath()
-            base.moveTo(m + 10, ground + 8)
-            base.lineTo(m + 46, cy + 6)
-            base.lineTo(s - m - 46, cy + 6)
-            base.lineTo(s - m - 10, ground + 8)
-            base.closeSubpath()
-            painter.drawPath(base)
+            # 봉수: the fire platform and its smoke.
+            painter.setBrush(body)
+            painter.drawPath(g.poly([(10, GROUND), (20, 31), (44, 31),
+                                     (54, GROUND)]))
             painter.setBrush(solid)
-            painter.drawRect(QRectF(cx - 32, cy - 26, 64, 32))
-            painter.setPen(_pen(color.darker(150), 3.4))
+            painter.drawPath(g.rect(25, 23, 14, 8))
             painter.setBrush(Qt.NoBrush)
-            smoke = QPainterPath()
-            smoke.moveTo(cx, cy - 30)
-            smoke.quadTo(cx - 34, cy - 62, cx, m + 46)
-            smoke.quadTo(cx + 34, m + 24, cx - 6, m + 6)
-            painter.drawPath(smoke)
-            painter.setPen(edge)
+            painter.setPen(_pen(color, 2.0))
+            painter.drawPath(g.poly([(32, 22), (27, 17), (36, 13), (30, 7)],
+                                    close=False))
+            ground_line()
 
         elif variant == "water_basin":
-            # 집수정: a timber-lined basin in section, with the water level.
-            painter.setBrush(fill)
-            basin = QPainterPath()
-            basin.moveTo(m + 6, m + 44)
-            basin.lineTo(s - m - 6, m + 44)
-            basin.lineTo(s - m - 40, ground + 10)
-            basin.lineTo(m + 40, ground + 10)
-            basin.closeSubpath()
+            # 집수정: a tapered basin holding water.
+            basin = g.poly([(11, 15), (53, 15), (45, GROUND), (19, GROUND)])
+            painter.setBrush(ground_tone)
             painter.drawPath(basin)
-            painter.setPen(_pen(color.darker(150), 3.0))
+            _clip_detail(painter, basin)
+            painter.setBrush(body)
+            painter.setPen(Qt.NoPen)
+            painter.drawPath(g.rect(12, 28, 40, 24, r=0))
+            painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
-            for i in range(3):
-                y = int(m + 74 + i * 26)
-                inset = 16 + i * 10
-                painter.drawLine(int(m + inset), y, int(s - m - inset), y)
-            painter.setPen(edge)
-            painter.setBrush(solid)
-            painter.drawRect(QRectF(m + 6, m + 30, s - 2 * m - 12, 18))
+            painter.drawPath(g.line(16, 28, 48, 28))
+            painter.restore()
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
