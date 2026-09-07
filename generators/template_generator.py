@@ -1151,8 +1151,10 @@ class TemplateGenerator:
             painter.restore()
 
         elif variant == "scraper":
-            # 긁개: a flake with one retouched convex edge.
-            flake = g.symmetric([(5, 12), (18, 23), (25, 37), (26, 48)],
+            # 긁개: a flake with one retouched convex edge. The half-widths
+            # stop short of the safe area because the curve through them
+            # bows out past its own anchors - at 26 the flake reached 29.5.
+            flake = g.symmetric([(5, 12), (17, 23), (24, 37), (25, 48)],
                                 curved=True)
             painter.drawPath(flake)
             _clip_detail(painter, flake)

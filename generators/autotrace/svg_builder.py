@@ -41,7 +41,7 @@ DEFAULT_PAD_RATIO = 0.06
 #:
 #: Duplicated rather than imported because icon_grid pulls in Qt and this
 #: module is QGIS-free; tests/test_svg_builder.py holds the two in step.
-HOUSE_OUTLINE_RATIO = 3.0 / 64.0
+HOUSE_OUTLINE_RATIO = 2.6 / 64.0
 
 _NUMBER = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?"
 _NUMBER_RE = re.compile(_NUMBER)

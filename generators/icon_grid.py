@@ -14,8 +14,8 @@ look related without anyone tuning them to match.
 
     unit    = size / 64          (4 px on the 256 px canvas)
     MARGIN  = 4 units            the safe area; artwork lives inside 56x56
-    OUTLINE = 3 units            the silhouette stroke
-    DETAIL  = 2 units            internal lines
+    OUTLINE = 2.6 units          the silhouette stroke
+    DETAIL  = 1.3 units          internal lines
 
 Nothing here knows about archaeology - it is the drawing surface only.
 """
@@ -38,8 +38,8 @@ MARGIN = 4
 #:
 #: Three units is also still thick enough that the round joins visibly blunt
 #: a corner, which is most of what keeps a drawn icon friendly.
-OUTLINE = 3.0
-DETAIL = 1.5
+OUTLINE = 2.6
+DETAIL = 1.3
 
 #: Corner radius, clamped to a quarter of the shorter side so small parts stay
 #: crisp. Raised with the outline: a heavier stroke needs a wider corner to
