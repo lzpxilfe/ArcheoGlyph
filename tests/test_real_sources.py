@@ -118,3 +118,48 @@ def test_a_real_photograph_still_traces_to_a_usable_symbol(entry):
     )
     assert svg and svg.lstrip().startswith("<svg"), "trace produced no SVG"
     assert "<path" in svg, "trace produced an SVG with no geometry"
+
+
+#: Round finds whose decoration is shallow relief. Reading it off a
+#: photograph was tried seven ways and the signal sits on the noise floor: a
+#: one-pixel shift of the lotus tile moves its fold count between 8, 10 and
+#: 12 and its score between 0.03 and 0.10, where a drawn control holds at
+#: 0.31 exactly. So these must come out plain rather than decorated.
+RELIEF_ON_A_PHOTOGRAPH = ("03_mirror_jan", "04_roof_end_lotus", "09_roof_end_dragon")
+
+
+@pytest.mark.parametrize("source_id", RELIEF_ON_A_PHOTOGRAPH)
+def test_a_photograph_of_relief_is_never_given_a_motif(source_id):
+    """
+    Decoration must not be invented for an artefact that has none legible.
+
+    This guards the gate rather than the reading: dropping FRAME_MIN_SCORE
+    into the range these photographs wander over would stamp petals onto a
+    dragon-motif tile every few runs, and a plain disc is the honest answer.
+    """
+    base = _fixture_dir()
+    if base is None:
+        pytest.skip("set ARCHEOGLYPH_REAL_FIXTURES to run against real photos")
+    path = base / f"{source_id}.jpg"
+    if not path.exists():
+        pytest.skip(f"{path.name} not cached locally")
+    cv2 = pytest.importorskip("cv2")
+
+    from archeoglyph.generators.autotrace import round_motif as rm
+    from archeoglyph.generators.autotrace.io import adaptive_prescale
+    from archeoglyph.generators.autotrace.segment import select_mask
+
+    bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    assert bgr is not None
+    processing, _scale = adaptive_prescale(bgr, force_lowres_upscale=False,
+                                           detail_fast=True)
+    mask = select_mask(processing, backend="opencv")
+    gray = cv2.cvtColor(processing, cv2.COLOR_BGR2GRAY)
+
+    frame = rm.find_rotational_frame(gray, mask)
+    score = 0.0 if frame is None else frame.score
+    assert score < rm.FRAME_MIN_SCORE, (
+        f"{source_id} scored {score:.3f} against a {rm.FRAME_MIN_SCORE} gate, "
+        f"so the tracer would stamp a repeat onto it. That score is the "
+        f"optimiser wandering, not decoration - it moves with a one-pixel "
+        f"shift of the same photograph")

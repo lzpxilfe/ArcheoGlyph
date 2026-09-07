@@ -140,6 +140,17 @@ The symbols are original drawings. Only the published category scheme of
 한국고고학사전 is used as a reference; its plates and photographs are the copyright
 of 국립문화유산연구원 and are not reproduced or bundled.
 
+## Auto Trace: What It Reads
+
+Auto Trace works from the silhouette, so finds whose identity is their
+outline (blades, stone tools) trace well, while finds whose identity is
+shallow relief decoration (bronze mirrors, roof tile ends) are declined
+and drawn plain rather than given invented decoration. Feed those a
+rubbing or a measured drawing instead and the motif is read properly.
+
+Measurements and the reasoning behind the gate are in
+[docs/auto_trace_limits.md](docs/auto_trace_limits.md).
+
 ## Performance Tips
 
 If conversion feels slow:

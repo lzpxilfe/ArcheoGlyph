@@ -21,7 +21,8 @@
       "pixels": [
         2253,
         3000
-      ]
+      ],
+      "kind": "photograph"
     },
     {
       "id": "02_sehyeong_dagger",
@@ -36,7 +37,8 @@
       "pixels": [
         669,
         515
-      ]
+      ],
+      "kind": "photograph"
     },
     {
       "id": "03_mirror_jan",
@@ -51,7 +53,8 @@
       "pixels": [
         3000,
         2251
-      ]
+      ],
+      "kind": "photograph"
     },
     {
       "id": "04_roof_end_lotus",
@@ -66,7 +69,8 @@
       "pixels": [
         3000,
         2000
-      ]
+      ],
+      "kind": "photograph"
     },
     {
       "id": "05_comb_pottery",
@@ -81,7 +85,8 @@
       "pixels": [
         2252,
         3000
-      ]
+      ],
+      "kind": "photograph"
     },
     {
       "id": "06_comb_pottery_b",
@@ -96,7 +101,8 @@
       "pixels": [
         2788,
         3000
-      ]
+      ],
+      "kind": "photograph"
     },
     {
       "id": "07_stone_dagger",
@@ -111,7 +117,8 @@
       "pixels": [
         2253,
         3000
-      ]
+      ],
+      "kind": "photograph"
     },
     {
       "id": "08_ground_stone",
@@ -126,7 +133,8 @@
       "pixels": [
         3000,
         2000
-      ]
+      ],
+      "kind": "photograph"
     },
     {
       "id": "09_roof_end_dragon",
@@ -141,7 +149,60 @@
       "pixels": [
         3000,
         2000
+      ],
+      "kind": "photograph"
+    },
+    {
+      "id": "r1_takbon_yeomgeo",
+      "label": "염거화상탑 탑명 탑본",
+      "museum_name": "염거화상 탑명동판 탑본",
+      "template": null,
+      "kind": "photograph_of_a_mounted_rubbing",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=333",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "f89a7005e1e305c7baead452e97d1beece014e68fd5d378acb104b3dc266a1cf",
+      "bytes": 3079134,
+      "pixels": [
+        1978,
+        3000
+      ]
+    },
+    {
+      "id": "r2_takbon_cheonhui",
+      "label": "천희5년명 탑본",
+      "museum_name": "천희오년 탑명 탑본",
+      "template": null,
+      "kind": "photograph_of_a_mounted_rubbing",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=334",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "3e191cf8aa60305e852d59044bd7fcb137f09f2226916c1c58971e85800802f9",
+      "bytes": 7067135,
+      "pixels": [
+        2288,
+        3000
+      ]
+    },
+    {
+      "id": "r3_takbon_godalsa",
+      "label": "고달사 원종대사탑비 탑본",
+      "museum_name": "고달사 원종대사 찬유 탑비 탑본",
+      "template": null,
+      "kind": "photograph_of_a_mounted_rubbing",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=342",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "4c066fe4548f92f84ef5c438cb5ea67876d40e760a9b9a6d442c1efd01b73dbc",
+      "bytes": 3291296,
+      "pixels": [
+        2000,
+        3000
       ]
     }
-  ]
+  ],
+  "kinds": {
+    "photograph": "An excavated find photographed against a plain ground. What the tracer is mainly for.",
+    "photograph_of_a_mounted_rubbing": "A rubbing that has been mounted as a hanging scroll and then photographed. Recorded here because it looks like the input the drawing path wants and is not: the mask locks onto the scroll, not the ink, and looks_like_drawing correctly calls it a photograph. A rubbing fed to Auto Trace has to be the sheet itself."
+  }
 }
