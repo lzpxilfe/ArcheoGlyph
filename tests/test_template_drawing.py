@@ -16,6 +16,7 @@ import math
 import pathlib
 import sys
 
+import numpy as np
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
@@ -145,46 +146,169 @@ def test_no_template_fills_with_a_fully_transparent_colour():
     )
 
 
-# A symbol whose identity IS repetition - scales, piled stones, a posthole
-# grid - needs more marks than one that is a silhouette. Everything else has
-# to stay under the cap, with the reason recorded here.
-MARK_CAP = 10
-REPETITION_IS_THE_TYPE = {
-    "Comb-pattern Pottery": "the comb impressions are the ware",
-}
+# ── legend-size legibility: no two symbols may collapse into each other ──
+
+#: A symbol is only worth drawing if it is not some other symbol. Counting
+#: marks used to stand in for this - the cap said "one to three marks, a
+#: silhouette and at most the one thing that separates the type" - but a
+#: count cannot see whether the result is distinguishable, and it turned out
+#: to forbid exactly the detail that makes types tell apart. The artefacts
+#: obeyed it and came out empty; the features quietly ignored it and read
+#: well. So measure the thing itself: rasterise each symbol at the size a
+#: legend actually draws it, and fail when two of them are the same picture.
+LEGEND_PX = 64
+
+#: Calibrated against the catalogue rather than guessed. Across all 17,578
+#: pairs the median likeness is 59% and the 99.5th percentile is 92% - family
+#: resemblance between, say, two jars lives down there. Everything above 95%
+#: is a separate, tight cluster of symbols that really are one picture, so
+#: that is where the line goes.
+MAX_OVERLAP = 0.95
+
+#: 전방후원분 is a Keyhole Tomb is a Kofun (Zenpokouen): the catalogue carries
+#: the same monuments under a Korean and a Japanese naming scheme, so those
+#: pairs SHOULD draw identically. Covering the same pixels is the correct
+#: answer there, not a drawing defect, and redrawing one of them differently
+#: would invent a distinction that archaeology does not make. Which name
+#: survives is a terminology decision for the catalogue, not for this test.
+SAME_MONUMENT_UNDER_TWO_NAMES = (
+    ("Keyhole Tomb", "Kofun"),
+    ("Kofun (Normal)", "Kofun (Zenpokouen)"),
+)
+
+
+def _is_the_same_monument(a, b):
+    for left, right in SAME_MONUMENT_UNDER_TWO_NAMES:
+        if {a, b} == {left, right}:
+            return True
+        if a.startswith(left) and b.startswith(right):
+            return True
+        if b.startswith(left) and a.startswith(right):
+            return True
+    return False
+
+
+#: The drawing code is calibrated for a 256px canvas - _UNIT, DETAIL_WIDTH
+#: and OUTLINE_WIDTH are all fixed against it - so painting straight into a
+#: 64px grid scales the coordinates but leaves a 12px pen, which paints every
+#: symbol into one blob and hides exactly the detail this is here to measure.
+#: Paint at the size the code means, then box-filter down to the size a legend
+#: shows, which is what QGIS does with the SVG.
+PAINT_PX = SIZE
+DOWNSAMPLE = PAINT_PX // LEGEND_PX
+
+
+def _appearance(name, size=LEGEND_PX):
+    """
+    What a symbol looks like at legend size, as a size x size intensity map.
+
+    Not a silhouette. A binary occupancy map cannot see interior detail at
+    all: the mirror's concentric rings sit inside its own filled disc, so
+    every pixel they touch is already set, and the mirror measures as
+    identical to a plain roof tile when on screen the two are obviously
+    different. Intensity carries the tone instead - a fill contributes its
+    alpha, a stroke its full weight, darker winning where they meet, which is
+    how the house style composes.
+    """
+    recorder = qr.Painter()
+    TemplateGenerator.__new__(TemplateGenerator)._paint_template(
+        recorder, name, FakeColor(139, 69, 19), float(PAINT_PX))
+    canvas = np.zeros((PAINT_PX, PAINT_PX), dtype=float)
+    centres = np.arange(PAINT_PX) + 0.5
+    px, py = np.meshgrid(centres, centres)
+
+    for call in recorder.calls:
+        brush, pen = call[2], call[3]
+        width = float(getattr(pen, "width", 0.0))
+        alpha = (brush.alpha / 255.0) if isinstance(brush, FakeColor) else 0.0
+        for polygon in _flatten(call[1]):
+            points = np.asarray(polygon, dtype=float)
+            if len(points) < 2:
+                continue
+            if alpha > 0.0 and len(points) >= 3:
+                inside = np.zeros((PAINT_PX, PAINT_PX), dtype=bool)
+                previous = len(points) - 1
+                for index in range(len(points)):
+                    x1, y1 = points[index]
+                    x2, y2 = points[previous]
+                    straddles = (y1 > py) != (y2 > py)
+                    span = y2 - y1 or 1e-9
+                    inside ^= straddles & (px < (x2 - x1) * (py - y1) / span + x1)
+                    previous = index
+                canvas = np.maximum(canvas, inside * alpha)
+            if width > 0.0:
+                canvas = np.maximum(canvas, _stroked(points, width, px, py) * 1.0)
+
+    step = DOWNSAMPLE
+    return canvas.reshape(size, step, size, step).mean(axis=(1, 3))
+
+
+def _stroked(points, width, px, py):
+    """Pixels within half a pen width of the polyline."""
+    half = max(width, 0.6) / 2.0
+    covered = np.zeros(px.shape, dtype=bool)
+    for index in range(len(points) - 1):
+        x1, y1 = points[index]
+        x2, y2 = points[index + 1]
+        dx, dy = x2 - x1, y2 - y1
+        length_squared = dx * dx + dy * dy
+        if length_squared < 1e-12:
+            covered |= (px - x1) ** 2 + (py - y1) ** 2 <= half * half
+            continue
+        t = np.clip(((px - x1) * dx + (py - y1) * dy) / length_squared, 0.0, 1.0)
+        covered |= (px - (x1 + t * dx)) ** 2 + (py - (y1 + t * dy)) ** 2 <= half * half
+    return covered
+
+
+def _overlap(a, b):
+    """
+    How alike two symbols look, 0 to 1.
+
+    Jaccard over intensities rather than over a mask, so it reduces to the
+    familiar area IoU for two flat silhouettes but still registers a ring
+    drawn across a body.
+    """
+    union = float(np.maximum(a, b).sum())
+    return float(np.minimum(a, b).sum()) / union if union else 0.0
+
+
+#: Painting 188 symbols is not free, so the maps are built once and kept.
+#: They cannot be a module-scoped fixture: painting needs the Qt stand-ins,
+#: which "painter" installs per test through monkeypatch.
+_APPEARANCE_CACHE = {}
+
+
+@pytest.fixture
+def appearances(painter):
+    if not _APPEARANCE_CACHE:
+        _APPEARANCE_CACHE.update(
+            (name, _appearance(name))
+            for name in sorted(TemplateGenerator.TEMPLATE_INFO))
+    return _APPEARANCE_CACHE
 
 
 @pytest.mark.parametrize("name", sorted(TemplateGenerator.TEMPLATE_INFO))
-def test_a_symbol_carries_only_the_marks_it_needs(painter, name):
+def test_no_symbol_is_another_symbol_at_legend_size(name, appearances):
     """
-    Detail is what kills a map marker.
-
-    The symbols this catalogue is measured against carry one to three marks:
-    a silhouette, and at most the one thing that separates the type from its
-    neighbours. Everything beyond that turns to grey at 5-10 mm - which is the
-    size these are drawn for. A template that needs more must say why.
+    Two symbols that cover the same pixels at 64px are one symbol with two
+    labels, whatever the drawing code intended. The typology series are where
+    this bites: eleven bronze daggers whose types differ only in a hairline
+    ridge are eleven identical leaves on a map.
     """
-    _paint(painter, name)
-    marks = len(painter.calls)
-    if name in REPETITION_IS_THE_TYPE:
-        return
-    assert marks <= MARK_CAP, (
-        f"{name} draws {marks} marks. Reduce it to the silhouette plus what "
-        f"distinguishes the type, or add it to REPETITION_IS_THE_TYPE with a "
-        f"reason."
+    mine = appearances[name]
+    worst, rival = 0.0, None
+    for other, theirs in appearances.items():
+        if other == name or _is_the_same_monument(name, other):
+            continue
+        score = _overlap(mine, theirs)
+        if score > worst:
+            worst, rival = score, other
+    assert worst <= MAX_OVERLAP, (
+        f"{name} and {rival} cover the same {worst * 100:.0f}% of the tile at "
+        f"{LEGEND_PX}px. What separates the two types has to be visible at "
+        f"legend size - widen the silhouette difference, or give the type its "
+        f"defining feature as an area rather than a hairline"
     )
-
-
-def test_the_repetition_allowlist_has_no_stale_entries(painter):
-    """An entry for a symbol that no longer needs it hides a real regression."""
-    stale = []
-    for name in sorted(REPETITION_IS_THE_TYPE):
-        assert name in TemplateGenerator.TEMPLATE_INFO, f"{name} is not a template"
-        recorder = qr.Painter()
-        _paint(recorder, name)
-        if len(recorder.calls) <= MARK_CAP:
-            stale.append(f"{name} is down to {len(recorder.calls)} marks")
-    assert not stale, "\n".join(stale)
 
 
 # Templates rebuilt on the icon grid. The set is the conversion's progress
@@ -483,6 +607,72 @@ def _ink(painter):
                 for i in range(len(polygon) - 1)
             ) * width * 0.5
     return total / (SIZE * SIZE) * 100.0
+
+
+
+# ── detail parity: an artefact is worth as much drawing as a feature ─────
+
+#: The interior detail a symbol carries, as a share of its tile - everything
+#: after the silhouette. The features were always drawn properly: a shrine
+#: gets a roof and a door, a well gets its rings, a hearth gets its kerb. The
+#: artefacts were not, and the mark cap that used to stand here is why - they
+#: obeyed it and came out as bare outlines at a third of the features' detail.
+#:
+#: Held as a ratio rather than an absolute so it measures the imbalance that
+#: actually showed on the legend, and so tightening the house style overall
+#: does not silently re-open the gap.
+MIN_ARTIFACT_DETAIL_RATIO = 0.60
+
+
+def _interior_detail(name):
+    """Ink laid down after the silhouette, as a percentage of the tile."""
+    recorder = qr.Painter()
+    _paint(recorder, name)
+    total = 0.0
+    for index, call in enumerate(recorder.calls):
+        if index == 0:
+            continue
+        width = float(getattr(call[3], "width", 0.0))
+        for polygon in _flatten(call[1]):
+            total += sum(
+                math.hypot(polygon[i+1][0] - polygon[i][0],
+                           polygon[i+1][1] - polygon[i][1])
+                for i in range(len(polygon) - 1)
+            ) * max(width, 0.6)
+    return total / (SIZE * SIZE) * 100.0
+
+
+def _median(values):
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2.0
+
+
+def test_an_artifact_carries_as_much_detail_as_a_feature(painter):
+    by_category = {}
+    for name, info in TemplateGenerator.TEMPLATE_INFO.items():
+        by_category.setdefault(info.get("category"), []).append(
+            _interior_detail(name))
+    artifacts = _median(by_category["artifacts"])
+    features = _median(by_category["features"])
+    assert artifacts >= features * MIN_ARTIFACT_DETAIL_RATIO, (
+        f"artefacts carry {artifacts:.1f}% interior detail against the "
+        f"features' {features:.1f}% - the artefacts are being drawn as bare "
+        f"silhouettes while everything around them gets its distinguishing "
+        f"parts"
+    )
+
+
+def test_no_artifact_is_left_as_a_bare_silhouette(painter):
+    bare = sorted(
+        name for name, info in TemplateGenerator.TEMPLATE_INFO.items()
+        if info.get("category") == "artifacts" and _interior_detail(name) == 0.0)
+    assert not bare, (
+        "these artefacts draw an outline and nothing else, so nothing on them "
+        f"says which artefact it is: {bare}"
+    )
 
 
 #: Every symbol was drawn to fill the same safe area, which is not the same as

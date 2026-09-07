@@ -125,6 +125,28 @@ def _clip_detail(painter, *paths):
     painter.setClipPath(outline)
 
 
+
+#: How far a typology series is pushed apart from its own family mean.
+#:
+#: A series is drawn from one skeleton so the types look related, but the
+#: numbers that separate them - a lute waist, a pinched blade, a notch - are
+#: small, and at marker size small differences are no difference: measured at
+#: 64px the ten bronze daggers came out as near-identical leaves. Amplifying
+#: each type's deviation from the family mean keeps the shared skeleton and
+#: the ordering intact while making the thing that names the type visible.
+#: Stations are untouched, so tip angle and tang position do not move.
+TYPE_CONTRAST = 1.2
+
+
+def _typology_contrast(profiles, variant, fallback):
+    """A type's half-widths, pushed away from its family's mean."""
+    chosen = profiles.get(variant, profiles[fallback])
+    means = [sum(row[i] for row in profiles.values()) / len(profiles)
+             for i in range(len(chosen))]
+    return [max(0.0, mean + (width - mean) * TYPE_CONTRAST)
+            for width, mean in zip(chosen, means)]
+
+
 def _pen(color, width=1.0, style=None):
     """
     A stroke in the house style: round, weighted, and darker than its fill.
@@ -1013,11 +1035,18 @@ class TemplateGenerator:
             ground_line(17, gap=11)
 
         elif variant == "posthole":
-            # 주혈: the post pipe inside its packing, in plan.
+            # 주혈: the post pipe inside its packing, in plan. The packing
+            # stones are what tell a posthole from every other filled circle
+            # on the sheet, so they are drawn, not implied by an empty ring.
             painter.setBrush(ground_tone)
-            painter.drawPath(g.circle(32, 32, 21))
+            painter.drawPath(g.circle(32, 32, 22))
+            painter.setBrush(body)
+            for index in range(6):
+                angle = index * math.pi / 3.0
+                painter.drawPath(g.circle(32 + 15 * math.cos(angle),
+                                          32 + 15 * math.sin(angle), 5))
             painter.setBrush(solid)
-            painter.drawPath(g.circle(32, 32, 9))
+            painter.drawPath(g.circle(32, 32, 8))
 
         elif variant == "road":
             # 도로 / 포장면: a made surface with its centre line.
@@ -1064,9 +1093,21 @@ class TemplateGenerator:
         body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
         edge = _pen(color, 2.6)
         thin = _pen(color, 1.4)
+        # What names a type - a midrib, a shoulder, a socket mouth - has to
+        # be read at marker size, and 1.4 units is a hairline there. Texture
+        # stays on "thin"; anything diagnostic goes on this.
+        mark = _pen(color, 2.4)
 
         painter.setPen(edge)
         painter.setBrush(solid)
+
+        def diagnostic(*shapes):
+            painter.setPen(mark)
+            painter.setBrush(Qt.NoBrush)
+            for shape in shapes:
+                painter.drawPath(shape)
+            painter.setPen(edge)
+            painter.setBrush(solid)
 
         def detail(*shapes):
             painter.setPen(thin)
@@ -1077,11 +1118,16 @@ class TemplateGenerator:
             painter.setBrush(solid)
 
         if variant == "pottery":
-            # 토기: the plainest jar in the series, since the named wares
-            # carry the shapes that mean something.
-            painter.drawPath(g.symmetric(
+            # 토기: the general jar. Plain does not mean blank - a pot is a
+            # rim, a body and a base, and drawn without those joins this was
+            # a rounded box that said nothing about being pottery at all.
+            jar = g.symmetric(
                 [(8, 8), (10.5, 13), (18, 28), (13, 50), (9.5, 56)],
-                curved=True))
+                curved=True)
+            painter.drawPath(jar)
+            _clip_detail(painter, jar)
+            diagnostic(g.line(21, 14, 43, 14), g.line(20, 49, 44, 49))
+            painter.restore()
 
         elif variant == "stone_tool":
             # 석기: a worked nodule, scarred all round.
@@ -1095,9 +1141,14 @@ class TemplateGenerator:
 
         elif variant == "arrowhead":
             # 화살촉: barbed and tanged, which is what tells the general
-            # point from the stemmed 돌화살촉 and the long-tanged 철촉.
-            painter.drawPath(g.poly([(32, 5), (46, 40), (37, 35), (36, 52),
-                                     (28, 52), (27, 35), (18, 40)]))
+            # point from the stemmed 돌화살촉 and the long-tanged 철촉. The
+            # midrib says which way the point faces.
+            barbed = g.poly([(32, 5), (46, 40), (37, 35), (36, 52),
+                             (28, 52), (27, 35), (18, 40)])
+            painter.drawPath(barbed)
+            _clip_detail(painter, barbed)
+            diagnostic(g.line(32, 10, 32, 34))
+            painter.restore()
 
         elif variant == "scraper":
             # 긁개: a flake with one retouched convex edge.
@@ -1167,10 +1218,16 @@ class TemplateGenerator:
             painter.drawPath(g.ellipse(32, 32, 16, 21))
 
         elif variant == "bracelet":
-            # 팔찌 / 반지: an annulus, drawn as the stroke it is.
+            # 팔찌 / 반지: an annulus with a real section, so the hole in the
+            # middle is unmistakably a hole. Drawn as a band rather than one
+            # fat stroke: a stroked circle and a ring ditch were the same
+            # picture, and one of them is jewellery.
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(_pen(color, 9.0))
-            painter.drawPath(g.circle(32, 32, 21))
+            painter.setPen(_pen(color, 7.0))
+            painter.drawPath(g.circle(32, 32, 20))
+            painter.setPen(_pen(color, 2.0))
+            painter.drawPath(g.circle(32, 32, 15))
+            painter.drawPath(g.circle(32, 32, 25))
 
         elif variant == "coin":
             # 화폐: the cash coin, square hole and all.
@@ -1267,9 +1324,17 @@ class TemplateGenerator:
             painter.drawPath(g.poly([(41, 17), (9, 26), (41, 35)]))
 
         elif variant == "spear":
-            # 동모: a leaf blade over its socket.
-            painter.drawPath(g.symmetric(
-                [(0, 5), (9, 20), (8, 33), (5, 38), (5, 57)], curved=False))
+            # 동모: a leaf blade over its socket. The midrib and the socket
+            # mouth are the whole difference between this and 동검.
+            blade = g.symmetric(
+                [(0, 5), (9, 20), (8, 33), (5, 38), (5, 57)], curved=False)
+            painter.drawPath(blade)
+            _clip_detail(painter, blade)
+            painter.setPen(_pen(color, 2.4))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.line(32, 9, 32, 36))
+            painter.drawPath(g.line(26, 38, 38, 38))
+            painter.restore()
 
         else:
             # 동검: the waisted Korean blade, with its guard and grip.
@@ -1299,8 +1364,11 @@ class TemplateGenerator:
         # the tang position and every difference that makes a type a type
         # survive the correction.
         profiles = {
-            "liaoning": (0, 2.5, 8, 4, 7.5, 3, 2),     # 비파형: the lute waist,
-                                                        # pinched hard so the type reads
+            # 비파형: the lute. The waist used to halve the blade and then
+            # double it back (8, 4, 7.5), which over seven stations is not a
+            # curve but a pair of diamonds - the most recognisable type in
+            # the series read as a zigzag. Swell, ease, swell again.
+            "liaoning": (0, 3.5, 7.5, 5.8, 7, 3, 2),
             "ordos":    (0, 2.5, 6, 4, 5, 3, 2),
             "antenna":  (0, 2.5, 6, 3.5, 5, 3, 2),
             "slender":  (0, 2, 4, 3, 3.5, 2.5, 1.5),    # 세형: narrow throughout
@@ -1314,12 +1382,21 @@ class TemplateGenerator:
             # moved, and the two rendered 98 percent identical.
             "other":    (0, 3.5, 5.5, 5, 4.5, 3, 2),
         }
-        widths = [w * BLADE_SCALE for w in profiles.get(variant, profiles["other"])]
-        blade = g.symmetric(list(zip(widths, stations)))
+        widths = [w * BLADE_SCALE for w in
+                  _typology_contrast(profiles, variant, "other")]
+        # Curved, or the 비파형 waist comes out as a pair of diamonds rather
+        # than the lute the type is named after.
+        blade = g.symmetric(list(zip(widths, stations)), curved=True)
         painter.drawPath(blade)
 
         old_pen = painter.pen()
-        ridge_pen = _pen(old_pen.color().darker(135), 1.20)
+        # The midrib is the one thing every type shares and the thing a
+        # legend reader sees first; at 1.2 units it was a hairline that
+        # vanished at marker size, leaving ten identical leaves. It is set
+        # against the blade rather than fixed, because a weight that reads
+        # as a ridge on 비파형 reads as a slot cut through 세형.
+        ridge_pen = _pen(old_pen.color().darker(135),
+                         max(1.5, min(2.2, max(widths) * 0.28)))
         _clip_detail(painter, blade)
         painter.setPen(ridge_pen)
         painter.drawPath(g.line(32, 8, 32, 58))
@@ -1343,6 +1420,20 @@ class TemplateGenerator:
         elif variant == "type_ib":
             painter.drawPath(g.line(28, 39, 36, 39))
             painter.drawPath(g.line(27, 43, 37, 43))
+        elif variant == "ordos":
+            # 오르도스식: the blade sits under a ringed pommel, which is the
+            # steppe feature that names it.
+            painter.drawPath(g.line(27, 45, 37, 45))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(g.circle(32, 52, 5))
+        elif variant == "tao":
+            # 도씨검: a stepped tang, ringed twice where the grip was bound.
+            painter.drawPath(g.line(28, 44, 36, 44))
+            painter.drawPath(g.line(28, 50, 36, 50))
+        elif variant == "medium":
+            # 중세형: the notch is shallower than 세형 and higher up, which
+            # is the whole of the distinction between them.
+            painter.drawPath(g.line(28, 36, 36, 36))
 
         painter.setPen(old_pen)
 
@@ -1367,15 +1458,31 @@ class TemplateGenerator:
             "stemmed":        ((0, 7), (5.5, 20), (6, 34), (3, 42), (2, 44), (2, 57)),
             "triangular":     ((0, 7), (6.5, 26), (5.5, 46), (2.5, 50), (1.5, 57)),
         }
-        head = g.symmetric([(w * BLADE_SCALE, y)
-                            for w, y in shapes.get(variant, shapes["leaf"])])
+        chosen = shapes.get(variant, shapes["leaf"])
+        head = g.symmetric([(w * BLADE_SCALE, y) for w, y in chosen])
         painter.drawPath(head)
 
-        # The midrib belongs inside the head, not running out through its tip.
+        # The midrib belongs inside the head, not running out through its
+        # tip, and it has to be heavy enough to survive marker size - at 1.1
+        # units it was a hairline and the five types were one leaf.
         old_pen = painter.pen()
         _clip_detail(painter, head)
-        painter.setPen(_pen(old_pen.color().darker(135), 1.1))
+        painter.setPen(_pen(old_pen.color().darker(135), 2.40))
         painter.drawPath(g.line(32, 9, 32, 56))
+        # Pressure-flaked edges. Every one of these is a knapped stone point,
+        # and the retouch down both margins is what says knapped rather than
+        # cast - it also gives the five something to carry now that the bar
+        # across the base has gone.
+        painter.setPen(_pen(old_pen.color().darker(120), 1.60))
+        for side in (-1, 1):
+            for top, bottom in ((14, 22), (24, 32)):
+                x = 32 + side * 5
+                painter.drawPath(g.line(x, top, 32 + side * 2, bottom))
+        # No bar across the base here. A horizontal line where the haft
+        # begins reads as a sword guard, and a guard is the one thing a
+        # projectile point does not have - it turned all five into small
+        # swords. The worked base is already in the outline; the midrib is
+        # what needed the weight.
         painter.restore()
         painter.setPen(old_pen)
 
@@ -1452,8 +1559,16 @@ class TemplateGenerator:
                               foot_half=14, foot_y=57)
             painter.drawPath(mound)
         elif variant == "enpun":                        # 원분
-            mound = g.circle(32, 32, 21)
+            # The contour tells a round mound from a flat disc; without it
+            # this was the same drawing as a bronze mirror.
+            mound = g.circle(32, 32, 22)
             painter.drawPath(mound)
+            _clip_detail(painter, mound)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(_pen(color, 2.4))
+            painter.drawPath(g.circle(32, 32, 14))
+            painter.drawPath(g.circle(32, 32, 7))
+            painter.restore()
         elif variant == "hofun":                        # 방분
             mound = g.rect(13, 13, 38, 38)
             painter.drawPath(mound)
@@ -1666,10 +1781,10 @@ class TemplateGenerator:
             # so it stays a ditch instead of turning into a frame.
             painter.setBrush(Qt.NoBrush)
             painter.setPen(_pen(color, 5.0))
-            painter.drawPath(g.rect(10, 10, 44, 44))
+            painter.drawPath(g.rect(9, 9, 46, 46))
             painter.setPen(edge)
             painter.setBrush(solid)
-            painter.drawPath(g.rect(24, 21, 16, 22))
+            painter.drawPath(g.rect(21, 20, 22, 24))
 
         elif variant == "pit_grave":
             # 토광묘: a plain earth-cut pit in section, the body laid in it.
@@ -1733,35 +1848,42 @@ class TemplateGenerator:
 
         def climbing_kiln(marks):
             """
-            A kiln in section: firebox at one end, domed chamber, flue at the
-            other. Both kilns are this one silhouette - the reference plates
-            make variants differ by their mark, not their shape - so ``marks``
-            is what says pottery or roof tile.
+            A kiln in section: firebox at one end, chamber, flue at the
+            other. ``marks`` says pottery or roof tile.
 
             Drawn as a sloping tube, which is what this used to be, the whole
             thing reads as a diagonal bar: nothing in it says which end is
             the fire. The asymmetry is the information.
+
+            The two share the skeleton but not the chamber. Given one
+            silhouette and only the load to tell them apart, the pair
+            measured as the same picture at marker size - a stack of slabs
+            five units high cannot outvote the outline around it. The tile
+            kiln gets the low, long chamber it is dug as; the pottery kiln
+            keeps the steep dome of a climbing kiln.
             """
             painter.setPen(edge)
             painter.setBrush(body)
-            dome = g.symmetric([(5, 19), (15, 27), (17, GROUND)],
-                               curved=True, cx=32)
+            if marks == "tile":
+                dome = g.symmetric([(9, 28), (19, 34), (20, GROUND)],
+                                   curved=True, cx=32)
+            else:
+                dome = g.symmetric([(4, 15), (13, 25), (17, GROUND)],
+                                   curved=True, cx=32)
             painter.drawPath(dome)
             painter.setBrush(solid)
             painter.drawPath(g.circle(12, 42, 7))          # firebox
             painter.drawPath(g.rect(48, 13, 8, 37))        # flue
             _clip_detail(painter, dome)
-            painter.setPen(thin)
-            painter.setBrush(Qt.NoBrush if marks == "tile" else solid)
             painter.setPen(Qt.NoPen)
             painter.setBrush(solid)
             if marks == "tile":
                 # Stacked roof tiles: slabs, so they read against the pots.
-                painter.drawPath(g.rect(24, 34, 18, 5, r=1))
-                painter.drawPath(g.rect(26, 41, 18, 5, r=1))
+                painter.drawPath(g.rect(22, 38, 22, 6, r=1))
+                painter.drawPath(g.rect(24, 47, 22, 6, r=1))
             else:
-                painter.drawPath(g.circle(28, 37, 5))
-                painter.drawPath(g.circle(39, 42, 5))
+                painter.drawPath(g.circle(27, 35, 6))
+                painter.drawPath(g.circle(39, 42, 6))
             painter.restore()
             ground_line()
 
@@ -2030,9 +2152,29 @@ class TemplateGenerator:
             painter.drawPath(g.symmetric([(7, 22), (8, 44), (17, 52), (17, 57)]))
 
         _clip_detail(painter, body)
-        painter.setPen(thin)
         painter.setBrush(Qt.NoBrush)
-        if variant == "comb_pattern":
+
+        # Every vessel drawing in the literature marks the rim, because the
+        # 구연부 is how a sherd gets identified and how a whole pot gets read
+        # as a pot rather than a filled outline. Taken from the profile, so
+        # each shape gets its own rim rather than a line ruled at a fixed
+        # height, and carried on the heavier weight: the decoration below is
+        # texture, this is structure.
+        wall = profiles.get(variant, profiles["plain_coarse"])
+        rim_half, rim_y = wall[1] if len(wall) > 1 else wall[0]
+        rim_half *= VESSEL_SCALE
+        painter.setPen(_pen(color, 2.4))
+        painter.drawPath(g.line(32 - rim_half * 0.82, rim_y,
+                                32 + rim_half * 0.82, rim_y))
+
+        painter.setPen(thin)
+        if variant == "plain_coarse":
+            # 무문토기 has no decoration by definition, so the base it stands
+            # on has to carry it alongside the rim above.
+            painter.setPen(_pen(color, 2.4))
+            painter.drawPath(g.line(22, 50, 42, 50))
+            painter.setPen(thin)
+        elif variant == "comb_pattern":
             painter.drawPath(g.line(46, 13, 18, 13))
             for half, y in ((14, 20), (11, 30), (8, 40)):
                 for step in range(3):
@@ -2094,6 +2236,19 @@ class TemplateGenerator:
         painter.setPen(edge)
         painter.setBrush(solid)
 
+        # What names a type - a midrib, a shoulder, a socket mouth - has to be
+        # read at marker size, and 1.4 units is a hairline there. Texture stays
+        # on "thin"; anything diagnostic goes on this.
+        mark = _pen(color, 2.4)
+
+        def diagnostic(*shapes):
+            painter.setPen(mark)
+            painter.setBrush(Qt.NoBrush)
+            for shape in shapes:
+                painter.drawPath(shape)
+            painter.setPen(edge)
+            painter.setBrush(solid)
+
         def detail(*shapes):
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush)
@@ -2109,7 +2264,10 @@ class TemplateGenerator:
                                 curved=False)
             painter.drawPath(blade)
             _clip_detail(painter, blade)
-            detail(g.poly([(23, 36), (32, 43), (41, 36)], close=False))
+            # The flaked edge and the butt left unworked: a handaxe is
+            # defined by having one of each, so both are drawn.
+            diagnostic(g.poly([(21, 34), (32, 43), (43, 34)], close=False))
+            detail(g.line(24, 50, 40, 50))
             painter.restore()
 
         elif variant == "chopper":
@@ -2125,9 +2283,16 @@ class TemplateGenerator:
             painter.restore()
 
         elif variant == "tanged_point":
-            # 슴베찌르개: a blade whose tang is a parallel-sided stem.
-            painter.drawPath(g.symmetric(
-                [(0, 6), (9, 19), (10, 33), (4, 40), (4, 57)], curved=False))
+            # 슴베찌르개: a blade whose tang is a parallel-sided stem. The
+            # retouch runs down one edge and the tang is stepped off the
+            # blade - without both it is any other point.
+            point = g.symmetric(
+                [(0, 6), (9, 19), (10, 33), (4, 40), (4, 57)], curved=False)
+            painter.drawPath(point)
+            _clip_detail(painter, point)
+            diagnostic(g.line(26, 40, 38, 40))
+            detail(g.line(27, 16, 27, 36), g.line(37, 18, 37, 36))
+            painter.restore()
 
         elif variant == "microblade_core":
             # 좀돌날몸돌: a wedge with a striking platform. Three scars say
@@ -2170,7 +2335,9 @@ class TemplateGenerator:
                               curved=True)
             painter.drawPath(hoe)
             _clip_detail(painter, hoe)
-            detail(g.line(21, 25, 43, 25), g.line(20, 29, 44, 29))
+            # The binding is how a hoe is hafted, and the only thing telling
+            # it from a broad axe at marker size.
+            diagnostic(g.line(20, 25, 44, 25), g.line(19, 30, 45, 30))
             painter.restore()
 
         elif variant == "grinding_slab":
@@ -2184,9 +2351,14 @@ class TemplateGenerator:
             detail(g.line(14, 41, 50, 41))
 
         elif variant == "stone_arrowhead":
-            # 돌화살촉: a triangular point on a single stem.
-            painter.drawPath(g.symmetric(
-                [(0, 6), (11, 33), (4, 37), (4, 57)], curved=False))
+            # 돌화살촉: a triangular point on a single stem, with the ridge
+            # left by grinding it from both faces.
+            point = g.symmetric(
+                [(0, 6), (11, 33), (4, 37), (4, 57)], curved=False)
+            painter.drawPath(point)
+            _clip_detail(painter, point)
+            diagnostic(g.line(32, 10, 32, 34), g.line(25, 34, 39, 34))
+            painter.restore()
 
         elif variant == "net_sinker":
             # 어망추: a river pebble with the groove the line was tied into.
@@ -2203,24 +2375,28 @@ class TemplateGenerator:
 
         # ---- 청동기 -----------------------------------------------------
         elif variant in ("coarse_mirror", "fine_mirror"):
-            # 다뉴조문경 / 다뉴세문경: one disc with its two loops. The
-            # decoration is the only difference, which is how the reference
-            # plates separate variants of a type.
+            # 다뉴조문경 / 다뉴세문경: the decoration is the artefact. Drawn
+            # as hairline rings inside its own filled body this was a plain
+            # disc - the same picture as a posthole and a roof tile end - so
+            # the zoning is filled here instead: solid wedges over a mid body,
+            # coarse and few for 조문, fine and many for 세문. The two loops
+            # sit off centre, because 다뉴 is what names the type.
             painter.setBrush(body)
-            painter.drawPath(g.circle(32, 32, 21))
+            painter.drawPath(g.circle(32, 32, 22))
             painter.setBrush(solid)
-            painter.drawPath(g.circle(27, 32, 3))
-            painter.drawPath(g.circle(37, 32, 3))
-            if variant == "coarse_mirror":
-                painter.setPen(_pen(color, 2.2))
-                painter.setBrush(Qt.NoBrush)
-                painter.drawPath(g.circle(32, 32, 15))
-            else:
-                painter.setPen(thin)
-                painter.setBrush(Qt.NoBrush)
-                painter.drawPath(g.circle(32, 32, 17))
-                painter.drawPath(g.circle(32, 32, 13.5))
-                painter.drawPath(g.circle(32, 32, 10))
+            spokes = 8 if variant == "fine_mirror" else 4
+            inner, outer = (10.0, 19.0) if variant == "fine_mirror" else (7.0, 17.0)
+            half = (math.pi / spokes) * (0.34 if variant == "fine_mirror" else 0.5)
+            for index in range(spokes):
+                angle = index * 2.0 * math.pi / spokes
+                painter.drawPath(g.poly([
+                    (32 + inner * math.cos(angle - half), 32 + inner * math.sin(angle - half)),
+                    (32 + outer * math.cos(angle - half), 32 + outer * math.sin(angle - half)),
+                    (32 + outer * math.cos(angle + half), 32 + outer * math.sin(angle + half)),
+                    (32 + inner * math.cos(angle + half), 32 + inner * math.sin(angle + half)),
+                ], r=0))
+            painter.drawPath(g.circle(26, 32, 4))
+            painter.drawPath(g.circle(38, 32, 4))
 
         elif variant == "bronze_rattle":
             # 청동방울: a globular bell, slit down the face, hung by a loop.
@@ -2256,14 +2432,25 @@ class TemplateGenerator:
             painter.drawPath(g.rect(28, 47, 8, 11))
 
         elif variant == "iron_spearhead":
-            # 철모: a leaf blade over a socket.
-            painter.drawPath(g.symmetric(
-                [(0, 5), (10, 21), (9, 34), (6, 39), (6, 57)], curved=False))
+            # 철모: a leaf blade over a socket. The midrib and the shoulder
+            # where the blade meets the socket are what separate a spearhead
+            # from every other leaf on the sheet, so they are drawn.
+            blade = g.symmetric(
+                [(0, 5), (10, 21), (9, 34), (6, 39), (6, 57)], curved=False)
+            painter.drawPath(blade)
+            _clip_detail(painter, blade)
+            diagnostic(g.line(32, 9, 32, 38), g.line(24, 38, 40, 38))
+            painter.restore()
 
         elif variant == "iron_arrowhead":
-            # 철촉: a narrow point on a long tang.
-            painter.drawPath(g.symmetric(
-                [(0, 5), (11, 24), (3.5, 29), (3.5, 57)], curved=False))
+            # 철촉: a narrow point on a long tang, ridged down the head. The
+            # ridge is the difference between an iron arrowhead and a nail.
+            head = g.symmetric(
+                [(0, 5), (11, 24), (3.5, 29), (3.5, 57)], curved=False)
+            painter.drawPath(head)
+            _clip_detail(painter, head)
+            diagnostic(g.line(32, 9, 32, 27), g.line(25, 27, 39, 27))
+            painter.restore()
 
         elif variant == "iron_axe":
             # 철부: a socket opening into a splayed edge.
@@ -2271,14 +2458,22 @@ class TemplateGenerator:
                               curved=False)
             painter.drawPath(axe)
             _clip_detail(painter, axe)
-            detail(g.line(22, 26, 42, 26))
+            # Where the socket opens is what makes it an axe rather than a
+            # wedge, so it carries the diagnostic weight, not the texture one.
+            diagnostic(g.line(21, 26, 43, 26))
             painter.restore()
 
         elif variant == "iron_ard":
             # 따비: a share that comes to a point, which is what tells it
-            # from the axe's edge.
-            painter.drawPath(g.poly([(27, 8), (37, 8), (37, 27), (45, 44),
-                                     (32, 57), (19, 44), (27, 27)]))
+            # from the axe's edge. The haft socket is marked across the neck,
+            # and the worn edge along the share.
+            share = g.poly([(27, 8), (37, 8), (37, 27), (45, 44),
+                            (32, 57), (19, 44), (27, 27)])
+            painter.drawPath(share)
+            _clip_detail(painter, share)
+            diagnostic(g.line(25, 27, 39, 27))
+            detail(g.line(24, 44, 32, 52), g.line(40, 44, 32, 52))
+            painter.restore()
 
         elif variant == "iron_sickle":
             # 철겸: a hooked blade. Built as two arcs on one centre so the
@@ -2343,9 +2538,15 @@ class TemplateGenerator:
             painter.drawPath(g.rect(14, 43, 36, 9))
 
         elif variant == "iron_ingot":
-            # 철정: a bar ingot, waisted where it was gripped.
-            painter.drawPath(g.poly([(19, 7), (45, 7), (38, 32), (45, 57),
-                                     (19, 57), (26, 32)]))
+            # 철정: a bar ingot, waisted where it was gripped, with the
+            # forging marks across it that say worked iron rather than a
+            # cut plate.
+            bar = g.poly([(19, 7), (45, 7), (38, 32), (45, 57),
+                          (19, 57), (26, 32)])
+            painter.drawPath(bar)
+            _clip_detail(painter, bar)
+            diagnostic(g.line(24, 20, 40, 20), g.line(24, 44, 40, 44))
+            painter.restore()
 
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
@@ -2394,8 +2595,10 @@ class TemplateGenerator:
                                      start=-0.55 * math.pi,
                                      sweep=1.15 * math.pi))
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(thin)
-            painter.drawPath(g.circle(28, 16, 3))
+            # 曲玉 is a comma with a hole through the head - without the
+            # perforation drawn heavily enough to see, it is just a crescent.
+            painter.setPen(_pen(color, 2.4))
+            painter.drawPath(g.circle(28, 16, 4))
 
         elif variant == "gwanok":
             # 관옥: tubular beads on a cord.
@@ -2465,24 +2668,29 @@ class TemplateGenerator:
                            (24, 23)])
             painter.drawPath(slip)
             _clip_detail(painter, slip)
-            detail(g.line(28, 33, 36, 33), g.line(28, 38, 36, 38),
-                   g.line(28, 43, 34, 43))
+            # The writing is the point of a writing slip.
+            painter.setPen(_pen(color, 2.2))
+            painter.setBrush(Qt.NoBrush)
+            for y in (32, 38, 44):
+                painter.drawPath(g.line(28, y, 36, y))
+            painter.setPen(thin)
             painter.restore()
 
         elif variant == "round_roof_tile":
             # 수막새: the round tile end, stamped with its lotus. Six petals,
-            # not nine - at 64 units nine is a texture, not a flower.
+            # not nine - at 64 units nine is a texture, not a flower. Filled
+            # rather than outlined: a 1.4 unit ring is a pixel on a legend
+            # marker, and without the petals this is any other disc.
             painter.setBrush(body)
-            painter.drawPath(g.circle(32, 32, 21))
-            painter.setBrush(Qt.NoBrush)
-            painter.setPen(thin)
+            painter.drawPath(g.circle(32, 32, 22))
+            painter.setBrush(solid)
+            painter.setPen(Qt.NoPen)
             for index in range(6):
                 angle = math.pi / 2.0 + index * math.pi / 3.0
-                painter.drawPath(g.circle(32 + 12 * math.cos(angle),
-                                          32 + 12 * math.sin(angle), 5))
+                painter.drawPath(g.ellipse(32 + 13 * math.cos(angle),
+                                           32 + 13 * math.sin(angle), 6, 6))
             painter.setPen(edge)
-            painter.setBrush(solid)
-            painter.drawPath(g.circle(32, 32, 4.5))
+            painter.drawPath(g.circle(32, 32, 5))
 
         elif variant == "eaves_roof_tile":
             # 암막새: the eaves tile is a band with a drooping face, which is
