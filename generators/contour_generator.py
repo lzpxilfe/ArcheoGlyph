@@ -25,7 +25,7 @@ from .style_control_utils import (
 )
 from .autotrace.options import AutoTraceOptions
 from .autotrace.io import adaptive_prescale, load_image, resize_alpha
-from .autotrace.model_store import DEFAULT_MODEL_KEY, installed_model
+from .autotrace.model_store import DEFAULT_MODEL_KEY, installed_model, models_dir
 from .autotrace.pipeline import run_autotrace
 from .autotrace.sam_backend import SamBackend
 from .autotrace.segment import OnnxSalientBackend, normalize_backend, onnx_available, select_mask
@@ -64,6 +64,7 @@ class ContourGenerator:
         self._onnx_path = None
         self._mask_cache = {}
         self._image_cache = None
+        self._warned = set()
 
     # ------------------------------------------------------------------
     # Inputs
@@ -89,13 +90,34 @@ class ContourGenerator:
     def _backend_key(self):
         return normalize_backend(self.settings.value('ArcheoGlyph/mask_backend', 'auto'))
 
+    def _warn_once(self, reason):
+        """Say why a backend the user picked is not the one doing the work.
+
+        Only for an explicit choice: under "auto" falling back is the design,
+        but someone who selected ONNX and silently gets OpenCV has no way to
+        tell that the result is not the one they asked for.
+        """
+        if reason in self._warned:
+            return
+        self._warned.add(reason)
+        log(reason, level="warning")
+
     def _onnx_backend(self):
         backend = self._backend_key()
-        if backend not in ("auto", "onnx") or not onnx_available():
+        if backend not in ("auto", "onnx"):
+            return None
+        if not onnx_available():
+            if backend == "onnx":
+                self._warn_once("ONNX background removal was selected but "
+                                "onnxruntime is not installed; falling back to OpenCV.")
             return None
         key = str(self.settings.value('ArcheoGlyph/onnx_bg_model', DEFAULT_MODEL_KEY) or DEFAULT_MODEL_KEY)
         found = installed_model(profile_base_dir(), key)
         if not found:
+            if backend == "onnx":
+                self._warn_once(f"ONNX background removal was selected but no model "
+                                f"is installed in {models_dir(profile_base_dir())}; "
+                                f"falling back to OpenCV.")
             return None
         spec, path = found
         if self._onnx is None or self._onnx_path != path:

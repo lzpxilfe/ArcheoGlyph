@@ -1,0 +1,147 @@
+{
+  "note": "Provenance only - no image bytes live in this repository. Every entry is published by 국립중앙박물관 under 공공누리 (KOGL) with attribution, and is used here solely as Auto Trace test input. Point ARCHEOGLYPH_REAL_FIXTURES at a directory holding <id>.jpg to run the trace regression.",
+  "allowed_licenses": [
+    "CC BY 4.0",
+    "CC BY-SA 4.0",
+    "Public domain",
+    "공공누리 제1유형",
+    "공공누리 출처표시"
+  ],
+  "sources": [
+    {
+      "id": "01_bipa_dagger_nmk",
+      "label": "비파형동검",
+      "museum_name": "요령식 동검",
+      "template": "Bronze Dagger (Liaoning / 비파형)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=2040",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "0bf0f92b3d35be0962726f4bf63f602dde958f1dc84e53522ebc2e5a181f2f08",
+      "bytes": 1710120,
+      "pixels": [
+        2253,
+        3000
+      ]
+    },
+    {
+      "id": "02_sehyeong_dagger",
+      "label": "세형동검",
+      "museum_name": "한국식 동검",
+      "template": "Bronze Dagger (Slender / 세형)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=4617",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "25a7e6035aab6c32a25a9e8c9faf0aa9788b9cf130fbbc8d25b3be6add0b6abc",
+      "bytes": 105674,
+      "pixels": [
+        669,
+        515
+      ]
+    },
+    {
+      "id": "03_mirror_jan",
+      "label": "다뉴세문경",
+      "museum_name": "잔무늬 거울",
+      "template": "Bronze Mirror (다뉴경)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=7057",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "dad8faea7e34b4dfcbc7ca755ce4e3cd59b76e6ef83b9e0c8b0f835be21aa6ce",
+      "bytes": 3077230,
+      "pixels": [
+        3000,
+        2251
+      ]
+    },
+    {
+      "id": "04_roof_end_lotus",
+      "label": "연꽃무늬 수막새",
+      "museum_name": "연꽃무늬 수막새",
+      "template": "Roof-end Tile (수막새)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=3105",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "cdc56181258a6dec2211f9e87c0022b88444a27f8f6a3add5478c9d78bf26e91",
+      "bytes": 2710494,
+      "pixels": [
+        3000,
+        2000
+      ]
+    },
+    {
+      "id": "05_comb_pottery",
+      "label": "빗살무늬토기",
+      "museum_name": "빗살무늬토기",
+      "template": "Pottery Vessel (빗살무늬)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=4328",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "d7387d616be7dd4722be4bfcbb82fea5996d6e8b4915c34ac52f608d4279b700",
+      "bytes": 3417864,
+      "pixels": [
+        2252,
+        3000
+      ]
+    },
+    {
+      "id": "06_comb_pottery_b",
+      "label": "빗살무늬토기",
+      "museum_name": "빗살무늬 토기",
+      "template": "Pottery Vessel (빗살무늬)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=6687",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "e6c107974f9fcbbd65ff0825da480367f138a99bbd93fba2b23499ef1ca228a4",
+      "bytes": 4024542,
+      "pixels": [
+        2788,
+        3000
+      ]
+    },
+    {
+      "id": "07_stone_dagger",
+      "label": "간돌검",
+      "museum_name": "간돌검",
+      "template": "Stone Dagger (간돌검)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=2032",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "9afc1cd8d81724059804e260e1a7a4a65e58761c16cd0cfc1beab213b366dbeb",
+      "bytes": 1477286,
+      "pixels": [
+        2253,
+        3000
+      ]
+    },
+    {
+      "id": "08_ground_stone",
+      "label": "간석기",
+      "museum_name": "간석기",
+      "template": "Stone Tool (간석기)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=21873",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "2b079ee2775fd029cec7a3b1b92ed3d0b69d97c9ecd639721a0635512a421a57",
+      "bytes": 4085373,
+      "pixels": [
+        3000,
+        2000
+      ]
+    },
+    {
+      "id": "09_roof_end_dragon",
+      "label": "용무늬 수막새",
+      "museum_name": "용무늬 수막새",
+      "template": "Roof-end Tile (수막새)",
+      "page": "https://www.museum.go.kr/site/main/relic/search/view?relicId=7485",
+      "license": "공공누리 출처표시",
+      "credit": "국립중앙박물관 (National Museum of Korea)",
+      "sha256": "1ac46f555b5b5e2ef31fd05ef066a144b685d539311bfbf1d0304e503a6a94d9",
+      "bytes": 3326083,
+      "pixels": [
+        3000,
+        2000
+      ]
+    }
+  ]
+}
