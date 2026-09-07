@@ -9,6 +9,7 @@ replaced by AutoTraceOptions and mask extraction delegated to the caller.
 import cv2
 import numpy as np
 
+from ...log import log
 from ..ink_centerline import extract_ink_polylines, looks_like_drawing, simplify_polyline
 from .svg_builder import smooth_closed_path
 from ..style_control_utils import (
@@ -51,6 +52,10 @@ from .lines import (
     extract_internal_lines_multisource,
 )
 from .round_motif import (
+    FRAME_MIN_SCORE,
+    find_rotational_frame,
+    fold_rotational_motif,
+    replay_rotational_motif,
     augment_round_rotational_symmetry,
     build_round_structural_lines,
     estimate_round_angular_motif_markers,
@@ -400,9 +405,30 @@ def run_autotrace(bgr, options, mask_provider):
             max_lines=max(6, round_motif_select_limit),
         ) if (is_roundish and is_publication) else []
 
+    # A round artefact whose identity is its decoration - a mirror, a roof
+    # tile end - is a bare disc without it, and every such disc is every
+    # other one. Where the decoration genuinely repeats, fold the sectors
+    # together and stamp the agreed shape back around the face.
+    folded_motif_lines = []
+    if is_roundish and not is_drawing:
+        frame = find_rotational_frame(
+            cv2.cvtColor(processing_bgr, cv2.COLOR_BGR2GRAY), target_mask)
+        if frame is not None and frame.score >= FRAME_MIN_SCORE:
+            folded_motif_lines = replay_rotational_motif(
+                fold_rotational_motif(processing_bgr[:, :, 1], frame), frame)
+        elif frame is not None:
+            # Saying nothing here would be the ONNX fallback trap again: the
+            # symbol comes out a plain disc and nothing says why.
+            log("No repeating motif found on this round artefact "
+                f"(best {frame.folds}-fold scored {frame.score:.3f}, "
+                f"under {FRAME_MIN_SCORE}); drawing it plain.")
+
     if legend_mode:
         if is_roundish:
-            internal_lines = round_motif_lines[:1] if round_motif_lines else round_lines[:1]
+            if folded_motif_lines:
+                internal_lines = folded_motif_lines[:12]
+            else:
+                internal_lines = round_motif_lines[:1] if round_motif_lines else round_lines[:1]
         else:
             internal_lines = profile_lines[:1] + spine_lines[:1]
             if terminal_count > 0:

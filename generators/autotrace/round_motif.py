@@ -5,6 +5,8 @@ Round-artifact motif extraction (annular, polar, relief, mirror signature).
 Auto-generated from the former ContourGenerator methods; QGIS-free.
 """
 
+import math
+
 import cv2
 import numpy as np
 
@@ -1933,3 +1935,244 @@ def select_round_inner_motif_lines(lines, mask, max_lines=4, prefer_outer=False)
         if len(selected) >= limit:
             break
     return selected
+
+
+# ---------------------------------------------------------------------------
+# Rotational motif: find the frame, fold the sectors together, replay them
+# ---------------------------------------------------------------------------
+#
+# A bronze mirror and a roof tile end are decorated in n-fold rotational
+# symmetry, and that is what makes them readable at legend size - without it
+# both are a plain disc, indistinguishable from a posthole. The decoration is
+# shallow relief, so a photograph carries it only as shading, and every
+# attempt to read it straight from the image gave scattered blobs.
+#
+# What made it work was reversing the order. Fitting the geometry first and
+# then measuring symmetry kept failing, because the ellipse was fitted to the
+# object mask - which includes the cast shadow and the tile's own body - and
+# the sampling ring then swept the shadow instead of the decorated face.
+# Searching for the geometry that *maximises* symmetry finds the face
+# directly: on the lotus tile it pulled the centre 70px up off the shadow.
+
+#: Angular and radial resolution of the sampling grid.
+FRAME_THETA = 360
+FRAME_RAD = 48
+#: The band to read, as a fraction of the face radius. Inside this is the
+#: boss, outside is the rim - neither carries the repeat.
+FRAME_INNER, FRAME_OUTER = 0.25, 0.92
+#: Fold counts worth testing. Below four a "repeat" is indistinguishable from
+#: the object being lopsided; above sixteen it is surface grain.
+FRAME_MIN_FOLD, FRAME_MAX_FOLD = 4, 16
+#: Minimum symmetry score before a motif is drawn at all.
+#:
+#: Set above the measured noise floor, not at a level that lets a wanted
+#: answer through. A drawn six-fold disc scores 0.31 and returns exactly the
+#: same score and fold count when the input is nudged by one to four pixels.
+#: A photograph of a lotus roof tile - shallow relief, raking light - scores
+#: between 0.03 and 0.10 over those same one-pixel nudges, and its fold count
+#: moves between 8, 10 and 12. That range is the optimiser wandering, not a
+#: motif, and a threshold inside it would stamp petals onto a tile once in
+#: every few runs. So the gate sits above it: clean symmetry passes,
+#: photographs of relief decoration do not, and no artefact is given
+#: decoration it does not have.
+FRAME_MIN_SCORE = 0.15
+
+
+class RotationalFrame(object):
+    """Where the decorated face is, and how many times its motif repeats."""
+
+    __slots__ = ("cx", "cy", "a", "b", "angle", "folds", "score")
+
+    def __init__(self, cx, cy, a, b, angle, folds, score):
+        self.cx, self.cy = float(cx), float(cy)
+        self.a, self.b = float(a), float(b)
+        self.angle = float(angle)
+        self.folds = int(folds)
+        self.score = float(score)
+
+    def __repr__(self):  # pragma: no cover - debugging aid
+        return ("RotationalFrame(c=(%.0f,%.0f) a=%.0f b=%.0f ang=%.2f "
+                "folds=%d score=%.3f)" % (self.cx, self.cy, self.a, self.b,
+                                          self.angle, self.folds, self.score))
+
+
+def _sample_ring(gray, cx, cy, a, b, angle, n_theta=FRAME_THETA, n_rad=FRAME_RAD):
+    """Unwrap an ellipse into a (theta, radius) image, lighting removed.
+
+    Not polar_unwrap: that one is cv2.warpPolar, which only ever samples a
+    circle centred where it is told. A disc photographed at an angle is an
+    ellipse, and the centre has to be free to move off the mask's centroid.
+    """
+    cos_a, sin_a = math.cos(angle), math.sin(angle)
+    theta = np.linspace(0.0, 2.0 * math.pi, n_theta, endpoint=False)[:, None]
+    radius = np.linspace(FRAME_INNER, FRAME_OUTER, n_rad)[None, :]
+    u = radius * np.cos(theta) * a
+    v = radius * np.sin(theta) * b
+    xs = (cx + u * cos_a - v * sin_a).astype(np.float32)
+    ys = (cy + u * sin_a + v * cos_a).astype(np.float32)
+    ring = cv2.remap(gray, xs, ys, cv2.INTER_LINEAR,
+                     borderMode=cv2.BORDER_REPLICATE)
+    # A wide blur along theta is the lamp; subtracting it leaves the relief.
+    ring = ring - cv2.GaussianBlur(ring, (0, 0), sigmaX=40.0, sigmaY=0.8)
+    ring -= ring.mean(axis=0, keepdims=True)
+    ring /= (ring.std(axis=0, keepdims=True) + 1e-6)
+    return ring
+
+
+def _fold_score(ring):
+    """Best fold count for one unwrap, and how far it stands out.
+
+    Measured against the autocorrelation of *neighbouring* shifts rather than
+    against zero. Autocorrelation always rises as the shift shrinks, so a raw
+    comparison simply crowns the largest fold count every time - which is
+    exactly what it did before this subtraction was added.
+    """
+    n_theta = ring.shape[0]
+    best_folds, best_score = 0, -1.0
+    for folds in range(FRAME_MIN_FOLD, FRAME_MAX_FOLD + 1):
+        shift = int(round(float(n_theta) / folds))
+        if shift < 4:
+            continue
+        peak = float((ring * np.roll(ring, shift, axis=0)).mean())
+        near = [float((ring * np.roll(ring, shift + d, axis=0)).mean())
+                for d in (-3, -2, 2, 3)]
+        score = peak - float(np.mean(near))
+        if score > best_score:
+            best_folds, best_score = folds, score
+    return best_folds, best_score
+
+
+def find_rotational_frame(gray_img, mask):
+    """
+    Find the decorated face and its fold count together.
+
+    Returns a RotationalFrame, or None when nothing repeats. A low score is
+    the honest answer for a dragon-motif tile or a plain disc, and callers
+    must treat it as "no motif" rather than drawing something anyway.
+    """
+    try:
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if not contours:
+            return None
+        main = max(contours, key=cv2.contourArea)
+        if len(main) < 5:
+            return None
+        gray = gray_img.astype(np.float32)
+        (mx, my), (major, minor), _angle = cv2.fitEllipse(main)
+        reference = max(major, minor) / 2.0
+        if reference < 24.0:
+            return None
+
+        def evaluate(dx, dy, scale, ratio, angle):
+            ring = _sample_ring(gray, mx + dx, my + dy,
+                                reference * scale, reference * scale * ratio, angle)
+            folds, score = _fold_score(ring)
+            return score, folds
+
+        # Coarse then twice refined. An exhaustive grid is far too slow to run
+        # on every traced photograph, but too coarse a one does not reach the
+        # optimum either: the offset the lotus tile needs is a fifth of the
+        # radius, so a grid that stops at a sixth simply never sees the face.
+        angles = (0.0, math.pi / 4.0, math.pi / 2.0, 3.0 * math.pi / 4.0)
+        best = None
+        span = np.linspace(-0.22, 0.22, 5) * reference
+        for dx in span:
+            for dy in span:
+                for scale in (0.66, 0.78, 0.90):
+                    for ratio in (0.55, 0.8, 1.0):
+                        score, folds = evaluate(dx, dy, scale, ratio, 0.0)
+                        if best is None or score > best[0]:
+                            best = (score, folds, dx, dy, scale, ratio, 0.0)
+        for step, scale_step in ((0.07 * reference, 0.06), (0.03 * reference, 0.03)):
+            _s, _f, bdx, bdy, bscale, bratio, _ba = best
+            for dx in (bdx - step, bdx, bdx + step):
+                for dy in (bdy - step, bdy, bdy + step):
+                    for scale in (bscale - scale_step, bscale, bscale + scale_step):
+                        for ratio in (max(0.4, bratio - 0.12), bratio,
+                                      min(1.0, bratio + 0.12)):
+                            for angle in (angles if ratio < 0.98 else (0.0,)):
+                                score, folds = evaluate(dx, dy, scale, ratio, angle)
+                                if score > best[0]:
+                                    best = (score, folds, dx, dy, scale, ratio, angle)
+
+        score, folds, dx, dy, scale, ratio, angle = best
+        if folds <= 0:
+            return None
+        return RotationalFrame(mx + dx, my + dy, reference * scale,
+                               reference * scale * ratio, angle, folds, score)
+    except Exception as exc:
+        log_exception("find_rotational_frame", exc)
+        return None
+
+
+def fold_rotational_motif(gray_img, frame, n_theta=720, n_rad=96):
+    """
+    Overlay the frame's sectors and keep what they agree on.
+
+    The median across sectors, not the mean: a lighting streak or a chipped
+    edge lives in one sector only, and the median drops it while the mean
+    would smear it around the whole ring.
+
+    Returns contours in wedge coordinates (theta bin, radius bin), or [].
+    """
+    try:
+        folds = int(frame.folds)
+        if folds < FRAME_MIN_FOLD:
+            return []
+        per = int(n_theta // folds)
+        if per < 6:
+            return []
+        usable = per * folds
+        ring = _sample_ring(gray_img.astype(np.float32), frame.cx, frame.cy,
+                            frame.a, frame.b, frame.angle,
+                            n_theta=usable, n_rad=n_rad)
+        wedge = np.median(ring.reshape(folds, per, n_rad), axis=0)
+        spread = float(wedge.max() - wedge.min())
+        if spread < 1e-6:
+            return []
+        norm = ((wedge - wedge.min()) / spread * 255.0).astype(np.uint8)
+        _thr, binary = cv2.threshold(norm, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        floor = 0.02 * float(per * n_rad)
+        return [c for c in contours if cv2.contourArea(c) >= floor and len(c) >= 4]
+    except Exception as exc:
+        log_exception("fold_rotational_motif", exc)
+        return []
+
+
+def replay_rotational_motif(wedge_contours, frame, n_theta=720, n_rad=96,
+                            max_lines=16):
+    """
+    Stamp the agreed wedge back around the face, once per fold.
+
+    Returns polylines in image pixels, the form internal_lines takes.
+    """
+    try:
+        folds = int(frame.folds)
+        if folds < FRAME_MIN_FOLD or not wedge_contours:
+            return []
+        per = float(n_theta // folds)
+        if per <= 0:
+            return []
+        cos_a, sin_a = math.cos(frame.angle), math.sin(frame.angle)
+        radii = np.linspace(FRAME_INNER, FRAME_OUTER, n_rad)
+        lines = []
+        for index in range(folds):
+            base = 2.0 * math.pi * index / folds
+            for contour in wedge_contours:
+                points = contour.reshape(-1, 2)
+                theta = base + (points[:, 0] / per) * (2.0 * math.pi / folds)
+                rad = radii[np.clip(points[:, 1], 0, n_rad - 1).astype(int)]
+                u = rad * np.cos(theta) * frame.a
+                v = rad * np.sin(theta) * frame.b
+                xs = frame.cx + u * cos_a - v * sin_a
+                ys = frame.cy + u * sin_a + v * cos_a
+                poly = [[int(round(x)), int(round(y))] for x, y in zip(xs, ys)]
+                if len(poly) >= 3:
+                    poly.append(list(poly[0]))       # motifs are closed shapes
+                    lines.append(poly)
+        return lines[:max_lines]
+    except Exception as exc:
+        log_exception("replay_rotational_motif", exc)
+        return []
