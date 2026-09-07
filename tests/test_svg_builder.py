@@ -1,3 +1,5 @@
+import pytest
+import re
 import xml.etree.ElementTree as ET
 
 from archeoglyph.generators.autotrace import svg_builder as sb
@@ -44,12 +46,34 @@ def test_finalize_crops_viewbox_and_injects_params():
     assert abs((vb[0] + vb[2] / 2) - 500) < 0.01  # centred on the object
     assert info["fill"] == "#8b4513"
     assert info["outline"] == "#222222"
-    assert info["outline_width"] == 2.0
     paths = _paths(out)
     assert paths[0].attrib["fill"].startswith("param(fill)")
     assert paths[1].attrib["stroke"].startswith("param(outline)")
-    assert paths[2].attrib["stroke"] == "#555555"  # detail line untouched
+    assert paths[2].attrib["stroke"] == "#555555"  # detail line keeps its colour
     assert "ns0:" not in out
+
+    # The stroke is rewritten to the house weight: the pipeline writes widths
+    # in analysis pixels, where 2.0 against a 672-unit box is a hairline.
+    assert info["outline_width"] == pytest.approx(vb[2] * sb.HOUSE_OUTLINE_RATIO)
+    # and the relative weights the drawing chose survive the rescale, to
+    # within the rounding the serialiser applies to the written numbers.
+    outline_w = float(re.search(r"[\d.]+$", paths[1].attrib["stroke-width"]).group(0))
+    detail_w = float(paths[2].attrib["stroke-width"])
+    assert detail_w / outline_w == pytest.approx(1.1 / 2.0, rel=1e-3)
+
+
+def test_the_house_outline_ratio_matches_the_drawn_catalogue():
+    """
+    svg_builder cannot import icon_grid - it is QGIS-free and icon_grid pulls
+    in Qt - so the ratio is written down twice. This is what keeps the copy
+    honest: a traced symbol and a drawn one have to carry the same weight, or
+    the two halves of the catalogue stop looking like one set.
+    """
+    from archeoglyph.generators import icon_grid
+
+    assert sb.HOUSE_OUTLINE_RATIO == pytest.approx(
+        icon_grid.OUTLINE / icon_grid.UNITS
+    ), "icon_grid.OUTLINE changed; update svg_builder.HOUSE_OUTLINE_RATIO"
 
 
 def test_finalize_keeps_viewbox_for_relative_paths_and_flags_empty():

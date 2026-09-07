@@ -29,6 +29,20 @@ ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
 UNIT_BOX = 100.0
 DEFAULT_PAD_RATIO = 0.06
 
+#: The outline weight the drawn catalogue uses, as a fraction of a symbol's
+#: own box - ``icon_grid.OUTLINE / icon_grid.UNITS``.
+#:
+#: The trace pipeline works in analysis pixels, where an object spans six or
+#: seven hundred units, and it writes stroke widths of one to three straight
+#: into that space. That is a third of a percent of the symbol, against the
+#: template set's four and a half: a traced symbol came out twelve to twenty
+#: times thinner than a drawn one, so a user's own artefact landed on the map
+#: as a hairline ghost beside the built-in icons.
+#:
+#: Duplicated rather than imported because icon_grid pulls in Qt and this
+#: module is QGIS-free; tests/test_svg_builder.py holds the two in step.
+HOUSE_OUTLINE_RATIO = 3.0 / 64.0
+
 _NUMBER = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?"
 _NUMBER_RE = re.compile(_NUMBER)
 _PATH_TOKEN_RE = re.compile(r"[MLHVCSQTAZmlhvcsqtaz]|" + _NUMBER)
@@ -245,6 +259,43 @@ def _parse_width(value: Optional[str], default=1.0) -> float:
     return float(m.group(0)) if m else default
 
 
+def normalize_stroke_weights(root: ET.Element, side: float) -> Optional[float]:
+    """
+    Rescale every stroke so the heaviest lands on the house outline weight.
+
+    The pipeline's *relative* weights are the drawing decision and are kept -
+    a detail line stays as much lighter than the outline as it was. What is
+    wrong is only the scale they were written in, so one factor fixes the lot.
+
+    Returns the factor applied, or None when there is nothing to scale.
+    """
+    if not (side > 0):
+        return None
+    widths = []
+    for el in _iter_drawables(root):
+        raw = el.attrib.get("stroke-width")
+        if raw is None or str(el.attrib.get("stroke", "")).strip() == "none":
+            continue
+        widths.append(_parse_width(raw, 0.0))
+    heaviest = max(widths, default=0.0)
+    if heaviest <= 0:
+        return None
+
+    factor = (side * HOUSE_OUTLINE_RATIO) / heaviest
+    if abs(factor - 1.0) < 1e-9:
+        return 1.0
+    for el in _iter_drawables(root):
+        raw = el.attrib.get("stroke-width")
+        if raw is None:
+            continue
+        el.set("stroke-width", _fmt(_parse_width(raw, 0.0) * factor))
+        dashes = el.attrib.get("stroke-dasharray")
+        if dashes:
+            el.set("stroke-dasharray", " ".join(
+                _fmt(float(n) * factor) for n in _NUMBER_RE.findall(dashes)))
+    return factor
+
+
 def parametrize(root: ET.Element) -> Dict[str, object]:
     """
     Expose fill and outline as QGIS param() placeholders.
@@ -391,6 +442,13 @@ def finalize_svg(
         vb = [float(v) for v in _NUMBER_RE.findall(root.attrib.get("viewBox", ""))]
         if len(vb) == 4:
             info["viewbox"] = tuple(vb)
+
+    # Before parametrize, so the param() fallback records the scaled width.
+    box = info.get("viewbox")
+    if box:
+        factor = normalize_stroke_weights(root, float(box[2]))
+        if factor is not None:
+            info["stroke_scale"] = factor
 
     if parametrize_colors:
         info.update(parametrize(root))
