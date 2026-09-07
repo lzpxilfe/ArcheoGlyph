@@ -218,3 +218,60 @@ def test_grabcut_refinement_still_runs_when_both_classes_exist():
     refined = segment.refine_with_grabcut(img, truth)
     assert refined is not None
     assert _iou(refined, truth) > 0.85
+
+
+def test_an_elongated_find_is_stood_upright():
+    """
+    Excavated material is photographed lying down - a blade is laid on the
+    bench and shot from above - and traced as-is it comes out as a bar. The
+    slender bronze dagger did exactly that: a horizontal lens that read as
+    no artefact at all next to the upright drawn template.
+    """
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    from archeoglyph.generators.autotrace.segment import stand_upright
+
+    mask = np.zeros((400, 400), dtype=np.uint8)
+    cv2.ellipse(mask, (200, 200), (150, 24), 0, 0, 360, 255, -1)   # lying down
+    bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+    _rot_bgr, rot_mask = stand_upright(bgr, mask)
+    contours, _ = cv2.findContours(rot_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    _x, _y, width, height = cv2.boundingRect(max(contours, key=cv2.contourArea))
+    assert height > width * 2.0, (
+        f"a {150 * 2}x{24 * 2} find came out {width}x{height}; an elongated "
+        f"artefact has to stand up whatever way it was photographed"
+    )
+
+
+def test_standing_upright_leaves_an_already_upright_find_alone():
+    """Rotating a find that is already upright only costs it interpolation."""
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    from archeoglyph.generators.autotrace.segment import stand_upright
+
+    mask = np.zeros((400, 400), dtype=np.uint8)
+    cv2.ellipse(mask, (200, 200), (24, 150), 0, 0, 360, 255, -1)
+    bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+    _rot_bgr, rot_mask = stand_upright(bgr, mask)
+    assert rot_mask.shape == mask.shape
+    assert int(np.abs(rot_mask.astype(int) - mask.astype(int)).sum()) == 0
+
+
+def test_a_round_find_is_never_spun():
+    """A mirror or a tile end has no long axis; turning one only blurs it."""
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    from archeoglyph.generators.autotrace.segment import stand_upright
+
+    mask = np.zeros((400, 400), dtype=np.uint8)
+    cv2.circle(mask, (200, 200), 150, 255, -1)
+    bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+    _rot_bgr, rot_mask = stand_upright(bgr, mask)
+    assert rot_mask.shape == mask.shape
+    assert int(np.abs(rot_mask.astype(int) - mask.astype(int)).sum()) == 0

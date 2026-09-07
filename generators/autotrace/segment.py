@@ -6,6 +6,7 @@ Auto-generated from the former ContourGenerator methods; QGIS-free.
 """
 
 import importlib.util
+import math
 
 import cv2
 import numpy as np
@@ -752,11 +753,75 @@ def refine_with_grabcut(bgr_img, init_mask):
         return None
 
 
+#: An object at least this much longer than it is wide is treated as having
+#: a long axis worth standing up. Below it - a disc, a sherd, a nodule -
+#: there is no meaningful "up" and rotating would only add interpolation.
+UPRIGHT_MIN_ASPECT = 2.2
+
+
+def stand_upright(bgr_img, mask):
+    """
+    Turn an elongated find so its long axis is vertical.
+
+    Excavated material is photographed lying down - a dagger is laid on the
+    bench and shot from above - so tracing the photograph as-is gives a blade
+    lying on its side. Archaeological illustration draws such a find upright,
+    point up, and a legend marker has to match: the horizontal lens the
+    slender bronze dagger came out as read as no artefact at all.
+
+    Only objects with a real long axis are turned; a mirror or a roof tile
+    end has none, and spinning one would just blur it.
+    """
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        return bgr_img, mask
+    main = max(contours, key=cv2.contourArea)
+    if len(main) < 5:
+        return bgr_img, mask
+
+    rect = cv2.minAreaRect(main)
+    (rw, rh) = rect[1]
+    long_side, short_side = max(rw, rh), min(rw, rh)
+    if short_side <= 1.0 or (long_side / short_side) < UPRIGHT_MIN_ASPECT:
+        return bgr_img, mask
+
+    # Measure the long edge directly rather than trusting minAreaRect's angle
+    # convention, which differs between OpenCV versions and silently laid an
+    # already-upright dagger on its side.
+    box = cv2.boxPoints(rect)
+    edges = [(box[i], box[(i + 1) % 4]) for i in range(4)]
+    (ax, ay), (bx, by) = max(edges, key=lambda e: math.dist(e[0], e[1]))
+    long_angle = math.degrees(math.atan2(by - ay, bx - ax))
+    # Rotate so the long edge stands vertical (90 degrees in image coords).
+    delta = ((long_angle - 90.0 + 90.0) % 180.0) - 90.0
+    if abs(delta) < 1.0:
+        return bgr_img, mask
+
+    h, w = mask.shape[:2]
+    # Rotating in place would clip a long object into a short canvas, so the
+    # canvas grows to hold the turned bounds.
+    radians = math.radians(delta)
+    cos_a, sin_a = abs(math.cos(radians)), abs(math.sin(radians))
+    new_w = int(round(w * cos_a + h * sin_a))
+    new_h = int(round(h * cos_a + w * sin_a))
+    m = cv2.getRotationMatrix2D((w * 0.5, h * 0.5), delta, 1.0)
+    m[0, 2] += (new_w - w) * 0.5
+    m[1, 2] += (new_h - h) * 0.5
+    rot_bgr = cv2.warpAffine(bgr_img, m, (new_w, new_h),
+                             flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    rot_mask = cv2.warpAffine(mask, m, (new_w, new_h), flags=cv2.INTER_NEAREST,
+                              borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    return rot_bgr, smooth_mask_edges(select_primary_component(rot_mask))
+
+
 def auto_upright(bgr_img, mask):
     """
-    Slightly rotate tall objects to upright orientation.
-    Avoids small camera-tilt artifacts in Auto Trace outputs.
+    Stand an elongated find up, then take out any residual camera tilt.
     """
+    try:
+        bgr_img, mask = stand_upright(bgr_img, mask)
+    except Exception as exc:
+        log_exception("stand_upright", exc)
     try:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         if not contours:
