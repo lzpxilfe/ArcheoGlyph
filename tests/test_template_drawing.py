@@ -150,11 +150,9 @@ def test_no_template_fills_with_a_fully_transparent_colour():
 # to stay under the cap, with the reason recorded here.
 MARK_CAP = 10
 REPETITION_IS_THE_TYPE = {
-    "Lamellar Armour": "the field of laced scales is what names it",
     "Gold Crown": "three uprights, each with its own branching arms",
     "Comb-pattern Pottery": "the comb impressions are the ware",
     "Midden / Shell Mound": "a shell mound is a mass of shells",
-    "Plate Armour": "the rivets down each plate",
 }
 
 
@@ -212,7 +210,14 @@ GRID_NATIVE = sorted(
        "Pottery Kiln", "Roof Tile Kiln", "Iron Smelting Feature",
        "Charcoal Kiln", "Paddy Field", "Dry Field", "Earthen Rampart Fortress",
        "Stone Rampart Fortress", "Mountain Fortress", "Palisade",
-       "Encircling Ditch", "Beacon Station", "Water Collection Basin"]
+       "Encircling Ditch", "Beacon Station", "Water Collection Basin",
+       "Handaxe", "Chopper", "Tanged Point", "Microblade Core",
+       "Polished Stone Dagger", "Semi-lunar Stone Knife", "Stone Hoe",
+       "Grinding Slab and Muller", "Stone Arrowhead", "Net Sinker",
+       "Coarse-lined Bronze Mirror", "Fine-lined Bronze Mirror",
+       "Bronze Rattle", "Bronze Bell", "Iron Sword", "Iron Spearhead",
+       "Iron Arrowhead", "Iron Axe", "Iron Ard", "Iron Sickle", "Plate Armour",
+       "Lamellar Armour", "Horse Bit", "Stirrup", "Iron Ingot"]
 )
 
 

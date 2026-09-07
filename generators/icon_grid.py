@@ -168,6 +168,29 @@ class Grid:
         path.closeSubpath()
         return path
 
+    def ellipse(self, cx, cy, rx, ry):
+        """
+        An oval, for the things that genuinely are one - a river pebble, a
+        quern, a saddle. Faking these with a squashed circle or a pair of
+        quads is how the catalogue ended up with ovals of six different
+        curvatures.
+        """
+        cx, cy, rx, ry = snap(cx), snap(cy), snap(rx), snap(ry)
+        step = math.pi / 4.0
+        reach = 1.0 / math.cos(step / 2.0)
+        path = QPainterPath()
+        path.moveTo(self.u(cx + rx), self.u(cy))
+        for index in range(8):
+            a0 = step * index
+            mid = a0 + step / 2.0
+            a1 = a0 + step
+            path.quadTo(self.u(cx + rx * reach * math.cos(mid)),
+                        self.u(cy + ry * reach * math.sin(mid)),
+                        self.u(cx + rx * math.cos(a1)),
+                        self.u(cy + ry * math.sin(a1)))
+        path.closeSubpath()
+        return path
+
     def arc(self, path, cx, cy, r, start, sweep, segments=6, move=False):
         """
         Append a circular arc, as quads that actually follow the circle.
