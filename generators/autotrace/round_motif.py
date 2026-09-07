@@ -1963,6 +1963,11 @@ FRAME_INNER, FRAME_OUTER = 0.25, 0.92
 #: Fold counts worth testing. Below four a "repeat" is indistinguishable from
 #: the object being lopsided; above sixteen it is surface grain.
 FRAME_MIN_FOLD, FRAME_MAX_FOLD = 4, 16
+#: Shapes kept from the folded wedge, largest first. Three is what a lotus
+#: petal or a mirror's radial zone needs; more is grain, and every extra one
+#: is multiplied by the fold count.
+MAX_WEDGE_SHAPES = 3
+
 #: Minimum symmetry score before a motif is drawn at all.
 #:
 #: Set above the measured noise floor, not at a level that lets a wanted
@@ -2135,16 +2140,24 @@ def fold_rotational_motif(gray_img, frame, n_theta=720, n_rad=96):
         binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         floor = 0.02 * float(per * n_rad)
-        return [c for c in contours if cv2.contourArea(c) >= floor and len(c) >= 4]
+        kept = [c for c in contours if cv2.contourArea(c) >= floor and len(c) >= 4]
+        # Trim here, by size, rather than downstream by count: a later cut
+        # falls at a sector boundary and leaves the motif stamped around a
+        # third of the face with the rest bare.
+        kept.sort(key=cv2.contourArea, reverse=True)
+        return kept[:MAX_WEDGE_SHAPES]
     except Exception as exc:
         log_exception("fold_rotational_motif", exc)
         return []
 
 
-def replay_rotational_motif(wedge_contours, frame, n_theta=720, n_rad=96,
-                            max_lines=16):
+def replay_rotational_motif(wedge_contours, frame, n_theta=720, n_rad=96):
     """
     Stamp the agreed wedge back around the face, once per fold.
+
+    Every fold is emitted or none is: a motif that stops three sectors round
+    is worse than no motif, because it reads as damage. The wedge is already
+    trimmed to MAX_WEDGE_SHAPES, so the count stays bounded.
 
     Returns polylines in image pixels, the form internal_lines takes.
     """
@@ -2161,9 +2174,13 @@ def replay_rotational_motif(wedge_contours, frame, n_theta=720, n_rad=96,
         for index in range(folds):
             base = 2.0 * math.pi * index / folds
             for contour in wedge_contours:
+                # The folded wedge is indexed (theta, radius), so its rows are
+                # angle and its columns radius - and findContours hands back
+                # x=column, y=row. Reading x as the angle put every stamp in
+                # the same quarter of the face.
                 points = contour.reshape(-1, 2)
-                theta = base + (points[:, 0] / per) * (2.0 * math.pi / folds)
-                rad = radii[np.clip(points[:, 1], 0, n_rad - 1).astype(int)]
+                theta = base + (points[:, 1] / per) * (2.0 * math.pi / folds)
+                rad = radii[np.clip(points[:, 0], 0, n_rad - 1).astype(int)]
                 u = rad * np.cos(theta) * frame.a
                 v = rad * np.sin(theta) * frame.b
                 xs = frame.cx + u * cos_a - v * sin_a
@@ -2172,7 +2189,7 @@ def replay_rotational_motif(wedge_contours, frame, n_theta=720, n_rad=96,
                 if len(poly) >= 3:
                     poly.append(list(poly[0]))       # motifs are closed shapes
                     lines.append(poly)
-        return lines[:max_lines]
+        return lines
     except Exception as exc:
         log_exception("replay_rotational_motif", exc)
         return []

@@ -173,3 +173,36 @@ def test_the_threshold_clears_the_noise_a_flat_disc_produces():
     assert worst < rm.FRAME_MIN_SCORE, (
         f"a plain disc reached {worst:.3f} against a {rm.FRAME_MIN_SCORE} "
         f"gate; the gate has to sit above what nothing at all produces")
+
+
+def test_every_fold_is_stamped_or_none_is():
+    """
+    A motif that stops three sectors round reads as damage, not decoration.
+
+    Truncating the replayed lines by count cuts at a sector boundary, which
+    is what left an eight-petal tile with petals over one quadrant and a
+    bare rest. The wedge is trimmed by shape instead, and then every fold is
+    emitted.
+    """
+    img, mask = _disc()
+    _petals(img, 8)
+    frame = rm.find_rotational_frame(img, mask)
+    assert frame is not None and frame.folds == 8
+    wedge = rm.fold_rotational_motif(img, frame)
+    assert 0 < len(wedge) <= rm.MAX_WEDGE_SHAPES
+    lines = rm.replay_rotational_motif(wedge, frame)
+    assert len(lines) == len(wedge) * frame.folds, (
+        "the replay dropped sectors instead of shapes")
+
+    # The stamps have to go all the way round, not bunch in one quadrant.
+    centres = []
+    for line in lines:
+        xs = [p[0] for p in line]
+        ys = [p[1] for p in line]
+        centres.append(math.degrees(math.atan2(
+            sum(ys) / len(ys) - frame.cy, sum(xs) / len(xs) - frame.cx)) % 360.0)
+    for quadrant in range(4):
+        low, high = quadrant * 90.0, (quadrant + 1) * 90.0
+        assert any(low <= c < high for c in centres), (
+            f"no motif was stamped between {low:.0f} and {high:.0f} degrees; "
+            f"the replay covers {sorted(round(c) for c in centres)}")
