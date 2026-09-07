@@ -449,7 +449,14 @@ def _flatten(path):
 
 
 def _ink(painter):
-    """How much of the tile a symbol actually covers, in percent."""
+    """
+    How much ink a symbol lays on its tile, in percent.
+
+    Overlapping fills are summed rather than unioned, so a mark drawn over a
+    body counts twice in the region they share. That makes this a measure of
+    ink laid down rather than ink visible, and it reads a little high for the
+    layered symbols - which is the conservative direction for a ceiling.
+    """
     total = 0.0
     for kind, payload, brush, pen, clip in painter.calls:
         width = float(getattr(pen, "width", 0.0))

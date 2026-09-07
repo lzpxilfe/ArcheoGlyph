@@ -1309,7 +1309,10 @@ class TemplateGenerator:
             "flat":     (0, 4, 6, 6, 5, 3, 2),          # 평인: no waist at all
             "type_ia":  (0, 3, 6.5, 5, 6.5, 3, 2),
             "type_ib":  (0, 2.5, 6, 4.5, 6.5, 3.5, 2),
-            "other":    (0, 2, 4.5, 3, 3.5, 2.5, 1.5),
+            # 기타: the catch-all, so it is the plainest of the ten - a broad
+            # even taper with no waist. It used to be 세형 with one number
+            # moved, and the two rendered 98 percent identical.
+            "other":    (0, 3.5, 5.5, 5, 4.5, 3, 2),
         }
         widths = [w * BLADE_SCALE for w in profiles.get(variant, profiles["other"])]
         blade = g.symmetric(list(zip(widths, stations)))
@@ -1380,53 +1383,56 @@ class TemplateGenerator:
         """
         The keyhole tomb, as one outline shared by every variant.
 
-        The reference plates make the point: the variants are the same
-        silhouette in different colours, with at most a mark added. Giving
-        each one its own tail width, as this used to, only blurred the family.
+        The variants used to differ by a hairline or two laid across the
+        mound. Rasterised at the 40px these are read at, 즙석 and 적석총 and
+        기본 came out 98 percent identical - the marks were about one pixel
+        of a forty-pixel tile. What survives that reduction is *area*, so
+        each variant now covers a different part of the mound in a different
+        tone instead of ruling a line across it.
         """
         g = icon_grid.Grid(s)
-        mound = g.keyhole(head_cy=22, head_r=13, join_y=30, foot_half=14, foot_y=57)
+        mound = g.keyhole(head_cy=22, head_r=13, join_y=30, foot_half=14,
+                          foot_y=57)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        marked = variant in ("fukiishi", "tsumishizuka", "stepped",
+                             "makinokuchi")
 
         if variant in ("moat", "makinokuchi"):
             # 주호: the ditch ringing the mound, drawn as the same outline
             # standing off it.
-            old_pen, old_brush = painter.pen(), painter.brush()
-            painter.setPen(_pen(color.lighter(135), 3.0))
+            painter.setPen(_pen(color, 3.0))
             painter.setBrush(Qt.NoBrush)
-            painter.drawPath(
-                g.keyhole(head_cy=22, head_r=17, join_y=32, foot_half=18, foot_y=59)
-            )
-            painter.setBrush(old_brush)
+            painter.drawPath(g.keyhole(head_cy=22, head_r=17, join_y=32,
+                                       foot_half=18, foot_y=59))
             painter.setPen(old_pen)
 
+        # A marked mound is laid down at the middle tone so the mark can be
+        # the solid one; a plain mound has nothing to stand against.
+        painter.setBrush(body if marked else solid)
         painter.drawPath(mound)
 
-        if variant == "fukiishi":
-            # 즙석: the stone facing, as one band across the mound.
+        if marked:
             _clip_detail(painter, mound)
-            painter.setPen(_pen(color.darker(150), 1.4))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(g.line(14, 40, 50, 40))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(solid)
+            if variant == "fukiishi":
+                # 즙석: the stone facing sheathes the lower slope.
+                painter.drawPath(g.rect(4, 43, 56, 15, r=0))
+            elif variant == "stepped":
+                # 단축: built in tiers, so two courses band the whole width.
+                painter.drawPath(g.rect(4, 32, 56, 7, r=0))
+                painter.drawPath(g.rect(4, 45, 56, 7, r=0))
+            else:
+                # 적석총: a cairn, so the stones cover it.
+                for cx, cy in ((23, 25), (41, 25), (18, 41), (32, 36),
+                               (46, 41), (25, 52), (39, 52)):
+                    painter.drawPath(g.circle(cx, cy, 6))
             painter.restore()
-        elif variant in ("tsumishizuka", "makinokuchi"):
-            _clip_detail(painter, mound)
-            painter.setPen(_pen(color.darker(150), 1.4))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(g.line(16, 38, 48, 38))
-            painter.drawPath(g.line(14, 46, 50, 46))
-            painter.restore()
-        elif variant == "stepped":
-            # 단축: the mound built in tiers. A second, concentric outline
-            # says that better than more bands, and keeps it apart from the
-            # 즙석 and 적석총 marks, which are bands.
-            _clip_detail(painter, mound)
-            painter.setPen(_pen(color.darker(150), 1.4))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(
-                g.keyhole(head_cy=23, head_r=8.5, join_y=29,
-                          foot_half=9, foot_y=51)
-            )
-            painter.restore()
+
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_kofun_shape(self, painter, s, m, variant, color):
         """
@@ -1483,14 +1489,15 @@ class TemplateGenerator:
             painter.drawPath(mound)
 
         # 마키무쿠형 is the one that carries a mark: the terraces on the front.
-        # Clipped, because a terrace laid out from the bounding box runs past
-        # the shoulder of the mound and out into the tile.
+        # Bands rather than rules - a hairline terrace is about one pixel of
+        # the forty this is read at, and vanishes.
         if variant in ("makimuku_en", "makimuku_ho"):
             _clip_detail(painter, mound)
-            painter.setBrush(Qt.NoBrush)
-            painter.setPen(_pen(color, 1.2))
-            painter.drawPath(g.line(20, 44, 44, 44))
-            painter.drawPath(g.line(18, 50, 46, 50))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                    icon_grid.MID))
+            painter.drawPath(g.rect(4, 40, 56, 7, r=0))
+            painter.drawPath(g.rect(4, 50, 56, 7, r=0))
             painter.restore()
 
         painter.setBrush(old_brush)
@@ -1746,12 +1753,15 @@ class TemplateGenerator:
             _clip_detail(painter, dome)
             painter.setPen(thin)
             painter.setBrush(Qt.NoBrush if marks == "tile" else solid)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(solid)
             if marks == "tile":
-                painter.drawPath(g.line(26, 40, 34, 33))
-                painter.drawPath(g.line(30, 45, 38, 38))
+                # Stacked roof tiles: slabs, so they read against the pots.
+                painter.drawPath(g.rect(24, 34, 18, 5, r=1))
+                painter.drawPath(g.rect(26, 41, 18, 5, r=1))
             else:
-                painter.drawPath(g.circle(28, 38, 4))
-                painter.drawPath(g.circle(38, 42, 4))
+                painter.drawPath(g.circle(28, 37, 5))
+                painter.drawPath(g.circle(39, 42, 5))
             painter.restore()
             ground_line()
 
@@ -2289,18 +2299,24 @@ class TemplateGenerator:
             # and neither needs a field of scales to say so.
             cuirass = g.symmetric([(11, 11), (14, 21), (12.5, 37), (15, 52)],
                                   curved=True)
+            painter.setBrush(body)
             painter.drawPath(cuirass)
             _clip_detail(painter, cuirass)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(solid)
             if variant == "plate_armour":
-                detail(g.line(16, 27, 48, 27), g.line(16, 42, 48, 42))
-                painter.setBrush(solid)
-                painter.setPen(thin)
-                painter.drawPath(g.circle(24, 34, 2.5))
-                painter.drawPath(g.circle(40, 34, 2.5))
+                # 판갑: two wide riveted plates - the plates are the mark.
+                painter.drawPath(g.rect(4, 25, 56, 8, r=0))
+                painter.drawPath(g.rect(4, 41, 56, 8, r=0))
             else:
-                detail(g.line(16, 21, 48, 21), g.line(16, 31, 48, 31),
-                       g.line(16, 41, 48, 41), g.line(16, 50, 48, 50))
+                # 찰갑: rows of small laced scales, which is a texture of
+                # pieces where 판갑 is two slabs.
+                for row in (24, 34, 44):
+                    for cx in (24, 32, 40):
+                        painter.drawPath(g.rect(cx - 3, row, 6, 6, r=2))
             painter.restore()
+            painter.setPen(edge)
+            painter.setBrush(solid)
 
         elif variant == "horse_bit":
             # 재갈: two cheek rings on a jointed mouthpiece.
