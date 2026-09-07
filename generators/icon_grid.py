@@ -214,6 +214,44 @@ class Grid:
                         self.u(cy + r * math.sin(a1)))
         return path
 
+    def comma(self, cx, cy, outer, head_r, tail_r, start, sweep, segments=10):
+        """
+        곡옥: a crescent that thins along its length.
+
+        A comma drawn at constant width is a banana, and one drawn as a
+        tapering freehand curve closes up at a 3-unit outline and reads as a
+        figure nine. Here the back is a true arc and only the belly moves, so
+        the head stays fat and the tail stays open however the numbers are
+        tuned.
+
+        ``head_r`` and ``tail_r`` are the inner radii at the two ends - the
+        larger the tail radius, the thinner the tail.
+        """
+        path = QPainterPath()
+        path.moveTo(self.u(cx + outer * math.cos(start)),
+                    self.u(cy + outer * math.sin(start)))
+        self.arc(path, cx, cy, outer, start, sweep, segments=segments)
+
+        def belly(fraction):
+            angle = start + sweep * fraction
+            radius = head_r + (tail_r - head_r) * fraction
+            return angle, radius
+
+        for index in range(segments, -1, -1):
+            angle, radius = belly(index / float(segments))
+            if index == segments:
+                path.lineTo(self.u(cx + radius * math.cos(angle)),
+                            self.u(cy + radius * math.sin(angle)))
+                continue
+            mid_angle, mid_radius = belly((index + 0.5) / float(segments))
+            reach = mid_radius / math.cos(abs(sweep) / (2.0 * segments))
+            path.quadTo(self.u(cx + reach * math.cos(mid_angle)),
+                        self.u(cy + reach * math.sin(mid_angle)),
+                        self.u(cx + radius * math.cos(angle)),
+                        self.u(cy + radius * math.sin(angle)))
+        path.closeSubpath()
+        return path
+
     def keyhole(self, head_cy, head_r, join_y, foot_half, foot_y):
         """
         The 전방후원분 outline: round rear mound and trapezoidal front, as one

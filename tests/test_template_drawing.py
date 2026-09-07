@@ -150,7 +150,6 @@ def test_no_template_fills_with_a_fully_transparent_colour():
 # to stay under the cap, with the reason recorded here.
 MARK_CAP = 10
 REPETITION_IS_THE_TYPE = {
-    "Gold Crown": "three uprights, each with its own branching arms",
     "Comb-pattern Pottery": "the comb impressions are the ware",
     "Midden / Shell Mound": "a shell mound is a mass of shells",
 }
@@ -217,7 +216,12 @@ GRID_NATIVE = sorted(
        "Coarse-lined Bronze Mirror", "Fine-lined Bronze Mirror",
        "Bronze Rattle", "Bronze Bell", "Iron Sword", "Iron Spearhead",
        "Iron Arrowhead", "Iron Axe", "Iron Ard", "Iron Sickle", "Plate Armour",
-       "Lamellar Armour", "Horse Bit", "Stirrup", "Iron Ingot"]
+       "Lamellar Armour", "Horse Bit", "Stirrup", "Iron Ingot",
+       "Comma-shaped Jade (Gogok)", "Tubular Jade Bead (Gwanok)",
+       "Glass Bead", "Gold Earring", "Gold Crown", "Belt Fitting Set",
+       "Wooden Document Slip (Mokgan)", "Round Roof-end Tile",
+       "Eaves Roof Tile", "Floor Brick", "Inkstone", "Clay Figurine",
+       "Ridge-end Roof Ornament (Chimi)", "Building Foundation Stone"]
 )
 
 
