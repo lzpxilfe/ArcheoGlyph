@@ -2422,22 +2422,26 @@ class TemplateGenerator:
         painter.drawPath(spiral)
 
     def _draw_ash_layer(self, painter, s, m, color):
-        """Ash layer as horizontal banding with dense stipple."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        band_h = int((s - 2 * m) * 0.55)
-        top = int(s / 2 - band_h / 2)
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-        painter.drawRect(m + 14, top, s - 2 * m - 28, band_h)
-        # Two partings read as bedding; nine rules and a stipple field read as
-        # a barcode once the symbol is map-sized.
+        """
+        재층: an ash lens sitting in the deposit it was found in.
+
+        Drawn as a stack of even rules this read as a barcode, and it was
+        also the wrong picture - ash arrives as a lens, not as bedding.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.2))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.SOFT))
+        painter.drawPath(g.rect(6, 15, 52, 35))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.ellipse(32, 32, 20, 8))
+        painter.setPen(_pen(color, 1.4))
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(_pen(color.darker(150), 1.4))
-        for fraction in (0.36, 0.68):
-            y = int(top + band_h * fraction)
-            painter.drawLine(m + 22, y, s - m - 22, y)
-        painter.setBrush(old_brush)
+        painter.drawPath(g.line(13, 22, 24, 22))
+        painter.drawPath(g.line(41, 43, 52, 43))
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_burnt_area(self, painter, s, m, color):
         """Burnt feature with charred irregular boundary."""
@@ -2471,253 +2475,213 @@ class TemplateGenerator:
     # ═══════════════════════════════════════════════════════
 
     def _draw_excavation(self, painter, s, m, color):
-        """Excavation area — square with grid lines."""
-        painter.drawRect(m + 15, m + 15, s - 2*m - 30, s - 2*m - 30)
+        """발굴 구역: the open area, laid out on its grid."""
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.SOFT))
+        painter.drawPath(g.rect(7, 7, 50, 50))
         painter.setBrush(Qt.NoBrush)
-        pen = _pen(color.darker(130), 1.5, Qt.DotLine)
-        painter.setPen(pen)
-        sz = s - 2*m - 30
-        step = sz / 3
-        for i in range(1, 3):
-            y = m + 15 + i * step
-            painter.drawLine(m + 15, int(y), s - m - 15, int(y))
-            x = m + 15 + i * step
-            painter.drawLine(int(x), m + 15, int(x), s - m - 15)
-        painter.setBrush(color)
-        old_pen = painter.pen()
-        n_pen = _pen(color.darker(150), 1.6)
-        painter.setPen(n_pen)
-        nx = s - m - 34
-        ny = m + 24
-        painter.drawLine(nx, ny + 16, nx, ny - 10)
-        painter.drawLine(nx, ny - 10, nx - 5, ny - 3)
-        painter.drawLine(nx, ny - 10, nx + 5, ny - 3)
+        painter.setPen(_pen(color, 1.4, Qt.DashLine))
+        for offset in (24, 40):
+            painter.drawPath(g.line(7, offset, 57, offset))
+            painter.drawPath(g.line(offset, 7, offset, 57))
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_north_arrow(self, painter, s, m, color):
-        """Map-style north arrow used in archaeological figures."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        painter.setPen(_pen(color.darker(165), 2.0))
-        painter.setBrush(color)
-        cx = s / 2.0
-        arrow = QPainterPath()
-        arrow.moveTo(cx, m + 12)
-        arrow.lineTo(cx + 34, s - m - 56)
-        arrow.lineTo(cx + 10, s - m - 56)
-        arrow.lineTo(cx + 10, s - m - 16)
-        arrow.lineTo(cx - 10, s - m - 16)
-        arrow.lineTo(cx - 10, s - m - 56)
-        arrow.lineTo(cx - 34, s - m - 56)
-        arrow.closeSubpath()
-        painter.drawPath(arrow)
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(_pen(color.darker(185), 1.6))
-        painter.drawText(int(cx - 10), m + 26, "N")
+        """방위표: the map dart, one half solid so the point reads at a glance."""
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.poly([(32, 5), (32, 51), (19, 42)]))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.MID))
+        painter.drawPath(g.poly([(32, 5), (45, 42), (32, 51)]))
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
 
     def _draw_scale_bar(self, painter, s, m, color):
-        """Segmented scale bar convention for map figures."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        painter.setPen(_pen(color.darker(160), 1.8))
-        seg_w = 34
-        bar_h = 18
-        x0 = int(s / 2 - (seg_w * 2))
-        y0 = int(s * 0.54)
-        for i in range(4):
-            if i % 2 == 0:
-                painter.setBrush(color)
-            else:
-                painter.setBrush(Qt.NoBrush)
-            painter.drawRect(x0 + i * seg_w, y0, seg_w, bar_h)
+        """축척 막대: alternating segments over a baseline."""
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        solid = QColor(color)
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        painter.setPen(_pen(color, 2.4))
+        for index in range(4):
+            painter.setBrush(solid if index % 2 == 0 else body)
+            painter.drawPath(g.rect(7 + index * 12, 25, 12, 12, r=0))
+        painter.setPen(_pen(color, 1.4))
         painter.setBrush(Qt.NoBrush)
-        painter.drawLine(x0, y0 + bar_h + 2, x0 + seg_w * 4, y0 + bar_h + 2)
-        for i in range(5):
-            tx = x0 + i * seg_w
-            painter.drawLine(tx, y0 + bar_h + 2, tx, y0 + bar_h + 9)
+        painter.drawPath(g.line(7, 43, 7, 48))
+        painter.drawPath(g.line(55, 43, 55, 48))
+        painter.drawPath(g.line(7, 46, 55, 46))
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
 
     def _draw_harris_matrix_context(self, painter, s, m, color):
-        """Simplified Harris matrix context box + relation connectors."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        painter.setPen(_pen(color.darker(160), 1.8))
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-
-        top = QRectF(m + 40, m + 28, s - 2 * m - 80, 36)
-        mid = QRectF(m + 26, s * 0.44, s - 2 * m - 52, 40)
-        bot_l = QRectF(m + 22, s - m - 56, 72, 32)
-        bot_r = QRectF(s - m - 94, s - m - 56, 72, 32)
-        painter.drawRect(top)
-        painter.drawRect(mid)
-        painter.drawRect(bot_l)
-        painter.drawRect(bot_r)
-
+        """
+        해리스 매트릭스 단위: a context and the two relationships that make
+        it a matrix - what it lies under, and what it lies over.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        body = QColor(color.red(), color.green(), color.blue(), icon_grid.MID)
+        painter.setPen(_pen(color, 1.6))
         painter.setBrush(Qt.NoBrush)
-        painter.drawLine(int(top.center().x()), int(top.bottom()), int(mid.center().x()), int(mid.top()))
-        painter.drawLine(int(mid.left() + 24), int(mid.bottom()), int(bot_l.center().x()), int(bot_l.top()))
-        painter.drawLine(int(mid.right() - 24), int(mid.bottom()), int(bot_r.center().x()), int(bot_r.top()))
+        painter.drawPath(g.line(32, 13, 32, 24))
+        painter.drawPath(g.line(32, 40, 32, 51))
+        painter.setPen(_pen(color, 2.2))
+        painter.setBrush(body)
+        painter.drawPath(g.rect(20, 6, 24, 8, r=2))
+        painter.drawPath(g.rect(20, 50, 24, 8, r=2))
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.rect(13, 23, 38, 18, r=2))
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
 
     def _draw_stratigraphic_unit(self, painter, s, m, color):
-        """Layered context symbol inspired by section stratigraphy notation."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        painter.setPen(_pen(color.darker(160), 1.5))
-        x = m + 16
-        y = m + 24
-        w = s - 2 * m - 32
-        h = s - 2 * m - 48
-        layers = 4
-        for i in range(layers):
-            top = int(y + i * (h / layers))
-            lh = int(h / layers)
-            shade = 70 + (i * 35)
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), min(190, shade)))
-            painter.drawRect(x, top, w, lh)
-            painter.setPen(_pen(color.darker(170), 1.0))
-            painter.drawLine(x + 8, top + lh - 4, x + w - 8, top + lh - 10)
-            painter.setPen(_pen(color.darker(160), 1.5))
+        """
+        층위 단위: layers of unequal thickness on tilted contacts.
+
+        Even bands of even spacing are a barcode, not a section - the ground
+        does not deposit itself in equal rules.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.2))
+        for points, level in (
+            ([(7, 14), (57, 11), (57, 24), (7, 27)], icon_grid.SOFT),
+            ([(7, 27), (57, 24), (57, 31), (7, 35)], icon_grid.MID),
+            ([(7, 35), (57, 31), (57, 50), (7, 53)], icon_grid.SOLID),
+        ):
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                    level))
+            painter.drawPath(g.poly(points))
         painter.setPen(old_pen)
         painter.setBrush(old_brush)
 
     def _draw_survey_point(self, painter, s, m, color):
-        """Survey point — crosshair with circle."""
-        cx, cy = s/2, s/2
-        r = s/2 - m - 20
-        painter.drawEllipse(int(cx - r), int(cy - r), int(r * 2), int(r * 2))
+        """조사 지점: a crosshair over its station."""
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.MID))
+        painter.drawPath(g.circle(32, 32, 21))
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(_pen(color.darker(130), 2.0))
-        ext = 15
-        painter.drawLine(int(cx), int(cy - r - ext), int(cx), int(cy + r + ext))
-        painter.drawLine(int(cx - r - ext), int(cy), int(cx + r + ext), int(cy))
-        # Center dot
-        painter.setBrush(color)
-        painter.drawEllipse(int(cx - 5), int(cy - 5), 10, 10)
+        painter.setPen(_pen(color, 2.2))
+        painter.drawPath(g.line(32, 6, 32, 58))
+        painter.drawPath(g.line(6, 32, 58, 32))
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_find_spot(self, painter, s, m, color):
-        """Find spot — location pin / drop marker."""
-        p = QPainterPath()
-        cx = s / 2
-        p.moveTo(cx, s - m - 10)
-        p.quadTo(cx - 55, s * 0.5, cx - 50, s * 0.35)
-        p.quadTo(cx - 50, m + 10, cx, m + 5)
-        p.quadTo(cx + 50, m + 10, cx + 50, s * 0.35)
-        p.quadTo(cx + 55, s * 0.5, cx, s - m - 10)
-        p.closeSubpath()
-        painter.drawPath(p)
-        # Inner circle
+        """유물 출토 지점: the map pin."""
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.circle(32, 23, 17))
+        painter.drawPath(g.poly([(20, 32), (44, 32), (32, 57)]))
         painter.setBrush(Qt.NoBrush)
-        ir = 20
-        painter.drawEllipse(int(cx - ir), int(s * 0.28), ir * 2, ir * 2)
+        painter.setPen(_pen(color, 2.6))
+        painter.drawPath(g.circle(32, 23, 6))
+        painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_trench(self, painter, s, m, color):
-        """Trench as elongated rectangle with cut hatch."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        x = m + 20
-        y = int(s * 0.36)
-        w = s - 2 * m - 40
-        h = int(s * 0.28)
-        painter.drawRect(x, y, w, h)
+        """
+        트렌치: a long narrow cut with its section face marked.
+
+        The eleven hatch lines this used to carry read as a barcode; what
+        actually says trench is the proportion.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.SOFT))
+        painter.drawPath(g.rect(5, 24, 54, 16))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.rect(5, 24, 8, 16, r=0))
+        painter.setPen(_pen(color, 1.6))
         painter.setBrush(Qt.NoBrush)
-        hatch_pen = _pen(color.darker(145), 1.0, Qt.DashLine)
-        painter.setPen(hatch_pen)
-        for i in range(8):
-            dx = int(x + 8 + i * (w - 16) / 7.0)
-            painter.drawLine(dx, y + 4, dx - 8, y + h - 4)
-        painter.setBrush(old_brush)
+        painter.drawPath(g.line(13, 24, 13, 40))
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_datum_point(self, painter, s, m, color):
-        """Datum point: control-point triangle with center marker."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        cx = s / 2.0
-        top = m + 24
-        left = m + 34
-        right = s - m - 34
-        base = s - m - 24
-        tri = QPolygonF([
-            QPointF(cx, top),
-            QPointF(right, base),
-            QPointF(left, base),
-        ])
-        painter.drawPolygon(tri)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(int(cx - 8), int(s / 2 - 8), 16, 16)
-        painter.setBrush(Qt.NoBrush)
-        x_pen = _pen(color.darker(145), 1.4)
-        painter.setPen(x_pen)
-        painter.drawLine(int(cx), int(s / 2 - 18), int(cx), int(s / 2 + 18))
-        painter.drawLine(int(cx - 18), int(s / 2), int(cx + 18), int(s / 2))
-        painter.setBrush(old_brush)
+        """기준점: the survey triangle over its centre."""
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.MID))
+        painter.drawPath(g.poly([(32, 7), (57, 51), (7, 51)]))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.circle(32, 37, 6))
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_photo_point(self, painter, s, m, color):
-        """Photo point: camera body + viewing cone."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        body_x = int(s * 0.34)
-        body_y = int(s * 0.42)
-        body_w = int(s * 0.32)
-        body_h = int(s * 0.22)
-        painter.drawRect(body_x, body_y, body_w, body_h)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(int(s / 2 - 16), int(body_y + 12), 32, 32)
-        painter.drawRect(int(body_x + 8), int(body_y - 10), 18, 10)
-        cone_pen = _pen(color.darker(150), 1.2, Qt.DotLine)
-        painter.setPen(cone_pen)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawLine(int(s / 2), int(body_y + body_h / 2), s - m - 6, int(s * 0.28))
-        painter.drawLine(int(s / 2), int(body_y + body_h / 2), s - m - 6, int(s * 0.72))
-        painter.setBrush(old_brush)
+        """사진 촬영 지점: the camera and the view it covers."""
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 1.6))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.SOFT))
+        painter.drawPath(g.poly([(31, 32), (57, 13), (57, 51)]))
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.MID))
+        painter.drawPath(g.rect(7, 21, 25, 22, r=3))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.circle(19, 32, 7))
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_grid_corner(self, painter, s, m, color):
-        """Grid corner: L marker with tied coordinate ticks."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        painter.setBrush(Qt.NoBrush)
-        grid_pen = _pen(color.darker(145), 3.0)
-        painter.setPen(grid_pen)
-        x0 = m + 26
-        y0 = s - m - 26
-        painter.drawLine(x0, y0, x0 + 120, y0)
-        painter.drawLine(x0, y0, x0, y0 - 120)
-        tick_pen = _pen(color.darker(150), 1.3)
-        painter.setPen(tick_pen)
-        for i in range(1, 4):
-            painter.drawLine(x0 + i * 30, y0 - 6, x0 + i * 30, y0 + 6)
-            painter.drawLine(x0 - 6, y0 - i * 30, x0 + 6, y0 - i * 30)
-        painter.setBrush(color)
-        painter.drawEllipse(x0 - 5, y0 - 5, 10, 10)
-        painter.setBrush(old_brush)
+        """그리드 모서리: the corner two grid lines meet at."""
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.MID))
+        painter.drawPath(g.poly([(13, 8), (21, 8), (21, 43), (56, 43),
+                                 (56, 51), (13, 51)]))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.rect(11, 41, 12, 12, r=2))
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_sample_location(self, painter, s, m, color):
-        """Sample location: core tube marker inside ring."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        cx = s / 2.0
-        cy = s / 2.0
-        r = s / 2.0 - m - 24
-        painter.drawEllipse(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
-        tube = QPainterPath()
-        tube.moveTo(cx - 12, m + 36)
-        tube.lineTo(cx + 12, m + 36)
-        tube.lineTo(cx + 8, s - m - 34)
-        tube.lineTo(cx - 8, s - m - 34)
-        tube.closeSubpath()
+        """
+        시료 채취 지점: the sample tube itself.
+
+        A dot with a sliver through it says nothing; a stoppered vial with
+        something in it says what was done here.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.6))
+        tube = g.rect(23, 12, 18, 44, r=8)
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.MID))
         painter.drawPath(tube)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(int(cx - 9), int(m + 28), 18, 18)
-        painter.setBrush(old_brush)
+        _clip_detail(painter, tube)
+        painter.setBrush(QColor(color))
+        painter.setPen(Qt.NoPen)
+        painter.drawPath(g.rect(23, 32, 18, 24, r=0))
+        painter.restore()
+        painter.setPen(_pen(color, 2.6))
+        painter.setBrush(QColor(color))
+        painter.drawPath(g.rect(21, 6, 22, 8, r=2))
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def _draw_road(self, painter, s, m, color):
         """Road/pavement with carriageway edges and center line."""
@@ -2795,23 +2759,22 @@ class TemplateGenerator:
         painter.setPen(old_pen)
 
     def _draw_test_pit(self, painter, s, m, color):
-        """Test pit as square cut with section cross."""
-        old_pen = painter.pen()
-        old_brush = painter.brush()
-        x = m + 28
-        y = m + 28
-        w = s - 2 * m - 56
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), icon_grid.SOFT))
-        pit_pen = _pen(color.darker(130), 2.0, Qt.DashLine)
-        painter.setPen(pit_pen)
-        painter.drawRect(x, y, w, w)
+        """
+        시굴 피트: the small square cut. Dashed against 발굴 구역's solid
+        edge, and crossed rather than gridded, so the two do not collide.
+        """
+        g = icon_grid.Grid(s)
+        old_pen, old_brush = painter.pen(), painter.brush()
+        painter.setPen(_pen(color, 2.4, Qt.DashLine))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(),
+                                icon_grid.SOFT))
+        painter.drawPath(g.rect(13, 13, 38, 38))
         painter.setBrush(Qt.NoBrush)
-        cross_pen = _pen(color.darker(145), 1.4)
-        painter.setPen(cross_pen)
-        painter.drawLine(x + 8, y + 8, x + w - 8, y + w - 8)
-        painter.drawLine(x + w - 8, y + 8, x + 8, y + w - 8)
-        painter.setBrush(old_brush)
+        painter.setPen(_pen(color, 1.6))
+        painter.drawPath(g.line(19, 19, 45, 45))
+        painter.drawPath(g.line(45, 19, 19, 45))
         painter.setPen(old_pen)
+        painter.setBrush(old_brush)
 
     def get_available_templates(self):
         """Return list of available template types."""

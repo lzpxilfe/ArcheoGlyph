@@ -221,7 +221,11 @@ GRID_NATIVE = sorted(
        "Glass Bead", "Gold Earring", "Gold Crown", "Belt Fitting Set",
        "Wooden Document Slip (Mokgan)", "Round Roof-end Tile",
        "Eaves Roof Tile", "Floor Brick", "Inkstone", "Clay Figurine",
-       "Ridge-end Roof Ornament (Chimi)", "Building Foundation Stone"]
+       "Ridge-end Roof Ornament (Chimi)", "Building Foundation Stone",
+       "North Arrow (Map Standard)", "Scale Bar (Map Standard)",
+       "Harris Matrix Context", "Stratigraphic Unit", "Survey Point",
+       "Find Spot", "Trench", "Datum Point", "Photo Point", "Grid Corner",
+       "Sample Location", "Ash Layer", "Excavation Area", "Test Pit"]
 )
 
 
