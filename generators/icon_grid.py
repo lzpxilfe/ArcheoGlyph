@@ -30,13 +30,15 @@ MARGIN = 4
 #: The two stroke weights, and the gap between them.
 #:
 #: These were 3 and 2 units - a ratio of 1.5, which is not enough for the eye
-#: to read one as the silhouette and the other as detail. Icon sets that hold
-#: together at marker size put the outline at twice its internal lines or
-#: more, so the outline carries the shape and the detail stays quiet inside
-#: it. At 3.5 against 1.5 the outline is also thick enough that its round
-#: joins visibly blunt a corner, which is most of what makes a drawn icon look
-#: friendly rather than sharp.
-OUTLINE = 3.5
+#: to read one as the silhouette and the other as detail. What separates a
+#: shape from what is drawn inside it is the *ratio*, not the absolute
+#: weight, so the detail line came down rather than the outline going up: at
+#: 3 against 1.5 the contrast is still double, and the outline is lighter
+#: than it was when the two were 3 and 2.
+#:
+#: Three units is also still thick enough that the round joins visibly blunt
+#: a corner, which is most of what keeps a drawn icon friendly.
+OUTLINE = 3.0
 DETAIL = 1.5
 
 #: Corner radius, clamped to a quarter of the shorter side so small parts stay
