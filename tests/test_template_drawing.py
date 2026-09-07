@@ -390,12 +390,112 @@ def test_every_stroke_is_one_of_the_houses_weights(painter, name):
         width = round(float(getattr(pen, "width", 0.0)), 2)
         if width in allowed or width <= 1.0:
             continue
-        # A heavy stroke is a shape drawn as a line: whole units, and never
-        # lighter than the outline it has to hold its own against.
-        if width >= tg.OUTLINE_WIDTH and abs(width / unit - round(width / unit)) < 1e-6:
+        # A heavy stroke is a shape drawn as a line - a bracelet, a ring
+        # ditch - so it is measured on the same grid as everything else: a
+        # multiple of the half-unit snap, and never lighter than the outline
+        # it has to hold its own against.
+        steps = width / (unit * icon_grid.SNAP)
+        if width >= tg.OUTLINE_WIDTH and abs(steps - round(steps)) < 1e-6:
             continue
         stray.add(width)
     assert not stray, (
         f"{name} strokes at {sorted(stray)}px; the house weights are "
-        f"{sorted(allowed)}px plus whole-unit heavy strokes"
+        f"{sorted(allowed)}px plus heavy strokes on the half-unit grid"
+    )
+
+
+# ── optical weight: every symbol carries a comparable amount of ink ──────
+
+def _flatten(path):
+    """Sub-polygons of a recorded path, curves sampled so area is honest."""
+    polygons, current, pos = [], [], (0.0, 0.0)
+    for command in getattr(path, "commands", ()):
+        head = command[0]
+        if head == "M":
+            if len(current) > 1:
+                polygons.append(current)
+            pos = (command[1], command[2])
+            current = [pos]
+        elif head == "L":
+            pos = (command[1], command[2])
+            current.append(pos)
+        elif head == "Q":
+            (x0, y0) = pos
+            cx, cy, x1, y1 = command[1], command[2], command[3], command[4]
+            for step in range(1, 7):
+                t = step / 6.0
+                u = 1.0 - t
+                current.append((u*u*x0 + 2*u*t*cx + t*t*x1,
+                                u*u*y0 + 2*u*t*cy + t*t*y1))
+            pos = (x1, y1)
+        elif head in ("rect", "ellipse"):
+            box = command[1]
+            x, y, w, h = box.x(), box.y(), box.width(), box.height()
+            if head == "rect":
+                polygons.append([(x, y), (x+w, y), (x+w, y+h), (x, y+h), (x, y)])
+            else:
+                cx, cy, rx, ry = x + w/2, y + h/2, w/2, h/2
+                polygons.append([
+                    (cx + rx*math.cos(2*math.pi*i/20), cy + ry*math.sin(2*math.pi*i/20))
+                    for i in range(21)
+                ])
+        elif head == "close":
+            if len(current) > 1:
+                polygons.append(current + [current[0]])
+            current = [pos]
+    if len(current) > 1:
+        polygons.append(current)
+    return polygons
+
+
+def _ink(painter):
+    """How much of the tile a symbol actually covers, in percent."""
+    total = 0.0
+    for kind, payload, brush, pen, clip in painter.calls:
+        width = float(getattr(pen, "width", 0.0))
+        if kind == "line" and isinstance(payload, tuple) and len(payload) == 4:
+            total += math.hypot(payload[2] - payload[0],
+                                payload[3] - payload[1]) * width
+            continue
+        if not hasattr(payload, "commands"):
+            continue
+        polygons = _flatten(payload)
+        if isinstance(brush, FakeColor):
+            for polygon in polygons:
+                doubled = 0.0
+                count = len(polygon)
+                for i in range(count):
+                    x1, y1 = polygon[i]
+                    x2, y2 = polygon[(i + 1) % count]
+                    doubled += x1*y2 - x2*y1
+                total += abs(doubled) / 2.0 * (brush.alpha / 255.0)
+        for polygon in polygons:
+            total += sum(
+                math.hypot(polygon[i+1][0] - polygon[i][0],
+                           polygon[i+1][1] - polygon[i][1])
+                for i in range(len(polygon) - 1)
+            ) * width * 0.5
+    return total / (SIZE * SIZE) * 100.0
+
+
+#: Every symbol was drawn to fill the same safe area, which is not the same as
+#: carrying the same visual weight: a solid disc that fills its tile and a
+#: needle that spans it are the same size and nowhere near the same ink. Left
+#: alone the catalogue ran from 9 percent to 66 - a seven-fold spread, so on a
+#: legend the roof tile read as a block and the horse bit went missing.
+#:
+#: The blade series are corrected up and the vessels down by one factor each
+#: (BLADE_SCALE, VESSEL_SCALE), which keeps the differences inside a family.
+INK_FLOOR = 12.0
+INK_CEILING = 50.0
+
+
+@pytest.mark.parametrize("name", sorted(TemplateGenerator.TEMPLATE_INFO))
+def test_symbols_carry_a_comparable_weight_of_ink(painter, name):
+    _paint(painter, name)
+    ink = _ink(painter)
+    assert INK_FLOOR <= ink <= INK_CEILING, (
+        f"{name} covers {ink:.0f}% of its tile; the set is held to "
+        f"{INK_FLOOR:.0f}-{INK_CEILING:.0f}% so no symbol shouts and none "
+        f"goes missing next to the rest"
     )
