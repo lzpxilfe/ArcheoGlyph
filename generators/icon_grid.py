@@ -26,9 +26,23 @@ from qgis.PyQt.QtGui import QPainterPath
 
 UNITS = 64
 MARGIN = 4
-OUTLINE = 3
-DETAIL = 2
-RADIUS = 3      # clamped to a quarter of the shorter side, so small parts stay crisp
+
+#: The two stroke weights, and the gap between them.
+#:
+#: These were 3 and 2 units - a ratio of 1.5, which is not enough for the eye
+#: to read one as the silhouette and the other as detail. Icon sets that hold
+#: together at marker size put the outline at twice its internal lines or
+#: more, so the outline carries the shape and the detail stays quiet inside
+#: it. At 3.5 against 1.5 the outline is also thick enough that its round
+#: joins visibly blunt a corner, which is most of what makes a drawn icon look
+#: friendly rather than sharp.
+OUTLINE = 3.5
+DETAIL = 1.5
+
+#: Corner radius, clamped to a quarter of the shorter side so small parts stay
+#: crisp. Raised with the outline: a heavier stroke needs a wider corner to
+#: turn through, or the join reads as a blob.
+RADIUS = 4
 
 #: Coordinates snap to this fraction of a unit. Half a unit is fine enough for
 #: a diagonal to look intentional and coarse enough to keep the set aligned.
@@ -302,17 +316,93 @@ class Grid:
         path.closeSubpath()
         return path
 
-    def poly(self, points, close=True):
-        """A straight-sided shape through grid points."""
+    def _rounded(self, points, close, radius):
+        """
+        Walk a polygon, turning each corner through a quad instead of a spike.
+
+        ``rect`` has rounded its corners since the grid was built, but every
+        other straight-sided shape came to a hard point, which is what made a
+        north arrow read as a needle and a gable as a blade. The radius is
+        clamped to 40 percent of the shorter adjacent edge, so a long side
+        keeps the full corner and a short one is not swallowed by it.
+        """
+        pts = []
+        for x, y in points:
+            point = (snap(x), snap(y))
+            if not pts or math.hypot(point[0] - pts[-1][0],
+                                     point[1] - pts[-1][1]) > 1e-9:
+                pts.append(point)
+        # A profile that closes to a zero-width tip lands two points on the
+        # same spot; left as a pair they give a corner with no edge to cut
+        # back along, and the tip stays a needle.
+        if close and len(pts) > 1 and math.hypot(pts[0][0] - pts[-1][0],
+                                                 pts[0][1] - pts[-1][1]) < 1e-9:
+            pts.pop()
+        count = len(pts)
+        if count < 3:
+            path = QPainterPath()
+            for index, point in enumerate(pts):
+                (path.moveTo if index == 0 else path.lineTo)(
+                    self.u(point[0]), self.u(point[1]))
+            return path
         path = QPainterPath()
-        for index, (x, y) in enumerate(points):
-            if index == 0:
-                path.moveTo(*self.pt(x, y))
+
+        def lerp(a, b, distance):
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            length = math.hypot(dx, dy)
+            if length < 1e-9:
+                return a
+            t = min(distance, length) / length
+            return (a[0] + dx * t, a[1] + dy * t)
+
+        started = False
+        for index in range(count):
+            corner = pts[index]
+            before, after = pts[index - 1], pts[(index + 1) % count]
+            # The ends of an open polyline are not corners.
+            if not close and index in (0, count - 1):
+                if not started:
+                    path.moveTo(self.u(corner[0]), self.u(corner[1]))
+                    started = True
+                else:
+                    path.lineTo(self.u(corner[0]), self.u(corner[1]))
+                continue
+            span = min(math.hypot(corner[0] - before[0], corner[1] - before[1]),
+                       math.hypot(corner[0] - after[0], corner[1] - after[1]))
+            cut = min(radius, span * 0.4)
+            entry = lerp(corner, before, cut)
+            exit_ = lerp(corner, after, cut)
+            if not started:
+                path.moveTo(self.u(entry[0]), self.u(entry[1]))
+                started = True
             else:
-                path.lineTo(*self.pt(x, y))
+                path.lineTo(self.u(entry[0]), self.u(entry[1]))
+            if cut > 0.01:
+                path.quadTo(self.u(corner[0]), self.u(corner[1]),
+                            self.u(exit_[0]), self.u(exit_[1]))
+            else:
+                path.lineTo(self.u(corner[0]), self.u(corner[1]))
         if close:
             path.closeSubpath()
         return path
+
+    def poly(self, points, close=True, r=RADIUS):
+        """
+        A straight-sided shape through grid points, corners turned not spiked.
+
+        Pass ``r=0`` where a shape genuinely needs a crisp point.
+        """
+        if r <= 0:
+            path = QPainterPath()
+            for index, (x, y) in enumerate(points):
+                if index == 0:
+                    path.moveTo(*self.pt(x, y))
+                else:
+                    path.lineTo(*self.pt(x, y))
+            if close:
+                path.closeSubpath()
+            return path
+        return self._rounded(points, close, r)
 
     def line(self, x0, y0, x1, y1):
         path = QPainterPath()
@@ -321,18 +411,29 @@ class Grid:
         return path
 
     # -- the shape most artefacts share --------------------------------
-    def symmetric(self, profile, curved=False, cx=None):
+    #: How far a faceted profile turns its corners. Smaller than RADIUS: a
+    #: blade should lose its needle without losing its edge.
+    FACET = 2.0
+
+    def symmetric(self, profile, curved=False, cx=None, r=None):
         """
         A shape mirrored about a vertical axis.
 
         ``profile`` is a list of ``(half_width, y)`` in units, read top to
         bottom: the right-hand outline. Blades, vessels, mounds and pit
         sections are all this one call, which is what keeps them a family.
-        ``curved`` rounds the joins for thrown pottery; blades stay faceted.
+        ``curved`` rounds the joins for thrown pottery; a faceted profile
+        keeps its facets but turns its corners, because a spear point that
+        comes to a mathematical point reads as a needle rather than a spear.
         """
         cx = self.centre if cx is None else cx
         right = [(cx + w, y) for w, y in profile]
         left = [(cx - w, y) for w, y in reversed(profile)]
+
+        if not curved:
+            radius = self.FACET if r is None else r
+            if radius > 0:
+                return self._rounded(right + left, True, radius)
 
         path = QPainterPath()
         path.moveTo(*self.pt(*right[0]))

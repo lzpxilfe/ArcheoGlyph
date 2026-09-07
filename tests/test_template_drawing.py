@@ -279,3 +279,123 @@ def test_grid_native_templates_respect_the_safe_area(painter, name):
     assert not outside, (
         f"{name} draws outside the {icon_grid.MARGIN}-unit safe area at {outside[:3]}"
     )
+
+
+# ── the house style: weight contrast, and corners that turn ──────────────
+
+def _anchor_rings(path):
+    """
+    The corner points of a recorded path, per closed run.
+
+    Control points are not corners, so a quad contributes only its endpoint;
+    otherwise every curve would look like a chain of sharp turns.
+    """
+    rings, current, pos = [], [], (0.0, 0.0)
+    for command in getattr(path, "commands", ()):
+        head = command[0]
+        if head == "M":
+            if len(current) > 2:
+                rings.append(current)
+            pos = (command[1], command[2])
+            current = [pos]
+        elif head == "L":
+            pos = (command[1], command[2])
+            current.append(pos)
+        elif head == "Q":
+            pos = (command[3], command[4])
+            current.append(pos)
+        elif head == "C":
+            pos = (command[5], command[6])
+            current.append(pos)
+        elif head == "close":
+            if len(current) > 2:
+                rings.append(current)
+            current = [pos]
+    if len(current) > 2:
+        rings.append(current)
+    return rings
+
+
+#: The floor for a corner in a filled silhouette. Anything sharper is a spike
+#: rather than a point, and a set of spikes is what makes a catalogue look
+#: hostile at marker size. Measured only across edges long enough to have a
+#: direction - a 2-unit chamfer is not a corner.
+MIN_CORNER_DEGREES = 40.0
+MIN_EDGE_PX = 10.0
+
+
+@pytest.mark.parametrize("name", sorted(TemplateGenerator.TEMPLATE_INFO))
+def test_no_silhouette_comes_to_a_spike(painter, name):
+    """
+    Corners turn; they do not come to a point.
+
+    Grid.poly and the faceted Grid.symmetric cut every corner back and turn it
+    through a quad, so this holds by construction - a north arrow that used to
+    close at 19 degrees now noses over. A regression here means a drawing
+    built its outline by hand instead of going through the grid.
+    """
+    _paint(painter, name)
+    for kind, payload, brush, pen, clip in painter.calls:
+        if not isinstance(brush, FakeColor):
+            continue
+        for ring in _anchor_rings(payload):
+            count = len(ring)
+            for index in range(count):
+                before, corner, after = (
+                    ring[index - 1], ring[index], ring[(index + 1) % count],
+                )
+                first = (before[0] - corner[0], before[1] - corner[1])
+                second = (after[0] - corner[0], after[1] - corner[1])
+                one = math.hypot(*first)
+                two = math.hypot(*second)
+                if one < MIN_EDGE_PX or two < MIN_EDGE_PX:
+                    continue
+                cosine = (first[0] * second[0] + first[1] * second[1]) / (one * two)
+                angle = math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
+                assert angle >= MIN_CORNER_DEGREES, (
+                    f"{name} has a {angle:.0f} degree corner at "
+                    f"({corner[0]:.0f}, {corner[1]:.0f}); build the outline "
+                    f"with Grid.poly or Grid.symmetric so it turns"
+                )
+
+
+def test_the_outline_is_at_least_twice_its_internal_lines():
+    """
+    The reader has to be able to tell the silhouette from the detail inside
+    it. At 3 units against 2 the two weights were close enough to read as one,
+    which is what made the set look flat and scratchy.
+    """
+    assert icon_grid.OUTLINE >= 2.0 * icon_grid.DETAIL, (
+        f"outline {icon_grid.OUTLINE} against detail {icon_grid.DETAIL} is "
+        "not enough contrast to separate a shape from what is drawn in it"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(TemplateGenerator.TEMPLATE_INFO))
+def test_every_stroke_is_one_of_the_houses_weights(painter, name):
+    """
+    Two steps, plus deliberate heavy strokes measured in grid units.
+
+    _weight used to scale anything above the outline step by a bare 1.3, so a
+    bracelet asking for its heaviest possible ring got 9.1px - thinner than an
+    ordinary 12px outline, and barely above a detail line. A stroke that lands
+    between the steps is either that bug or a drawing inventing a third
+    weight.
+    """
+    _paint(painter, name)
+    unit = SIZE / icon_grid.UNITS
+    allowed = {round(tg.DETAIL_WIDTH, 2), round(tg.OUTLINE_WIDTH, 2)}
+    stray = set()
+    for kind, payload, brush, pen, clip in painter.calls:
+        width = round(float(getattr(pen, "width", 0.0)), 2)
+        if width in allowed or width <= 1.0:
+            continue
+        # A heavy stroke is a shape drawn as a line: whole units, and never
+        # lighter than the outline it has to hold its own against.
+        if width >= tg.OUTLINE_WIDTH and abs(width / unit - round(width / unit)) < 1e-6:
+            continue
+        stray.add(width)
+    assert not stray, (
+        f"{name} strokes at {sorted(stray)}px; the house weights are "
+        f"{sorted(allowed)}px plus whole-unit heavy strokes"
+    )

@@ -37,7 +37,11 @@ def _weight(width):
         return DETAIL_WIDTH
     if width <= 3.4:
         return OUTLINE_WIDTH
-    return width * 1.3      # a deliberately heavy stroke stays heavy
+    # A deliberately heavy stroke - a bracelet, an earring hoop, a ring ditch
+    # - is a shape drawn as a line, so it is given in grid units like every
+    # other measurement here. Scaling it by a bare 1.3 made the heaviest
+    # strokes in the catalogue *thinner* than an ordinary detail line.
+    return width * _UNIT
 
 
 class _SoftPainter:
@@ -1414,43 +1418,56 @@ class TemplateGenerator:
         painter.setBrush(color)
 
         if variant in ("zenpokouen", "makimuku_en"):
-            painter.drawPath(g.keyhole(head_cy=22, head_r=13, join_y=30,
-                                       foot_half=14, foot_y=57))
+            mound = g.keyhole(head_cy=22, head_r=13, join_y=30,
+                              foot_half=14, foot_y=57)
+            painter.drawPath(mound)
         elif variant == "enpun":                        # 원분
-            painter.drawPath(g.circle(32, 32, 25))
+            mound = g.circle(32, 32, 25)
+            painter.drawPath(mound)
         elif variant == "hofun":                        # 방분
-            painter.drawPath(g.rect(9, 9, 46, 46))
+            mound = g.rect(9, 9, 46, 46)
+            painter.drawPath(mound)
         elif variant == "hotategai":                    # 가리비형: short front
-            painter.drawPath(g.keyhole(head_cy=26, head_r=17, join_y=40,
-                                       foot_half=13, foot_y=56))
+            mound = g.keyhole(head_cy=26, head_r=17, join_y=40,
+                              foot_half=13, foot_y=56)
+            painter.drawPath(mound)
         elif variant in ("zenpokoho", "makimuku_ho"):
             # 전방후방분: the same mound as 전방후원분 with a square rear, so
             # the two read as a pair. The numbers are the keyhole's, which is
             # what puts the shoulder in the same place in both.
-            painter.drawPath(g.poly([(19, 9), (45, 9), (45, 28), (42, 30),
-                                     (46, 57), (18, 57), (22, 30), (19, 28)]))
+            mound = g.poly([(19, 9), (45, 9), (45, 28), (42, 30),
+                            (46, 57), (18, 57), (22, 30), (19, 28)])
+            painter.drawPath(mound)
         elif variant == "sohochuen":                    # 쌍방중원분
-            painter.drawPath(g.spindle(r=16, waist_half=10, foot_half=7,
-                                       top_y=7, bottom_y=57))
+            mound = g.spindle(r=16, waist_half=10, foot_half=7,
+                              top_y=7, bottom_y=57)
+            painter.drawPath(mound)
         elif variant == "yosumi":                       # 사우돌출형
             # The corners are the whole point of the type, so the sides have
             # to fall in between them. Sampling a circle, as this used to,
             # only produced an octagon with nothing protruding.
-            painter.drawPath(g.poly([
+            mound = g.poly([
                 (7, 7), (32, 14), (57, 7), (50, 32),
                 (57, 57), (32, 50), (7, 57), (14, 32),
-            ]))
+            ])
+            painter.drawPath(mound)
         elif variant == "daijobo":                      # 대상묘: a low platform
-            painter.drawPath(g.rect(7, 20, 50, 24))
+            mound = g.rect(7, 20, 50, 24)
+            painter.drawPath(mound)
         else:
-            painter.drawPath(g.circle(32, 32, 25))
+            mound = g.circle(32, 32, 25)
+            painter.drawPath(mound)
 
         # 마키무쿠형 is the one that carries a mark: the terraces on the front.
+        # Clipped, because a terrace laid out from the bounding box runs past
+        # the shoulder of the mound and out into the tile.
         if variant in ("makimuku_en", "makimuku_ho"):
+            _clip_detail(painter, mound)
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(_pen(color.darker(175), 1.2))
+            painter.setPen(_pen(color, 1.2))
             painter.drawPath(g.line(20, 44, 44, 44))
             painter.drawPath(g.line(18, 50, 46, 50))
+            painter.restore()
 
         painter.setBrush(old_brush)
         painter.setPen(old_pen)
