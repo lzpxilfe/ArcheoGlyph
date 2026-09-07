@@ -55,6 +55,41 @@ declined and the artefact is drawn plain, with a log line naming the fold
 count and score that were refused. Stamping petals onto a dragon-motif tile
 would be worse than drawing it plain.
 
+## Moving the lamp: reading relief the way it is meant to be read
+
+There is a way to get the decoration from the object itself rather than from
+a rubbing, and it works because it adds the information one photograph
+physically cannot hold.
+
+Stains, discolouration and grain — the things that beat every single-image
+attempt — do not change when the lamp moves. Relief does. So photograph the
+artefact **three to five times with the light moved between shots and the
+camera left where it is**, and the per-pixel variation across that stack is
+the decoration with the surface colour divided out. This is the simplified
+form of the Reflectance Transformation Imaging archaeology already uses for
+exactly this problem; a desk lamp and a phone on a stand are enough.
+
+Pass the extra frames as `light_stack` (the dialog takes a multiple
+selection). On a synthetic eight-petal tile carrying stains, one frame is
+refused at 0.022 and the five-frame stack reads eight petals and traces them.
+
+Two things to get right when shooting:
+
+- **Five or more positions, and not a square.** The lamps are an arrangement
+  in a circle too. Four evenly spaced ones make an eight-petal tile read as
+  four, and nothing in the stack can separate the artefact's symmetry from
+  the lighting's — a reading that matches the lamp count is refused rather
+  than reported. Adding a fifth lamp to the same four does not fix it; the
+  four-fold component is still there. Re-shoot with positions that are not a
+  square.
+- **Do not move the camera.** Frames are aligned by translation, but a frame
+  that has drifted more than about 8% of the image is used unaligned and
+  said so in the log.
+
+This path has been verified on synthetic stacks built from known height
+fields, not on real multi-light photographs of Korean artefacts — none were
+available to this work.
+
 ## What to feed it instead
 
 The reading works, and works exactly, when the repeat is clean. A **rubbing
@@ -74,3 +109,6 @@ are catalogued in the manifest as a warning to the next reader).
 | blades, stone tools | works | works |
 | pottery vessels | outline only, no surface pattern | pattern read |
 | mirrors, roof tile ends | outline only — declined, drawn plain | motif read and replayed |
+
+With a multi-light stack, mirrors and roof tile ends move into the last
+column without needing a rubbing at all.

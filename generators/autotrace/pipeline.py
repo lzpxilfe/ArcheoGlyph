@@ -89,7 +89,7 @@ from .structure import (
 )
 
 
-def run_autotrace(bgr, options, mask_provider):
+def run_autotrace(bgr, options, mask_provider, relief=None):
     """
     Full Auto Trace pipeline on an 8-bit BGR image.
 
@@ -97,6 +97,10 @@ def run_autotrace(bgr, options, mask_provider):
     :param options: AutoTraceOptions
     :param mask_provider: callable ``processing_bgr -> uint8 mask`` (the
         caller owns backends, caching and alpha handling)
+    :param relief: optional single-channel relief map, the same size as
+        ``bgr``, built from a stack of differently lit photographs. The
+        silhouette still comes from the photograph - a relief map has no
+        clean outline - and only the decoration is read from this.
     :return: SVG string in analysis-pixel coordinates
     """
     options = options.normalized()
@@ -411,11 +415,21 @@ def run_autotrace(bgr, options, mask_provider):
     # together and stamp the agreed shape back around the face.
     folded_motif_lines = []
     if is_roundish:
-        frame = find_rotational_frame(
-            cv2.cvtColor(processing_bgr, cv2.COLOR_BGR2GRAY), target_mask)
+        # Shallow relief is height, and one photograph has none of it. Where
+        # the caller supplied a stack lit from several directions, read the
+        # decoration off that instead: what stays the same as the lamp moves
+        # is a stain, and what changes is the relief.
+        motif_source = relief
+        if motif_source is not None and motif_source.shape[:2] != target_mask.shape[:2]:
+            motif_source = cv2.resize(motif_source,
+                                      (target_mask.shape[1], target_mask.shape[0]),
+                                      interpolation=cv2.INTER_AREA)
+        if motif_source is None:
+            motif_source = cv2.cvtColor(processing_bgr, cv2.COLOR_BGR2GRAY)
+        frame = find_rotational_frame(motif_source, target_mask)
         if frame is not None and frame.score >= FRAME_MIN_SCORE:
             folded_motif_lines = replay_rotational_motif(
-                fold_rotational_motif(processing_bgr[:, :, 1], frame), frame)
+                fold_rotational_motif(motif_source, frame), frame)
         elif frame is not None:
             # Saying nothing here would be the ONNX fallback trap again: the
             # symbol comes out a plain disc and nothing says why.

@@ -191,9 +191,15 @@ class ContourGenerator:
         exaggeration=None,
         synthetic_structure=None,
         input_kind=None,
+        light_stack=None,
     ):
         """
         Generate contour SVG from an image file.
+
+        :param light_stack: extra paths to the same object photographed with
+            the lamp moved. Shallow relief decoration is height, which one
+            photograph does not carry; across a stack it is what changes
+            while stains do not.
 
         :return: SVG string (analysis-pixel coordinates; see generate_result
             for the cropped, parametrised version used by the UI)
@@ -206,7 +212,34 @@ class ContourGenerator:
             symbolic_looseness=symbolic_looseness, exaggeration=exaggeration,
             synthetic_structure=synthetic_structure, input_kind=input_kind,
         )
-        return run_autotrace(loaded.bgr, options, self._mask_provider(loaded))
+        return run_autotrace(loaded.bgr, options, self._mask_provider(loaded),
+                             relief=self._relief_for(loaded, light_stack))
+
+    def _relief_for(self, loaded, light_stack):
+        """
+        A relief map from extra frames of the same object, or None.
+
+        The frames are photographs of the same artefact with the lamp moved
+        between them. Anything that does not change with the lamp - a stain,
+        discolouration - cancels; the decoration does not. Without a stack
+        this returns None and everything behaves as before.
+        """
+        paths = [p for p in (light_stack or []) if p]
+        if not paths:
+            return None
+        from .autotrace.relief import ADVISED_LIGHTS, relief_from_light_stack
+
+        frames = [loaded.bgr]
+        for path in paths:
+            try:
+                frames.append(self._load(path).bgr)
+            except Exception as exc:
+                log_exception(f"light stack frame {path}", exc)
+        if len(frames) < ADVISED_LIGHTS:
+            log(f"{len(frames)} lit frames given; {ADVISED_LIGHTS} or more, "
+                f"and not an even arrangement, keeps the lamp positions out "
+                f"of the reading.")
+        return relief_from_light_stack(frames)
 
     def generate_result(self, image_path, **kwargs):
         """
