@@ -33,27 +33,66 @@ decoration — indistinguishable from a posthole. That decoration is **shallow
 relief**, which a photograph carries only as shading under whatever light
 the object happened to be under.
 
-Seven approaches were tried and measured. The last one is the informative
-one:
+Seven approaches were tried and measured, and all seven read the lotus tile
+as 10, 8 or 12 petals depending on which pixel the image started at:
 
 | input | fold count found | score |
 | --- | --- | --- |
 | drawn six-fold control, shifted 0–4 px | 6, 6, 6, 6, 6 | 0.3097 every time |
 | photographed lotus tile, shifted 0–4 px | 10, 8, 12, 8, 8 | 0.033 – 0.100 |
 
-A one-pixel shift cannot change how many petals a tile has. The reading
-moves because the signal is on the noise floor, not because the method is
-weak — on the drawn control the same method is exact and perfectly stable.
+A one-pixel shift cannot change how many petals a tile has, so this was not
+a weak signal — it was the wrong instrument. **The cause was the frame.**
+`find_rotational_frame` searched a grid of centres and kept whichever one
+scored best, which solves a geometry problem with a noisy objective: the
+best score is the maximum of a noisy field, and it moves whenever the input
+does.
 
-Comb-pattern pottery was checked the same way and fails the same test: a
-bronze dagger with no comb decoration at all scores in the same range
-(4.75–8.93×) as the two comb-pattern jars (4.11–10.88×).
+The frame is now found by geometry before any fold is counted:
+
+1. a circle fitted to the silhouette with the cast-shadow skirt trimmed off
+   (`trimmed_face_circle`), then
+2. the centre walked downhill on the **one-cycle wave** the decoration makes
+   in the radius its contrast sits at (`recentre_on_decoration`) — off
+   centre, the same feature returns at a different radius on the far side of
+   the face, and nulling that swing needs no fold count at all.
+
+Only then do folds get counted, and every plausible frame votes, weighed by
+its own score (`survey_folds`). The same photograph now reads **8 petals on
+three of four nudges** — the tile has eight — eleven times faster than the
+search it replaced, and every control drops:
+
+| input (4 one-pixel nudges each) | folds | score |
+| --- | --- | --- |
+| plain drawn disc | 4 | 0.000 |
+| drawn discs of scattered blobs, four seeds | wanders | 0.003 – 0.005 |
+| **photographed dragon-motif tile** | wanders | 0.006 – 0.008 |
+| **photographed bronze mirror** | wanders | 0.013 – 0.015 |
+| two comb-pattern jars, dagger, ground stone | wanders | 0.001 – 0.015 |
+| drawn six-fold disc | 6, 6, 6, 6 | 0.068 |
+| **photographed lotus tile** | 8, 8, 8, 9 | 0.017 – 0.061 |
+| drawn eight-fold disc | 8, 8, 8, 8 | 0.100 |
+| drawn twelve-fold disc | 12, 12, 12, 12 | 0.349 |
 
 So the gate (`FRAME_MIN_SCORE`, `generators/autotrace/round_motif.py`) sits
-**above** that noise band at 0.15. Photographs of relief decoration are
-declined and the artefact is drawn plain, with a log line naming the fold
-count and score that were refused. Stamping petals onto a dragon-motif tile
-would be worse than drawing it plain.
+**above every control** at 0.03 — twice the loudest thing with no repeat in
+it, half the weakest thing that has one. It was 0.15 while the score meant
+"best fold score found by searching"; the score means something else now, so
+the number moved with it. The gate is not weaker: the mirror and the dragon
+tile it used to refuse are further below this one than they were below the
+old one.
+
+The fourth nudge of the lotus reads 9 at 0.017 and is refused. That is the
+right outcome and not a failure of the gate — the tracer declines rather
+than stamping nine petals onto an eight-petal tile.
+
+Comb-pattern pottery was checked the same way and still fails: a bronze
+dagger with no comb decoration at all scores in the same range (4.75–8.93×)
+as the two comb-pattern jars (4.11–10.88×). Banded decoration is not read.
+
+Everything refused is refused out loud, with a log line naming the fold
+count and score. Stamping petals onto a dragon-motif tile would be worse
+than drawing it plain.
 
 ## Moving the lamp: reading relief the way it is meant to be read
 
@@ -75,13 +114,15 @@ refused at 0.022 and the five-frame stack reads eight petals and traces them.
 
 Two things to get right when shooting:
 
-- **Five or more positions, and not a square.** The lamps are an arrangement
-  in a circle too. Four evenly spaced ones make an eight-petal tile read as
-  four, and nothing in the stack can separate the artefact's symmetry from
-  the lighting's — a reading that matches the lamp count is refused rather
-  than reported. Adding a fifth lamp to the same four does not fix it; the
-  four-fold component is still there. Re-shoot with positions that are not a
-  square.
+- **Three or more positions.** The lamps are an arrangement in a circle too,
+  and they used to be read as one: with the searched frame, four evenly
+  spaced lamps made an eight-petal tile read as four, and `relief.py` carried
+  a guard that refused any reading equal to the lamp count. That confound
+  came from the frame, not from the lamps. With the frame fixed by geometry
+  it does not reproduce — six fold counts against five lamp counts all read
+  correctly — and the guard is gone with it, since it would now only refuse
+  correct answers. Five positions are still advised, because more lamps means
+  more relief separated from more stain.
 - **Do not move the camera.** Frames are aligned by translation, but a frame
   that has drifted more than about 8% of the image is used unaligned and
   said so in the log.

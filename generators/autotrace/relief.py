@@ -34,11 +34,13 @@ except ImportError:  # pragma: no cover - mirrors the rest of the package
 #: with one frame there is nothing to compare against.
 MIN_STACK = 2
 
-#: Lamp positions are themselves an arrangement in a circle, and with few of
-#: them that arrangement is stamped into the relief map. Four lamps around a
-#: disc make an eight-petal tile read as four - measured, not supposed. Five
-#: or more, and an odd count for preference, keeps the lamps out of the
-#: answer; below this the reading is not offered at all.
+#: Lamp positions are themselves an arrangement in a circle, and they used to
+#: be read as one: four lamps around a disc made an eight-petal tile read as
+#: four. That came from the frame rather than the lamps, and once the face is
+#: located by geometry it does not reproduce - six fold counts against five
+#: lamp counts all read correctly. Five is still what to aim for, because
+#: every extra position separates more relief from more stain, but it is
+#: advice now and not a guard.
 ADVISED_LIGHTS = 5
 
 #: How far ECC is allowed to move a frame onto the first, as a fraction of
@@ -141,15 +143,3 @@ def relief_from_light_stack(images, align=True):
     except Exception as exc:
         log_exception("relief_from_light_stack", exc)
         return None
-
-
-def fold_is_confounded_by_the_lights(folds, frame_count):
-    """
-    Whether a fold count is indistinguishable from the lamp arrangement.
-
-    With four lamps evenly around a disc, a four-fold reading may be the
-    artefact or may be the lighting, and nothing in the stack can separate
-    them - so it is refused rather than reported. Take another frame from a
-    new position and the ambiguity goes away.
-    """
-    return bool(folds) and bool(frame_count) and int(folds) == int(frame_count)

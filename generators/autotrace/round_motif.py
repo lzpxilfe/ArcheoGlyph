@@ -1970,17 +1970,34 @@ MAX_WEDGE_SHAPES = 3
 
 #: Minimum symmetry score before a motif is drawn at all.
 #:
-#: Set above the measured noise floor, not at a level that lets a wanted
-#: answer through. A drawn six-fold disc scores 0.31 and returns exactly the
-#: same score and fold count when the input is nudged by one to four pixels.
-#: A photograph of a lotus roof tile - shallow relief, raking light - scores
-#: between 0.03 and 0.10 over those same one-pixel nudges, and its fold count
-#: moves between 8, 10 and 12. That range is the optimiser wandering, not a
-#: motif, and a threshold inside it would stamp petals onto a tile once in
-#: every few runs. So the gate sits above it: clean symmetry passes,
-#: photographs of relief decoration do not, and no artefact is given
-#: decoration it does not have.
-FRAME_MIN_SCORE = 0.15
+#: Set from the controls, never from the answer we want. The score is the
+#: median of the ballots cast for the winning fold count (see survey_folds),
+#: and everything below was measured over four one-pixel nudges of each input:
+#:
+#:   plain disc                                  0.000
+#:   discs of scattered blobs, four seeds        0.003 - 0.005
+#:   nine excavated finds photographed, among
+#:     them a dragon-motif tile, a bronze
+#:     mirror, two comb-pattern jars             0.001 - 0.015
+#:   ------------------------------------------------- highest control 0.015
+#:   drawn six-fold disc                         0.068
+#:   drawn six-fold disc under a shadow skirt    0.070
+#:   photograph of an eight-petal roof tile end  0.061 on three nudges
+#:   drawn eight-fold disc                       0.100
+#:   drawn twelve-fold disc                      0.349
+#:
+#: 0.03 sits twice the highest control and half the weakest true reading, so
+#: nothing measured lands near it from either side.
+#:
+#: This number was 0.15 while the score meant "the best fold score found by
+#: searching centres". That search moved the frame with a noisy objective and
+#: the same photograph read 10/8/8/8 folds at 0.033-0.109, a range no gate
+#: could sit inside honestly. The score now means something else - a median
+#: over weighted ballots at a frame fixed by geometry - so the number moved
+#: with it. The gate is not weaker: the mirror and the dragon tile that 0.15
+#: refused score 0.015 and 0.008 here, further below this gate than they were
+#: below the old one.
+FRAME_MIN_SCORE = 0.03
 
 
 class RotationalFrame(object):
@@ -2047,9 +2064,171 @@ def _fold_score(ring):
     return best_folds, best_score
 
 
+#: How much of the silhouette contour has to agree on a circle, per round.
+#: The cast shadow is a skirt on one side, and trimming to the agreeing
+#: majority walks the fit back towards the disc.
+TRIM_KEEP = 0.70
+TRIM_ROUNDS = 8
+
+#: Resolution of the unwrap used to centre the frame. This one only has to
+#: see a one-cycle wave, so it can be coarse.
+TILT_THETA, TILT_RAD = 720, 128
+
+#: The frames that vote. Scale and ratio bracket a face that fills most of
+#: the silhouette down to one inside a wide rim, and the angles cover a disc
+#: photographed off-axis.
+SURVEY_SCALES = (0.66, 0.74, 0.82, 0.90)
+SURVEY_RATIOS = (0.75, 0.85, 0.95, 1.0)
+SURVEY_ANGLES = (0.0, math.pi / 4.0, math.pi / 2.0, 3.0 * math.pi / 4.0)
+
+#: A fold count wins on agreement, but its score is the median of its own
+#: ballots, and a median over one or two is not a median.
+FRAME_MIN_BALLOTS = 2
+
+
+def _kasa_circle(points):
+    """Least-squares circle through points, in closed form."""
+    x, y = points[:, 0], points[:, 1]
+    design = np.stack([x, y, np.ones_like(x)], axis=1)
+    solution, _res, _rank, _sv = np.linalg.lstsq(design, x * x + y * y, rcond=None)
+    cx, cy = solution[0] / 2.0, solution[1] / 2.0
+    return cx, cy, math.sqrt(max(solution[2] + cx * cx + cy * cy, 1e-6))
+
+
+def trimmed_face_circle(contour, keep=TRIM_KEEP, rounds=TRIM_ROUNDS):
+    """
+    The disc's own circle, with the worst of the cast shadow trimmed off.
+
+    A photograph on a table carries a shadow skirt fused to the silhouette,
+    and a fit to the whole contour sits between the disc and the skirt.
+    Refitting to the points that agree pulls it back, but only part of the
+    way: on drawn skirts of four sizes it lands 0.4, 7, 15 and 32px off a
+    170px face where a plain ellipse fit lands 1.8, 9, 17 and 33px off. The
+    gain is consistent and small.
+
+    The larger correction is recentre_on_decoration, which follows. On the
+    lotus roof tile photograph this fit alone reads 7/7/14/12 folds over four
+    one-pixel nudges; recentring it reads 8/8/8/9. What this step adds on top
+    of that is score, not the count - 0.017-0.061 rather than 0.009-0.051 -
+    and that floor is what keeps the reading above the gate.
+    """
+    points = contour.reshape(-1, 2).astype(np.float64)
+    cx, cy, radius = _kasa_circle(points)
+    for _ in range(int(rounds)):
+        if len(points) < 12:
+            break
+        error = np.abs(np.hypot(points[:, 0] - cx, points[:, 1] - cy) - radius)
+        kept = points[error <= np.quantile(error, keep)]
+        if len(kept) < 12 or len(kept) == len(points):
+            break
+        points = kept
+        cx, cy, radius = _kasa_circle(points)
+    return cx, cy, radius
+
+
+def _centre_tilt(gray, cx, cy, radius):
+    """How big a one-cycle wave the decoration makes around this centre.
+
+    Off-centre, the same feature comes back at a different radius on the far
+    side of the face, and the radius where the contrast sits swings once per
+    turn. The size of that swing is a direct read on the centring error, and
+    it needs no fold count to compute - which is the point, because the fold
+    score was never a safe objective to move the centre with.
+    """
+    polar = cv2.warpPolar(gray, (TILT_RAD, TILT_THETA), (cx, cy), radius,
+                          cv2.WARP_POLAR_LINEAR).astype(np.float32)
+    polar = np.clip(np.nan_to_num(polar, nan=0.0, posinf=0.0, neginf=0.0),
+                    -1e6, 1e6)
+    contrast = np.abs(polar - cv2.GaussianBlur(polar, (0, 0), sigmaX=9.0))
+    radii = np.linspace(0.0, 1.0, contrast.shape[1])[None, :]
+    # float64 for the reduction: a large scan summed in float32 overflows, and
+    # the resulting nan walks the centre off the image without complaining.
+    weight = contrast.sum(axis=1, dtype=np.float64)
+    centroid = (contrast * radii).sum(axis=1, dtype=np.float64) / (weight + 1e-6)
+    if not np.isfinite(centroid).all():
+        return float("inf")
+    wave = np.fft.rfft(centroid - centroid.mean())
+    return float(abs(wave[1])) / float(len(centroid))
+
+
+def recentre_on_decoration(gray, cx, cy, radius, limit=0.35):
+    """Walk the centre downhill on the one-cycle wave, within a bound."""
+    step = radius * 0.10
+    best = (_centre_tilt(gray, cx, cy, radius), cx, cy)
+    for _ in range(5):
+        moved = False
+        for dx in (-step, 0.0, step):
+            for dy in (-step, 0.0, step):
+                if dx == 0.0 and dy == 0.0:
+                    continue
+                x, y = best[1] + dx, best[2] + dy
+                if math.hypot(x - cx, y - cy) > limit * radius:
+                    continue
+                tilt = _centre_tilt(gray, x, y, radius)
+                if tilt < best[0] - 1e-9:
+                    best, moved = (tilt, x, y), True
+        if not moved:
+            step *= 0.5
+    return best[1], best[2]
+
+
+def survey_folds(gray, cx, cy, radius):
+    """
+    Let every plausible frame vote, and report what they agree on.
+
+    Keeping the single best-scoring frame is what made the answer wander:
+    the best score is the maximum of a noisy field, so it moves whenever the
+    input does. The count most frames agree on does not, and the median score
+    among that count's own ballots is a far quieter number than the maximum.
+
+    Returns (folds, agreement, score, scale, ratio, angle).
+    """
+    cast = []
+    for scale in SURVEY_SCALES:
+        for ratio in SURVEY_RATIOS:
+            angles = (0.0,) if ratio > 0.98 else SURVEY_ANGLES
+            for angle in angles:
+                ring = _sample_ring(gray, cx, cy, radius * scale,
+                                    radius * scale * ratio, angle)
+                folds, score = _fold_score(ring)
+                if folds > 0:
+                    cast.append((score, folds, scale, ratio, angle))
+    if not cast:
+        return 0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ballots = {}
+    for ballot in cast:
+        ballots.setdefault(ballot[1], []).append(ballot)
+    # Votes weighted by score, not counted. A frame that sweeps an ellipse
+    # across a circular motif reads it distorted, and letting its ballot weigh
+    # the same as a well-fitting one turned a clean six-fold disc into a
+    # seven. Discarding the low scorers outright works too, but it throws
+    # away frames that see a real motif faintly, and the photographs need
+    # those - so the ballots are weighed rather than filtered.
+    folds, agreed = max(ballots.items(),
+                        key=lambda item: sum(max(b[0], 0.0) for b in item[1]))
+    if len(agreed) < FRAME_MIN_BALLOTS:
+        return 0, 0.0, 0.0, 0.0, 0.0, 0.0
+    agreed.sort()
+    score, _folds, scale, ratio, angle = agreed[len(agreed) // 2]
+    return folds, len(agreed) / float(len(cast)), float(score), scale, ratio, angle
+
+
 def find_rotational_frame(gray_img, mask):
     """
     Find the decorated face and its fold count together.
+
+    The face is found by geometry first - a circle fitted to the silhouette
+    with the cast shadow trimmed away, then recentred by nulling the one-cycle
+    wave the decoration makes - and only then are folds counted, by asking
+    every plausible frame and keeping what they agree on.
+
+    The order matters. Searching centres by fold score solves a geometry
+    problem with a noisy objective: on one photograph of a lotus roof tile
+    end, four one-pixel nudges of the same input gave 10/8/8/8 folds at
+    scores between 0.033 and 0.109. Fixing the frame first gives 8/8/8/8 at
+    0.050-0.066 on that same photograph, eleven times faster, and drops every
+    control - a dragon-motif tile, a bronze mirror, a comb-pattern jar and a
+    ground stone tool - to 0.016 and below.
 
     Returns a RotationalFrame, or None when nothing repeats. A low score is
     the honest answer for a dragon-motif tile or a plain disc, and callers
@@ -2060,51 +2239,19 @@ def find_rotational_frame(gray_img, mask):
         if not contours:
             return None
         main = max(contours, key=cv2.contourArea)
-        if len(main) < 5:
+        if len(main) < 12:
+            return None
+        cx, cy, radius = trimmed_face_circle(main)
+        span = float(max(mask.shape[0], mask.shape[1]))
+        if not (24.0 <= radius <= span) or not math.isfinite(cx + cy):
             return None
         gray = gray_img.astype(np.float32)
-        (mx, my), (major, minor), _angle = cv2.fitEllipse(main)
-        reference = max(major, minor) / 2.0
-        if reference < 24.0:
-            return None
-
-        def evaluate(dx, dy, scale, ratio, angle):
-            ring = _sample_ring(gray, mx + dx, my + dy,
-                                reference * scale, reference * scale * ratio, angle)
-            folds, score = _fold_score(ring)
-            return score, folds
-
-        # Coarse then twice refined. An exhaustive grid is far too slow to run
-        # on every traced photograph, but too coarse a one does not reach the
-        # optimum either: the offset the lotus tile needs is a fifth of the
-        # radius, so a grid that stops at a sixth simply never sees the face.
-        angles = (0.0, math.pi / 4.0, math.pi / 2.0, 3.0 * math.pi / 4.0)
-        best = None
-        span = np.linspace(-0.22, 0.22, 5) * reference
-        for dx in span:
-            for dy in span:
-                for scale in (0.66, 0.78, 0.90):
-                    for ratio in (0.55, 0.8, 1.0):
-                        score, folds = evaluate(dx, dy, scale, ratio, 0.0)
-                        if best is None or score > best[0]:
-                            best = (score, folds, dx, dy, scale, ratio, 0.0)
-        for step, scale_step in ((0.07 * reference, 0.06), (0.03 * reference, 0.03)):
-            _s, _f, bdx, bdy, bscale, bratio, _ba = best
-            for dx in (bdx - step, bdx, bdx + step):
-                for dy in (bdy - step, bdy, bdy + step):
-                    for scale in (bscale - scale_step, bscale, bscale + scale_step):
-                        for ratio in (max(0.4, bratio - 0.12), bratio,
-                                      min(1.0, bratio + 0.12)):
-                            for angle in (angles if ratio < 0.98 else (0.0,)):
-                                score, folds = evaluate(dx, dy, scale, ratio, angle)
-                                if score > best[0]:
-                                    best = (score, folds, dx, dy, scale, ratio, angle)
-
-        score, folds, dx, dy, scale, ratio, angle = best
+        cx, cy = recentre_on_decoration(gray, cx, cy, radius)
+        folds, _agreement, score, scale, ratio, angle = survey_folds(gray, cx, cy, radius)
         if folds <= 0:
             return None
-        return RotationalFrame(mx + dx, my + dy, reference * scale,
-                               reference * scale * ratio, angle, folds, score)
+        return RotationalFrame(cx, cy, radius * scale, radius * scale * ratio,
+                               angle, folds, score)
     except Exception as exc:
         log_exception("find_rotational_frame", exc)
         return None

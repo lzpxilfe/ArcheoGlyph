@@ -206,3 +206,135 @@ def test_every_fold_is_stamped_or_none_is():
         assert any(low <= c < high for c in centres), (
             f"no motif was stamped between {low:.0f} and {high:.0f} degrees; "
             f"the replay covers {sorted(round(c) for c in centres)}")
+
+
+def test_trimming_the_contour_beats_fitting_all_of_it():
+    """
+    A photograph on a table carries a shadow skirt fused to the silhouette,
+    and a fit to the whole contour sits between the disc and the skirt.
+
+    The gain from trimming is consistent but small, and this test says so
+    rather than claiming the skirt is removed: across four skirt sizes the
+    trimmed circle must beat a plain ellipse fit every time, and must land on
+    the face for the skirts a lit photograph actually produces.
+    """
+    for width, height, offset, tolerance in ((0.6, 0.15, 0.85, 0.04),
+                                             (0.7, 0.18, 0.90, 0.08),
+                                             (0.8, 0.22, 0.95, 0.12),
+                                             (0.9, 0.35, 1.00, 0.22)):
+        _img, mask = _disc()
+        cv2.ellipse(mask, (CENTRE[0], int(CENTRE[1] + offset * FACE_R)),
+                    (int(FACE_R * width), int(FACE_R * height)), 0, 0, 360, 255, -1)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        main = max(contours, key=cv2.contourArea)
+
+        plain = cv2.fitEllipse(main)
+        cx, cy, _radius = rm.trimmed_face_circle(main)
+        drift = math.hypot(cx - CENTRE[0], cy - CENTRE[1])
+        plain_drift = math.hypot(plain[0][0] - CENTRE[0], plain[0][1] - CENTRE[1])
+
+        assert drift < plain_drift, (
+            f"a {width}x{height} skirt: trimming gained nothing, {drift:.0f}px "
+            f"against {plain_drift:.0f}px for a plain fit")
+        assert drift < tolerance * FACE_R, (
+            f"a {width}x{height} skirt left the circle {drift:.0f}px off")
+
+
+def test_the_centre_walks_back_onto_the_decorated_face():
+    """
+    Off-centre, the same feature returns at a different radius on the far side
+    of the face, so the radius where the contrast sits swings once per turn.
+    Nulling that swing needs no fold count, which is the point - the fold
+    score was never a safe objective to move the centre with.
+    """
+    img, _mask = _disc()
+    _petals(img, 8)
+    gray = img.astype(np.float32)
+    off_x, off_y = CENTRE[0] + 0.20 * FACE_R, CENTRE[1] - 0.16 * FACE_R
+    before = math.hypot(off_x - CENTRE[0], off_y - CENTRE[1])
+
+    cx, cy = rm.recentre_on_decoration(gray, off_x, off_y, FACE_R)
+    after = math.hypot(cx - CENTRE[0], cy - CENTRE[1])
+    assert after < before / 2.0, (
+        f"the centre moved from {before:.0f}px off to {after:.0f}px off")
+
+
+def test_a_frame_that_sweeps_across_the_motif_does_not_decide_it():
+    """
+    Ballots are weighed by their score, not counted.
+
+    A frame whose ellipse sweeps across a circular motif reads it distorted
+    and scores low. Counting its ballot equally is what turned a clean
+    six-fold disc into a seven, so the weighing is the contract here: adding
+    frames that see nothing must not change the answer.
+    """
+    img, _mask = _disc()
+    _petals(img, 6)
+    gray = img.astype(np.float32)
+    folds, _agreement, score, _scale, _ratio, _angle = rm.survey_folds(
+        gray, CENTRE[0], CENTRE[1], FACE_R)
+    assert folds == 6 and score >= rm.FRAME_MIN_SCORE
+
+    original = rm.SURVEY_RATIOS
+    try:
+        # Ratios that squash the sampling ring flat see nothing but noise.
+        rm.SURVEY_RATIOS = original + (0.30, 0.24, 0.18, 0.12)
+        again = rm.survey_folds(gray, CENTRE[0], CENTRE[1], FACE_R)
+    finally:
+        rm.SURVEY_RATIOS = original
+    assert again[0] == 6, (
+        f"adding {len(again)} blind frames changed the reading to {again[0]}")
+
+
+def test_the_gate_sits_above_every_control_and_below_every_repeat():
+    """
+    The threshold is set from what has no motif, never from what does.
+
+    Drawn positives and drawn controls both, in one place, so that a change to
+    the scoring that moves them together is caught here rather than in a
+    photograph nobody can commit.
+    """
+    def read(build):
+        img, mask = build()
+        frame = rm.find_rotational_frame(img, mask)
+        return 0.0 if frame is None else frame.score
+
+    def blobs(seed):
+        def build():
+            img, mask = _disc()
+            rng = np.random.default_rng(seed)
+            for _ in range(7):
+                angle = rng.uniform(0.0, 2.0 * math.pi)
+                rad = rng.uniform(0.25, 0.8) * FACE_R
+                cv2.ellipse(img,
+                            (int(CENTRE[0] + rad * math.cos(angle)),
+                             int(CENTRE[1] + rad * math.sin(angle))),
+                            (int(rng.uniform(14, 34)), int(rng.uniform(10, 26))),
+                            rng.uniform(0, 180), 0, 360, 120, -1)
+            return img, mask
+        return build
+
+    def grain(seed):
+        def build():
+            img, mask = _disc()
+            rng = np.random.default_rng(seed)
+            noisy = np.clip(img.astype(np.float32) + rng.normal(0, 9.0, img.shape),
+                            0, 255).astype(np.uint8)
+            return noisy, mask
+        return build
+
+    controls = [read(_disc)]
+    controls += [read(blobs(seed)) for seed in (20260907, 11, 202, 5150)]
+    controls += [read(grain(seed)) for seed in (3, 41)]
+    repeats = [read(lambda folds=folds: (_petals(_disc()[0], folds), _disc()[1]))
+               for folds in (6, 8, 12)]
+
+    assert max(controls) < rm.FRAME_MIN_SCORE, (
+        f"a control reached {max(controls):.3f} against a "
+        f"{rm.FRAME_MIN_SCORE} gate")
+    assert min(repeats) > rm.FRAME_MIN_SCORE, (
+        f"a drawn repeat only reached {min(repeats):.3f}, at or below the "
+        f"{rm.FRAME_MIN_SCORE} gate that is supposed to let it through")
+    assert min(repeats) > 2.0 * max(controls), (
+        f"only {min(repeats) / max(max(controls), 1e-9):.1f}x separates the "
+        f"weakest repeat from the loudest control; the gate has no room")

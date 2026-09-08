@@ -173,38 +173,33 @@ def test_frames_of_different_sizes_are_refused():
     assert rl.relief_from_light_stack(odd) is None
 
 
-def test_four_lamps_cannot_answer_a_four_fold():
+def test_the_lamp_count_does_not_leak_into_the_reading():
     """
-    The lamps are an arrangement in a circle too.
+    The lamps are an arrangement in a circle too, and they used to be read
+    as one: with four of them an eight-petal tile came out as four, and
+    nothing in the stack could say whether that four was the artefact or the
+    lighting. relief.py carried a guard that refused any reading equal to the
+    frame count for exactly that reason.
 
-    With four of them an eight-petal tile reads as four, and nothing in the
-    stack can say whether that four is the artefact or the lighting. The
-    reading is refused rather than reported, and one more frame from a new
-    position resolves it.
+    The confound came from the frame, not from the lamps. While the face was
+    located by searching centres for the best fold score, a four-lobed
+    lighting pattern was one of the things that search could lock onto. With
+    the face fixed by geometry first the confound does not reproduce, and the
+    guard is gone with it - it would now only refuse correct answers, since an
+    eight-fold artefact lit by eight lamps reads as eight.
+
+    Six fold counts against five lamp counts, all read correctly.
     """
-    lights = [(math.cos(a), math.sin(a)) for a in
-              np.linspace(0.0, 2.0 * math.pi, 4, endpoint=False)]
-    height, disc = _height_field(8)
-    albedo = np.full((SIZE, SIZE), 0.80, dtype=np.float32)
-    albedo[disc == 0] = 0.95
-    frames = [_light(height, albedo, d) for d in lights]
-
-    relief = rl.relief_from_light_stack(frames)
-    frame = rm.find_rotational_frame(relief, disc)
-    assert frame is not None and frame.folds == 4, (
-        "this is the confound being demonstrated; if it no longer happens "
-        "the guard below is measuring nothing")
-    assert rl.fold_is_confounded_by_the_lights(frame.folds, len(frames))
-
-    # Adding a fifth lamp to the same four does not help: the four-fold
-    # component the square arrangement contributes is still there. What
-    # resolves it is re-shooting with lamp positions that are not a square.
-    frames.append(_light(height, albedo, (math.cos(0.7), math.sin(0.7))))
-    still = rm.find_rotational_frame(rl.relief_from_light_stack(frames), disc)
-    assert still is not None and still.folds == 4
-
-    frame = rm.find_rotational_frame(
-        rl.relief_from_light_stack(_stack(8)[0]), disc)
-    assert frame is not None and frame.folds == 8
-    assert not rl.fold_is_confounded_by_the_lights(frame.folds,
-                                                   rl.ADVISED_LIGHTS)
+    for true_folds in (5, 6, 7, 8, 9, 11):
+        height, disc = _height_field(true_folds)
+        albedo = np.full((SIZE, SIZE), 0.80, dtype=np.float32)
+        albedo[disc == 0] = 0.95
+        for lamps in (3, 4, 5, 6, 8):
+            directions = [(math.cos(a), math.sin(a)) for a in
+                          np.linspace(0.0, 2.0 * math.pi, lamps, endpoint=False)]
+            relief = rl.relief_from_light_stack(
+                [_light(height, albedo, d) for d in directions])
+            frame = rm.find_rotational_frame(relief, disc)
+            assert frame is not None and frame.folds == true_folds, (
+                f"{true_folds} petals under {lamps} lamps read as "
+                f"{frame.folds if frame else 0}")
