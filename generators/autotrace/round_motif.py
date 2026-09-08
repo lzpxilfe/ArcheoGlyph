@@ -1978,16 +1978,22 @@ MAX_WEDGE_SHAPES = 3
 #:   discs of scattered blobs, four seeds        0.003 - 0.005
 #:   nine excavated finds photographed, among
 #:     them a dragon-motif tile, a bronze
-#:     mirror, two comb-pattern jars             0.001 - 0.015
-#:   ------------------------------------------------- highest control 0.015
+#:     mirror, two comb-pattern jars             0.001 - 0.018
+#:   ------------------------------------------------- highest control 0.018
 #:   drawn six-fold disc                         0.068
 #:   drawn six-fold disc under a shadow skirt    0.070
-#:   photograph of an eight-petal roof tile end  0.061 on three nudges
 #:   drawn eight-fold disc                       0.100
 #:   drawn twelve-fold disc                      0.349
 #:
-#: 0.03 sits twice the highest control and half the weakest true reading, so
+#: 0.03 sits above every control and well below every drawn repeat, so
 #: nothing measured lands near it from either side.
+#:
+#: The photographed lotus tile is deliberately not in that list any more. It
+#: was, at "0.061 on three nudges", and that was measured before
+#: get_mask_opencv was deterministic - one draw of a lottery, not a
+#: measurement. Reproducibly it scores 0.013 - 0.060 over the same four crops
+#: and clears this gate on one of them. It is not evidence for where the gate
+#: sits, and it never should have been: the controls set that.
 #:
 #: This number was 0.15 while the score meant "the best fold score found by
 #: searching centres". That search moved the frame with a noisy objective and
@@ -2003,14 +2009,18 @@ FRAME_MIN_SCORE = 0.03
 class RotationalFrame(object):
     """Where the decorated face is, and how many times its motif repeats."""
 
-    __slots__ = ("cx", "cy", "a", "b", "angle", "folds", "score")
+    __slots__ = ("cx", "cy", "a", "b", "angle", "folds", "score", "radius")
 
-    def __init__(self, cx, cy, a, b, angle, folds, score):
+    def __init__(self, cx, cy, a, b, angle, folds, score, radius=None):
         self.cx, self.cy = float(cx), float(cy)
         self.a, self.b = float(a), float(b)
         self.angle = float(angle)
         self.folds = int(folds)
         self.score = float(score)
+        #: The face circle the survey was run against, before the winning
+        #: ballot's scale and ratio were applied. reading_is_stable needs it
+        #: to re-run that survey, and it cannot be recovered from a and b.
+        self.radius = float(radius) if radius else max(float(a), float(b))
 
     def __repr__(self):  # pragma: no cover - debugging aid
         return ("RotationalFrame(c=(%.0f,%.0f) a=%.0f b=%.0f ang=%.2f "
@@ -2223,12 +2233,22 @@ def find_rotational_frame(gray_img, mask):
     every plausible frame and keeping what they agree on.
 
     The order matters. Searching centres by fold score solves a geometry
-    problem with a noisy objective: on one photograph of a lotus roof tile
-    end, four one-pixel nudges of the same input gave 10/8/8/8 folds at
-    scores between 0.033 and 0.109. Fixing the frame first gives 8/8/8/8 at
-    0.050-0.066 on that same photograph, eleven times faster, and drops every
-    control - a dragon-motif tile, a bronze mirror, a comb-pattern jar and a
-    ground stone tool - to 0.016 and below.
+    problem with a noisy objective: the best score is the maximum of a noisy
+    field and it moves whenever the input does. Fixing the frame first is
+    eleven times faster and leaves every control below the gate.
+
+    It does not make the answer repeatable across crops, and this docstring
+    used to claim it did - "8/8/8/8 at 0.050-0.066" on a lotus roof tile end.
+    That was measured while get_mask_opencv still returned a different mask on
+    every call, so it was one draw of a lottery. On deterministic masks the
+    same photograph reads 7/9/7/8 over four one-pixel crops and clears the
+    gate on one of them.
+
+    The reason is measurable and is the thing to fix next: a drawn repeat
+    keeps its answer while the centre moves up to 0.03 of the face radius,
+    and a one-pixel crop moves this frame by 0.059 of a radius on that
+    photograph - twice the width of the basin the reading lives in. Callers
+    should put reading_is_stable between this and any drawing.
 
     Returns a RotationalFrame, or None when nothing repeats. A low score is
     the honest answer for a dragon-motif tile or a plain disc, and callers
@@ -2251,10 +2271,68 @@ def find_rotational_frame(gray_img, mask):
         if folds <= 0:
             return None
         return RotationalFrame(cx, cy, radius * scale, radius * scale * ratio,
-                               angle, folds, score)
+                               angle, folds, score, radius)
     except Exception as exc:
         log_exception("find_rotational_frame", exc)
         return None
+
+
+#: How far the frame is nudged to test whether the reading survives, as a
+#: fraction of the face radius, and how much its radius is stretched.
+#:
+#: Taken from the reading's own tolerance, measured on drawn repeats: a
+#: six-fold disc keeps its answer while the centre is moved up to 0.05 of the
+#: radius, an eight-fold and a twelve-fold up to 0.03, and all three survive
+#: the radius changing by a eighth. So the centre jitter sits just inside the
+#: tightest of those and the radius jitter well inside it. A reading that
+#: survives being pushed as far as it can be pushed is sitting in the middle
+#: of its basin; one that does not is on the edge of it, and the next frame
+#: will land somewhere else.
+STABILITY_OFFSET = 0.025
+STABILITY_SCALES = (0.94, 1.06)
+
+
+def reading_is_stable(gray_img, frame):
+    """
+    Whether the fold count survives a small nudge of the frame.
+
+    A score above the gate is not enough on its own. Measured on a photograph
+    of a lotus roof tile end, four one-pixel changes of crop gave fold counts
+    7, 9, 7 and 8, and the score cleared the gate on one of them - so the
+    same artefact came out with petals once and plain three times, depending
+    on where the user happened to crop. A symbol that changes like that is
+    worse than one that is always plain, because nothing tells the user which
+    of the two they are looking at.
+
+    Nudging the frame rather than the image is the cheap way to ask the same
+    question: a different crop reaches the reading through the mask, and the
+    mask reaches it through the frame. Six re-runs cost about a fifth of a
+    second, where re-segmenting the image would cost seconds.
+
+    Every nudge has to agree. A majority is not enough - the fold count is
+    what gets stamped around the face, and a motif drawn at the wrong count
+    is decoration the artefact does not have.
+    """
+    if frame is None or gray_img is None or frame.folds <= 0:
+        return False
+    try:
+        gray = gray_img.astype(np.float32)
+        radius = float(frame.radius)
+        if radius <= 0:
+            return False
+        step = radius * STABILITY_OFFSET
+        nudges = [(step, 0.0, 1.0), (-step, 0.0, 1.0),
+                  (0.0, step, 1.0), (0.0, -step, 1.0)]
+        nudges += [(0.0, 0.0, scale) for scale in STABILITY_SCALES]
+        for dx, dy, scale in nudges:
+            folds, _agreement, _score, _s, _r, _a = survey_folds(
+                gray, frame.cx + dx, frame.cy + dy, radius * scale)
+            if folds != frame.folds:
+                return False
+        return True
+    except Exception as exc:
+        log_exception("reading_is_stable", exc)
+        return False
 
 
 def fold_rotational_motif(gray_img, frame, n_theta=720, n_rad=96):

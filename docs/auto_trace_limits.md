@@ -58,33 +58,67 @@ The frame is now found by geometry before any fold is counted:
    the face, and nulling that swing needs no fold count at all.
 
 Only then do folds get counted, and every plausible frame votes, weighed by
-its own score (`survey_folds`). The same photograph now reads **8 petals on
-three of four nudges** — the tile has eight — eleven times faster than the
-search it replaced, and every control drops:
+its own score (`survey_folds`). That is eleven times faster than the search
+it replaced and leaves every control below the gate.
 
-| input (4 one-pixel nudges each) | folds | score |
+### What was measured on a mask that changed every time
+
+This section used to report that the same photograph now reads **8 petals on
+three of four nudges at 0.061**. That was wrong, and the way it was wrong is
+worth recording.
+
+`get_mask_opencv` was not deterministic. `cv2.grabCut` seeds its colour
+models with k-means, and OpenCV's k-means draws from one global RNG whose
+state advances with every call, so **the same photograph returned a different
+silhouette every time it was traced** — on eight of nine finds, three calls in
+a row gave three different masks (the lotus tile: 364941, 389658 and 368993
+pixels), and the same three in the same order in a fresh process. A user
+pressing the button twice got two different symbols.
+
+Every real-photograph number reported here was therefore one draw of a
+lottery. GrabCut now votes over three fixed seeds and the mask is a function
+of the image again. Re-measured on that basis, over four one-pixel crops each:
+
+| input | folds | score |
 | --- | --- | --- |
 | plain drawn disc | 4 | 0.000 |
 | drawn discs of scattered blobs, four seeds | wanders | 0.003 – 0.005 |
-| **photographed dragon-motif tile** | wanders | 0.006 – 0.008 |
-| **photographed bronze mirror** | wanders | 0.013 – 0.015 |
-| two comb-pattern jars, dagger, ground stone | wanders | 0.001 – 0.015 |
+| **photographed dragon-motif tile** | 8/8/14/4 | 0.005 – 0.009 |
+| **photographed bronze mirror** | 5/5/5/15 | 0.013 – 0.015 |
+| two comb-pattern jars, daggers, ground stone | wanders | 0.001 – 0.018 |
+| **photographed lotus tile** | 7/9/7/8 | 0.013 – 0.060 |
 | drawn six-fold disc | 6, 6, 6, 6 | 0.068 |
-| **photographed lotus tile** | 8, 8, 8, 9 | 0.017 – 0.061 |
 | drawn eight-fold disc | 8, 8, 8, 8 | 0.100 |
 | drawn twelve-fold disc | 12, 12, 12, 12 | 0.349 |
 
-So the gate (`FRAME_MIN_SCORE`, `generators/autotrace/round_motif.py`) sits
-**above every control** at 0.03 — twice the loudest thing with no repeat in
-it, half the weakest thing that has one. It was 0.15 while the score meant
-"best fold score found by searching"; the score means something else now, so
-the number moved with it. The gate is not weaker: the mirror and the dragon
-tile it used to refuse are further below this one than they were below the
-old one.
+The gate (`FRAME_MIN_SCORE`) still sits **above every control** at 0.03 —
+above the loudest thing with no repeat in it, well below every drawn repeat.
+That number was set from the controls and the controls have not moved, so it
+stands. What does not stand is the claim about the tile: reproducibly it
+clears the gate on **one of four crops**, not three.
 
-The fourth nudge of the lotus reads 9 at 0.017 and is refused. That is the
-right outcome and not a failure of the gate — the tracer declines rather
-than stamping nine petals onto an eight-petal tile.
+### Why, and what has to improve
+
+The cause is measurable, and it is the most useful thing this line of work
+turned up:
+
+- a drawn repeat keeps its answer while the frame's centre is moved up to
+  **0.03 of the face radius** (0.05 for six folds, 0.03 for eight and twelve);
+- a **one-pixel change of crop** moves the frame by **0.059 of a radius** on
+  the lotus photograph — twice the width of the basin the reading lives in.
+
+The frame is not repeatable to the precision the fold reader needs. Until it
+is, no threshold can make the reading consistent, because the thing that
+moves is upstream of the score.
+
+So the tracer now refuses a reading that sits on the edge of its basin.
+`reading_is_stable` pushes the frame as far as a drawn repeat can be pushed
+and requires the same fold count back from every nudge; the pipeline runs it
+between the score gate and the feature-vote check. Drawn six-, eight- and
+twelve-fold discs pass it, under a lighting gradient and under grain. The
+lotus tile's one gate-clearing crop passes it too — so today the tile is still
+drawn on one crop in four, and that is stated rather than fixed. What would
+fix it is a frame that lands in the same place twice.
 
 Comb-pattern pottery was checked the same way and still fails: a bronze
 dagger with no comb decoration at all scores in the same range (4.75–8.93×)
@@ -110,26 +144,33 @@ Measured on the same nine photographs, as a fraction of the face radius:
 
 | find | our frame vs. the vote | plain ellipse fit vs. the vote |
 | --- | --- | --- |
-| lotus roof tile end | **0.008** | 0.21 |
-| dragon roof tile end | **0.010** | 0.05 |
-| bronze mirror | **0.012** | 0.02 |
-| comb-pattern jar | 0.47 | 0.26 |
-| bipa-shaped dagger | 0.64 | 0.35 |
-| polished stone dagger | 0.81 | 0.76 |
-| ground stone tool | 0.90 | 0.73 |
-| slender bronze dagger | 1.60 | 0.80 |
+| dragon roof tile end | **0.011** | 0.050 |
+| bronze mirror | **0.017** | 0.020 |
+| lotus roof tile end | **0.072** | 0.246 |
+| comb-pattern jar (b) | 0.235 | 0.085 |
+| comb-pattern jar | 0.333 | 0.261 |
+| bipa-shaped dagger | 0.579 | 0.353 |
+| polished stone dagger | 0.924 | 0.759 |
+| slender bronze dagger | 0.973 | 0.797 |
+| ground stone tool | 1.016 | 0.734 |
 
-Two independent methods land within one percent of a radius of each other on
-every decorated disc, and half a radius apart or more on everything that is
-not one. So the vote runs as the last check before a motif is committed —
+(These are the deterministic figures. The first version of this table read
+0.008 / 0.010 / 0.012 against 0.35 and up, measured on the shifting masks
+described above.)
+
+Two independent methods land inside 0.072 of a radius of each other on every
+decorated disc, and 0.235 or more apart on everything that is not one. The
+gap is real but narrower than it first appeared, and it rests on one awkward
+case at each end — the lotus tile at 0.072 and a comb-pattern jar at 0.235.
+So the vote runs as the last check before a motif is committed —
 only when the score has already passed, where it costs 0.2–0.5 s — and a
 disagreement past 0.12 of a radius refuses the reading. Silence is not
 disagreement: a worn or plain surface gives the vote nothing to match, and a
 guard that fired on that would refuse the artefacts most in need of help.
 
 On this corpus the guard changes no outcome: the only find that passes the
-score gate is the lotus tile, and there the two methods agree. It is a lock,
-not an improvement.
+score gate is the lotus tile, on one crop, and there the two methods agree
+to 0.072. It is a lock, not an improvement.
 
 **Only the centre is taken from that method.** Its fold-count step was
 measured on the same photographs and does not separate an eight-petal tile
@@ -141,6 +182,25 @@ positional rotation, bootstrap stability of the winning count, and agreement
 between radial bands (the lotus gave 8 and 7 in its two halves; the dragon
 11 and 18, which is the right refusal for the wrong reason — the margin is
 one fold, not a gap).
+
+## The unsupported-boundary measurement, not shipped
+
+A cast shadow fused to the silhouette puts a lump on every traced symbol that
+the artefact does not have. There is a clean way to see it: an artefact's edge
+has an image gradient under it and a shadow's does not, because a shadow's own
+boundary is a soft gradient somewhere out on the paper. Measured along the
+mask contour, the share with no edge beneath it is **0.00–0.01** on the five
+finds photographed without a visible shadow and **0.09–0.30** on the four with
+one, and it lands on the skirt and nowhere else. Cutting those runs and
+closing each with a chord lifts a comb-pattern jar's silhouette from 0.934 to
+0.984 solidity.
+
+It is not in the code. On the lotus tile the same cut takes 0 to 15 percent of
+the mask depending on which pixel the crop starts at, and that killed the one
+motif reading that worked. A mask step that is unstable under a one-pixel
+crop is disqualified whatever it gains elsewhere — that is the same standard
+this document applies to the fold reader. The measurement is recorded here so
+the next attempt starts from it rather than from scratch.
 
 ## The direction not taken: relief from one photograph, learned
 

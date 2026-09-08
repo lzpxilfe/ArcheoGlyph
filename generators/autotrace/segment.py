@@ -637,6 +637,12 @@ def mask_touches_border(mask, border=2):
 GRABCUT_MAX_SIDE = 360
 
 
+#: Seeds voted over on each GrabCut. Odd, so the majority is never a tie;
+#: three, because the disagreement between draws is confined to the boundary
+#: and more draws only cost time. See _grabcut_scaled.
+GRABCUT_SEEDS = (20260908, 111, 4242)
+
+
 def _grabcut_scaled(bgr_img, gc_mask=None, rect=None, iterations=3):
     """
     Run cv2.grabCut on a downscaled copy (max side GRABCUT_MAX_SIDE) and
@@ -668,12 +674,30 @@ def _grabcut_scaled(bgr_img, gc_mask=None, rect=None, iterations=3):
         mode = cv2.GC_INIT_WITH_RECT
     else:
         mode = cv2.GC_INIT_WITH_MASK
-    bgd_model = np.zeros((1, 65), np.float64)
-    fgd_model = np.zeros((1, 65), np.float64)
-    cv2.grabCut(small, small_mask, small_rect, bgd_model, fgd_model, int(iterations), mode)
-    fg_small = np.where(
-        (small_mask == cv2.GC_FGD) | (small_mask == cv2.GC_PR_FGD), 255, 0
-    ).astype(np.uint8)
+    # GrabCut seeds its colour models with k-means, and OpenCV's k-means draws
+    # from one global RNG whose state advances with every call. Left alone,
+    # the same photograph gives a different silhouette every time it is
+    # traced: on eight of nine Korean finds, three calls in a row returned
+    # three different masks - the lotus tile came out 364941, 389658 and
+    # 368993 pixels - and the same three, in the same order, in a fresh
+    # process. A user pressing the button twice got two different symbols.
+    #
+    # Pinning one seed makes it deterministic but only picks one draw out of
+    # that spread, and a single draw can be a bad one: on the lotus tile the
+    # first fixed seed took in the whole white support block, twice the area
+    # of any of the three unseeded runs. So run several seeds and keep the
+    # pixels most of them agree on. The vote is what the spread was hiding.
+    votes = np.zeros(small.shape[:2], dtype=np.uint8)
+    for seed in GRABCUT_SEEDS:
+        attempt = small_mask.copy()
+        bgd_model = np.zeros((1, 65), np.float64)
+        fgd_model = np.zeros((1, 65), np.float64)
+        cv2.setRNGSeed(int(seed))
+        cv2.grabCut(small, attempt, small_rect, bgd_model, fgd_model,
+                    int(iterations), mode)
+        votes += ((attempt == cv2.GC_FGD) | (attempt == cv2.GC_PR_FGD)).astype(np.uint8)
+    fg_small = (votes * 2 > len(GRABCUT_SEEDS)).astype(np.uint8) * 255
+
     if scale < 1.0:
         fg = cv2.resize(fg_small, (w, h), interpolation=cv2.INTER_LINEAR)
         return np.where(fg > 127, 255, 0).astype(np.uint8)

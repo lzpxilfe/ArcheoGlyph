@@ -117,10 +117,19 @@ def test_a_frame_on_the_wrong_part_of_the_face_is_caught():
 
 def test_the_tolerance_sits_between_what_was_measured():
     """
-    Nine photographed finds: the two methods agree to 0.01-0.02 of the face
-    radius on every decorated disc, and disagree by 0.35 or more on every
-    find that is not one. The tolerance has to sit in that gap with room on
-    both sides, or it is measuring the noise rather than the disagreement.
+    Nine photographed finds, measured on deterministic masks: the two methods
+    agree to 0.011, 0.017 and 0.072 of the face radius on the three decorated
+    discs, and disagree by 0.235 and up on the six finds that are not one.
+    The tolerance has to sit in that gap or it is measuring noise.
+
+    The numbers here are the reproducible ones. An earlier version of this
+    test used 0.02 and 0.35, taken before get_mask_opencv was deterministic,
+    when the same photograph gave a different mask on every call.
     """
-    assert fs.CENTRE_AGREEMENT > 5.0 * 0.02, "too tight to survive agreement"
-    assert fs.CENTRE_AGREEMENT < 0.35 / 2.0, "too loose to catch disagreement"
+    worst_agreement, best_disagreement = 0.072, 0.235
+    assert fs.CENTRE_AGREEMENT > worst_agreement, (
+        f"{fs.CENTRE_AGREEMENT} would refuse the lotus tile, which the two "
+        f"methods place within {worst_agreement} of a radius of each other")
+    assert fs.CENTRE_AGREEMENT < best_disagreement, (
+        f"{fs.CENTRE_AGREEMENT} would accept a comb-pattern jar, where they "
+        f"are {best_disagreement} of a radius apart")

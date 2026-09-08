@@ -312,3 +312,62 @@ def test_a_traced_outline_takes_the_artefact_colour():
     assert pl.HOUSE_OUTLINE_DARKEN == pytest.approx(1.0 / 1.4), (
         "the catalogue darkens an outline with QColor.darker(140); these two "
         "have to stay in step or a traced symbol stops matching a drawn one")
+
+
+def _photograph_like(size=420):  # noqa: E302
+    """
+    A find on a lit table, with a soft cast shadow.
+
+    test_pipeline_is_deterministic_and_valid uses a flat ellipse on a flat
+    ground, which the chroma split alone resolves - so GrabCut never runs and
+    the determinism bug below went unseen through the whole suite. Soft
+    shading and a shadow are what send the mask down the refinement path.
+    """
+    cv2 = pytest.importorskip("cv2")
+    img = np.full((size, size, 3), 232, dtype=np.uint8)
+    ramp = np.linspace(-16, 16, size, dtype=np.float32)[None, :, None]
+    img = np.clip(img.astype(np.float32) + ramp, 0, 255).astype(np.uint8)
+    centre = (size // 2, int(size * 0.46))
+    cv2.ellipse(img, (centre[0], int(size * 0.78)), (int(size * 0.28), int(size * 0.07)),
+                0, 0, 360, (198, 200, 203), -1)          # the cast shadow
+    cv2.GaussianBlur(img, (31, 31), 0, dst=img)
+    cv2.circle(img, centre, int(size * 0.27), (96, 104, 122), -1)
+    cv2.circle(img, centre, int(size * 0.13), (74, 82, 100), -1)
+    return img
+
+
+def test_the_same_photograph_gives_the_same_mask():
+    """
+    GrabCut seeds its colour models with k-means, and OpenCV's k-means draws
+    from one global RNG whose state advances with every call. Unpinned, the
+    same photograph gave a different silhouette every time it was traced: on
+    eight of nine Korean finds three calls in a row returned three different
+    masks, and the same three in the same order in a fresh process, so a user
+    pressing the button twice got two different symbols.
+
+    Three calls, not two: the second and third differed from each other as
+    well as from the first.
+    """
+    img = _photograph_like()
+    masks = [segment.get_mask_opencv(img.copy()) for _ in range(3)]
+    first = masks[0]
+    assert np.count_nonzero(first) > 0, "the fixture gave no silhouette to compare"
+    for index, other in enumerate(masks[1:], start=2):
+        differing = int(np.count_nonzero(first != other))
+        assert differing == 0, (
+            f"call {index} returned a mask differing from the first in "
+            f"{differing} pixels; the silhouette is not a function of the image")
+
+
+def test_the_grabcut_vote_is_not_a_single_draw():
+    """
+    Pinning one seed is deterministic but only freezes one draw out of the
+    spread, and a single draw can be a bad one - on the lotus tile the first
+    fixed seed swallowed the whole white support block, twice the area of any
+    unseeded run. An odd number of seeds keeps the majority from tying.
+    """
+    assert len(segment.GRABCUT_SEEDS) >= 3, (
+        "one or two seeds is a draw, not a vote")
+    assert len(segment.GRABCUT_SEEDS) % 2 == 1, (
+        "an even number of seeds can tie on a boundary pixel")
+    assert len(set(segment.GRABCUT_SEEDS)) == len(segment.GRABCUT_SEEDS)

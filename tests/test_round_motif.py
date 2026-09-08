@@ -338,3 +338,64 @@ def test_the_gate_sits_above_every_control_and_below_every_repeat():
     assert min(repeats) > 2.0 * max(controls), (
         f"only {min(repeats) / max(max(controls), 1e-9):.1f}x separates the "
         f"weakest repeat from the loudest control; the gate has no room")
+
+
+def test_a_drawn_repeat_survives_being_pushed_as_far_as_it_can_be():
+    """
+    A score above the gate is not enough to draw with.
+
+    Measured on drawn repeats, the reading keeps its answer while the centre
+    is moved up to 0.05 of the radius for six folds and 0.03 for eight and
+    twelve. STABILITY_OFFSET sits just inside the tightest of those, so a
+    reading that survives it is in the middle of its basin rather than on the
+    edge - and a reading on the edge is one the next crop would land off.
+    """
+    for folds in (6, 8, 12):
+        img, mask = _disc()
+        _petals(img, folds)
+        frame = rm.find_rotational_frame(img, mask)
+        assert frame is not None and frame.folds == folds
+        assert rm.reading_is_stable(img, frame), (
+            f"a drawn {folds}-fold disc is as clean an input as exists and "
+            f"its reading did not survive a {rm.STABILITY_OFFSET} nudge")
+
+
+def test_the_jitter_is_no_wider_than_the_reading_can_take():
+    """
+    The tolerance is measured, not chosen: push a drawn repeat until it
+    changes its answer, and jitter by less than that. Widened past the
+    measured limit this test would refuse every artefact, which is a way of
+    passing the no-fabrication contract without reading anything.
+    """
+    img, mask = _disc()
+    _petals(img, 8)
+    frame = rm.find_rotational_frame(img, mask)
+    assert frame is not None
+
+    limit = 0.0
+    for offset in (0.01, 0.02, 0.03, 0.05, 0.08, 0.12):
+        held = all(
+            rm.survey_folds(img.astype(np.float32), frame.cx + dx, frame.cy + dy,
+                            frame.radius)[0] == 8
+            for dx, dy in ((offset * frame.radius, 0.0),
+                           (-offset * frame.radius, 0.0),
+                           (0.0, offset * frame.radius),
+                           (0.0, -offset * frame.radius)))
+        if held:
+            limit = offset
+    assert rm.STABILITY_OFFSET <= limit, (
+        f"the jitter is {rm.STABILITY_OFFSET} of the radius but a drawn "
+        f"eight-fold only survives {limit}; every reading would be refused")
+
+
+def test_an_unstable_reading_is_refused_even_above_the_gate():
+    """A frame moved off the face scores and reads, but not repeatably."""
+    img, mask = _disc()
+    _petals(img, 8)
+    frame = rm.find_rotational_frame(img, mask)
+    assert frame is not None and rm.reading_is_stable(img, frame)
+
+    frame.cx += 0.22 * frame.radius
+    assert not rm.reading_is_stable(img, frame), (
+        "a frame sitting a fifth of a radius off the face still called its "
+        "reading stable")

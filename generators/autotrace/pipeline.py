@@ -55,6 +55,7 @@ from .feature_symmetry import centre_disagrees, vote_for_centre
 from .round_motif import (
     FRAME_MIN_SCORE,
     find_rotational_frame,
+    reading_is_stable,
     fold_rotational_motif,
     replay_rotational_motif,
     augment_round_rotational_symmetry,
@@ -440,7 +441,17 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
         if motif_source is None:
             motif_source = cv2.cvtColor(processing_bgr, cv2.COLOR_BGR2GRAY)
         frame = find_rotational_frame(motif_source, target_mask)
-        if frame is not None and frame.score >= FRAME_MIN_SCORE:
+        if frame is not None and frame.score >= FRAME_MIN_SCORE \
+                and not reading_is_stable(motif_source, frame):
+            # A score above the gate is not enough. Push the frame as far as
+            # a drawn repeat can be pushed and ask again: a reading in the
+            # middle of its basin holds, one on the edge of it does not, and
+            # the next crop would land somewhere else and draw a different
+            # artefact.
+            log("The repeat on this round artefact changes when the frame is "
+                f"nudged (best {frame.folds}-fold at {frame.score:.3f}); "
+                f"drawing it plain.")
+        elif frame is not None and frame.score >= FRAME_MIN_SCORE:
             # Last check before decoration is committed to someone's artefact,
             # and only here because it is the expensive one: ask a published
             # method that finds the centre a completely different way whether
