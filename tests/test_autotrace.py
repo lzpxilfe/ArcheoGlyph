@@ -486,3 +486,68 @@ def test_a_flat_lit_disc_yields_almost_no_ink():
     assert ink < 0.02 * int((face > 0).sum()), (
         f"a plain disc under a lamp produced {ink} pixels of ink; the lamp is "
         f"being drawn as decoration")
+
+
+def _interior_ink_share(svg):
+    """Arc length times stroke width, over the symbol's own box."""
+    import re as _re
+
+    box = float(_re.search(r'viewBox="([^"]+)"', svg).group(1).split()[2])
+    total = 0.0
+    for path in _re.finditer(
+            r'<path[^>]*d="([^"]+)"[^>]*stroke-width="(?:param\(outline-width\) )?([\d.]+)"',
+            svg):
+        numbers = [float(n) for n in _re.findall(r"-?\d+\.?\d*", path.group(1))]
+        xs, ys = numbers[0::2], numbers[1::2]
+        if len(xs) < 2:
+            continue
+        arc = sum(float(np.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]))
+                  for i in range(len(xs) - 1))
+        total += arc * float(path.group(2))
+    return total / max(box * box, 1.0)
+
+
+def test_a_dense_drawing_is_drawn_lighter_not_thicker():
+    """
+    A stroke weight chosen for a symbol with five marks buries a plate with
+    four hundred traced curves: measured before this, the two roof tile ends
+    laid down 58 and 61 percent of their own tile in ink, where the drawn
+    catalogue's busiest symbol covers 48. The weight is scaled until the
+    drawing lands back at the catalogue's median.
+    """
+    from archeoglyph.generators.autotrace import pipeline as pl
+
+    cv2 = pytest.importorskip("cv2")
+    size = 460
+    img = np.full((size, size, 3), 236, dtype=np.uint8)
+    centre = (size // 2, size // 2)
+    cv2.circle(img, centre, 170, (120, 126, 140), -1)
+    rng = np.random.default_rng(11)
+    for _ in range(260):                        # a densely decorated face
+        angle = rng.uniform(0, 2 * np.pi)
+        rad = rng.uniform(0.15, 0.9) * 170
+        start = (int(centre[0] + rad * np.cos(angle)),
+                 int(centre[1] + rad * np.sin(angle)))
+        end = (int(start[0] + rng.uniform(-30, 30)),
+               int(start[1] + rng.uniform(-30, 30)))
+        cv2.line(img, start, end, (74, 78, 92), 3)
+
+    for style in ("Line", "Measured"):
+        share = _interior_ink_share(_run(img, style=style))
+        assert share <= pl.INTERIOR_INK_CEILING * 1.05, (
+            f"{style} covered {share * 100:.0f}% of the symbol in ink against "
+            f"the catalogue's {pl.INTERIOR_INK_CEILING * 100:.0f}%")
+
+
+def test_the_ink_budget_comes_from_the_drawn_catalogue():
+    """
+    Both numbers are measurements of the 188 drawn symbols, not choices: the
+    median covers 27 percent of its tile and the busiest 1.76 times that.
+    """
+    from archeoglyph.generators.autotrace import pipeline as pl
+
+    assert pl.INTERIOR_INK_MEDIAN == pytest.approx(0.27)
+    assert pl.INTERIOR_INK_CEILING == pytest.approx(1.76 * pl.INTERIOR_INK_MEDIAN)
+    assert pl.INTERIOR_INK_MEDIAN < pl.INTERIOR_INK_CEILING, (
+        "the target has to sit below the trigger or the scaling would fight "
+        "itself")

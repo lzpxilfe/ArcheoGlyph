@@ -11,7 +11,7 @@ import numpy as np
 
 from ...log import log
 from ..ink_centerline import extract_ink_polylines, looks_like_drawing, simplify_polyline
-from .svg_builder import smooth_closed_path
+from .svg_builder import HOUSE_OUTLINE_RATIO, smooth_closed_path
 from ..style_control_utils import (
     STYLE_CONTROL_EXAGGERATION,
     STYLE_CONTROL_FACTUALITY,
@@ -104,6 +104,13 @@ from .structure import (
 #: artefact came out drawn in near-black next to a catalogue drawn in its own
 #: muted colour, and read as much heavier than it is at the same width.
 HOUSE_OUTLINE_DARKEN = 1.0 / 1.4
+
+#: How much of its own tile a traced symbol's interior covers in ink, taken
+#: from the drawn catalogue this has to sit beside: over its 188 symbols the
+#: median covers 27 percent and the busiest 1.76 times that. Past the ceiling
+#: the weight is scaled to bring the drawing back to the median.
+INTERIOR_INK_MEDIAN = 0.27
+INTERIOR_INK_CEILING = 1.76 * INTERIOR_INK_MEDIAN
 
 
 def run_autotrace(bgr, options, mask_provider, relief=None):
@@ -242,6 +249,14 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
     use_circle_outline = bool(
         is_roundish and (circle_iou >= 0.94 or (contour_circularity >= 0.90 and solidity >= 0.95))
     )
+    # Reading relief as a rubbing assumes a flat decorated face turned towards
+    # the camera. is_roundish is too loose for that: it admits a comb-pattern
+    # jar, whose shading is the curve of its own body rather than ornament,
+    # and tracing that covered the pot in speckle. The two roof tile ends and
+    # the mirror fill their enclosing circle to 0.968 and above; the jar
+    # reaches 0.714 and a ground stone tool 0.630, so the same 0.94 the
+    # outline test already uses separates them with room to spare.
+    is_flat_faced_disc = bool(is_roundish and circle_iou >= 0.94)
     # Schematic template lines for round artifacts are opt-in.
     fast_round_structural = bool(
         synthetic and
@@ -332,7 +347,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             erode_px = max(2, int(round(0.015 * min(target_mask.shape[:2]))))
             ink_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * erode_px + 1, 2 * erode_px + 1))
             ink_mask = cv2.erode(target_mask, ink_kernel)
-            if is_roundish and not is_drawing:
+            if is_flat_faced_disc and not is_drawing:
                 # A round artefact's decoration is shallow relief, and reading
                 # it straight off the photograph gave lighting, not ornament -
                 # on a lotus roof tile end, a diagonal stripe across the face
@@ -898,9 +913,37 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             # lotus rosette of 125 strokes down to ten arcs. The size floor
             # still applies to both: a speck is unreadable whatever drew it.
             strokes_are_content = is_drawing or relief_sheet is not None
-            internal_lines = keep_marks_that_read(
-                internal_lines, artefact_extent,
-                max_marks=None if strokes_are_content else MAX_INTERIOR_MARKS)
+            if strokes_are_content and is_mono:
+                # A documentation plate keeps the whole drawing. The legend
+                # floor cut a rosette of four hundred traced curves down to
+                # sixty-four, and what it removed were the short pieces
+                # joining the long ones - so the petal outlines came out as
+                # dashes. A marker still gets the floor, below.
+                pass
+            else:
+                internal_lines = keep_marks_that_read(
+                    internal_lines, artefact_extent,
+                    max_marks=None if strokes_are_content else MAX_INTERIOR_MARKS)
+
+    # A stroke weight chosen for a symbol with five marks is far too heavy for
+    # a plate with four hundred traced curves - they merge into blobs. So the
+    # detail weight is scaled down until the interior ink lands inside the
+    # budget the drawn catalogue keeps: over its 188 symbols the median covers
+    # 27 percent of its tile and the busiest 1.76 times that. Measured before
+    # this, the two roof tile ends came out at 49 and 62 percent.
+    #
+    # Only the ceiling is applied. The floor is not: the catalogue's symbols
+    # are filled shapes and a traced line drawing legitimately carries less
+    # ink, so raising a sparse drawing to meet it would thicken artefacts that
+    # already read correctly.
+    drawn_length = 0.0
+    for line in internal_lines:
+        drawn_length += sum(
+            float(np.hypot(line[i + 1][0] - line[i][0],
+                           line[i + 1][1] - line[i][1]))
+            for i in range(len(line) - 1))
+    _mx, _my, _mw, _mh = cv2.boundingRect(main_contour)
+    symbol_extent = float(max(_mw, _mh))
 
     if is_typology:
         palette_seeds = list(material_palette[:4]) if material_palette else [final_color]
@@ -1047,6 +1090,29 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             detail_under_color = lighten_hex(mono_base, 0.10)
             detail_under_opacity = 0.18
 
+        # svg_builder scales the heaviest stroke in the file to the house
+        # outline weight, so what a detail stroke actually ends up as is that
+        # weight times its share of the heaviest - and each line is drawn
+        # twice, the halo being the wider of the two.
+        halo_width = detail_width + 0.48
+        heaviest = max(outline_width, halo_width)
+        if drawn_length > 0 and symbol_extent > 0 and heaviest > 0:
+            # Every line is laid down twice - a halo and the stroke over it -
+            # so both count towards the ink.
+            painted = (HOUSE_OUTLINE_RATIO * symbol_extent
+                       * (halo_width + detail_width) / heaviest)
+            share = (drawn_length * painted) / (symbol_extent * symbol_extent)
+            if share > INTERIOR_INK_CEILING:
+                # Out of band, so bring it to the middle of the set rather than
+                # to its loudest edge: the ceiling is where the catalogue's
+                # *busiest* symbol sits, and a plate of four hundred traced
+                # curves is not entitled to that on the grounds of being busy.
+                lighter = float(INTERIOR_INK_MEDIAN / share)
+                log(f"Interior ink would cover {share * 100:.0f}% of this symbol "
+                    f"against the catalogue's {INTERIOR_INK_CEILING * 100:.0f}%; "
+                    f"drawing its {len(internal_lines)} traced curves "
+                    f"{lighter:.2f} times lighter.")
+                detail_width *= lighter
         svg_output.append(
             f'<path d="{path_data}" fill="none" stroke="{outline_color}" stroke-width="{outline_width:.2f}" '
             'stroke-linecap="round" stroke-linejoin="round"/>'

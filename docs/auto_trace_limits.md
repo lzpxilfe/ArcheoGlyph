@@ -264,11 +264,35 @@ its ring of beads and the outer bead ring — the drawing an archaeologist would
 make — where reading the photograph directly gave a diagonal band across three
 quarters of the face.
 
-Those strokes are the content, as a real rubbing's are, so they are exempt
-from `MAX_INTERIOR_MARKS`: that cap is the busiest drawn *legend symbol*, and
-Line and Measured are documentation plates. Capping them there cut a
-125-stroke rosette down to ten arcs. The size floor still applies — a speck is
-unreadable whatever drew it.
+Three further things had to follow, each measured:
+
+- **Smooth to the groove's scale first.** Speckle on a worn surface is two
+  pixels across and a groove is ten, so the local-contrast map gets a median
+  at the groove scale before thresholding. Without it the skeleton comes out
+  hairy and the tracer returns four hundred fragments where the drawing has
+  twenty curves — on the dragon tile the longest single curve goes from 0.21
+  of the artefact's width to 0.54 once it is applied.
+- **A plate keeps the whole drawing.** These strokes are the content, as a
+  real rubbing's are, so Line and Measured are exempt from both
+  `MAX_INTERIOR_MARKS` and the legend size floor. That cap is the busiest
+  drawn *legend symbol*; applying it to a plate cut a rosette of four hundred
+  traced curves to sixty-four, and what it removed were the short pieces
+  joining the long ones, so the petal outlines came out as dashes. A marker
+  still gets both.
+- **A dense drawing is drawn lighter, not thicker.** A stroke weight chosen
+  for a symbol with five marks buries a plate with four hundred: the two tiles
+  laid down 58 and 61 percent of their own tile in ink where the drawn
+  catalogue's busiest symbol covers 48. Past that ceiling the detail weight is
+  scaled to bring the drawing back to the catalogue's median of 27 percent —
+  a plate of four hundred curves is not entitled to the busiest symbol's
+  budget on the grounds of being busy.
+
+**The gate is a flat face, not merely a round one.** `is_roundish` admits a
+comb-pattern jar, whose shading is the curve of its own body rather than
+ornament, and tracing that covered the pot in speckle. The tile ends and the
+mirror fill their enclosing circle to 0.968 and above; the jar reaches 0.714
+and a ground stone tool 0.630, so the route is gated on the same 0.94
+circle-fill test the outline logic already uses.
 
 ### What this does not fix
 
