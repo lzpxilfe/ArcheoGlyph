@@ -683,16 +683,38 @@ def test_no_artifact_is_left_as_a_bare_silhouette(painter):
 #:
 #: The blade series are corrected up and the vessels down by one factor each
 #: (BLADE_SCALE, VESSEL_SCALE), which keeps the differences inside a family.
-INK_FLOOR = 12.0
-INK_CEILING = 50.0
+#:
+#: Held against the set's own median rather than as a fixed 12-50 percent.
+#: Every symbol's ink moves with the house stroke weight - lightening the
+#: outline from 2.6 to 2.0 units took the median from 28.4 to 27.0 percent and
+#: the lightest symbol from 12.7 to 11.7 - so an absolute floor turns a
+#: deliberate change of weight into a failure about a needle. What this is
+#: actually about is the spread, and the spread barely moved: the lightest
+#: symbol sits at 0.446 of the median before and 0.434 after.
+INK_FLOOR_OF_MEDIAN = 0.42
+INK_CEILING_OF_MEDIAN = 1.76
+
+_INK_CACHE = {}
+
+
+def _set_median_ink(painter):
+    if not _INK_CACHE:
+        for other in TemplateGenerator.TEMPLATE_INFO:
+            painter.calls.clear()
+            _paint(painter, other)
+            _INK_CACHE[other] = _ink(painter)
+        painter.calls.clear()
+    return _median(list(_INK_CACHE.values()))
 
 
 @pytest.mark.parametrize("name", sorted(TemplateGenerator.TEMPLATE_INFO))
 def test_symbols_carry_a_comparable_weight_of_ink(painter, name):
+    median = _set_median_ink(painter)
+    floor, ceiling = median * INK_FLOOR_OF_MEDIAN, median * INK_CEILING_OF_MEDIAN
     _paint(painter, name)
     ink = _ink(painter)
-    assert INK_FLOOR <= ink <= INK_CEILING, (
-        f"{name} covers {ink:.0f}% of its tile; the set is held to "
-        f"{INK_FLOOR:.0f}-{INK_CEILING:.0f}% so no symbol shouts and none "
-        f"goes missing next to the rest"
+    assert floor <= ink <= ceiling, (
+        f"{name} covers {ink:.1f}% of its tile against the set's median of "
+        f"{median:.1f}%; the set is held to {floor:.1f}-{ceiling:.1f}% so no "
+        f"symbol shouts and none goes missing next to the rest"
     )

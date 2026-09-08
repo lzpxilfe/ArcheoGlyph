@@ -89,6 +89,18 @@ from .structure import (
 )
 
 
+#: How much darker than its fill a silhouette stroke is drawn.
+#:
+#: The drawn catalogue uses ``QColor.darker(140)`` in template_generator._pen,
+#: which divides each channel by 1.4. This was a flat "#111111" here, and in
+#: QGIS that hardly showed - the fallback is replaced by whatever outline
+#: colour the user picked. Outside QGIS it showed a great deal: in the
+#: preview sheets, in documentation and in any plain SVG viewer, a traced
+#: artefact came out drawn in near-black next to a catalogue drawn in its own
+#: muted colour, and read as much heavier than it is at the same width.
+HOUSE_OUTLINE_DARKEN = 1.0 / 1.4
+
+
 def run_autotrace(bgr, options, mask_provider, relief=None):
     """
     Full Auto Trace pipeline on an 8-bit BGR image.
@@ -935,7 +947,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             detail_dash = "" if is_roundish else ' stroke-dasharray="1.2 2.2"'
             detail_opacity = 0.94 if is_roundish else 0.7
             mono_base = muted_hex(final_color, keep=0.16 if is_roundish else 0.12)
-            outline_color = "#111111"
+            outline_color = darken_hex(final_color, HOUSE_OUTLINE_DARKEN)
             detail_color = darken_hex(mono_base, 0.62)
             detail_under_color = lighten_hex(mono_base, 0.12)
             detail_under_opacity = 0.34 if is_roundish else 0.22
@@ -945,7 +957,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             detail_dash = ""
             detail_opacity = 0.8
             mono_base = muted_hex(final_color, keep=0.10)
-            outline_color = "#111111"
+            outline_color = darken_hex(final_color, HOUSE_OUTLINE_DARKEN)
             detail_color = darken_hex(mono_base, 0.68)
             detail_under_color = lighten_hex(mono_base, 0.10)
             detail_under_opacity = 0.18

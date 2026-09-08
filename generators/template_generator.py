@@ -26,8 +26,8 @@ from . import icon_grid, template_catalog
 #: One grid unit at the 256px canvas the templates are painted on.
 _UNIT = 256.0 / icon_grid.UNITS
 
-DETAIL_WIDTH = icon_grid.DETAIL * _UNIT       # internal lines: 2 units
-OUTLINE_WIDTH = icon_grid.OUTLINE * _UNIT     # the silhouette: 3 units
+DETAIL_WIDTH = icon_grid.DETAIL * _UNIT       # internal lines
+OUTLINE_WIDTH = icon_grid.OUTLINE * _UNIT     # the silhouette
 
 
 #: Family-wide size corrections, applied to the half-width tables below.

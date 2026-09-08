@@ -14,8 +14,8 @@ look related without anyone tuning them to match.
 
     unit    = size / 64          (4 px on the 256 px canvas)
     MARGIN  = 4 units            the safe area; artwork lives inside 56x56
-    OUTLINE = 2.6 units          the silhouette stroke
-    DETAIL  = 1.3 units          internal lines
+    OUTLINE = 2.0 units          the silhouette stroke
+    DETAIL  = 1.0 units          internal lines
 
 Nothing here knows about archaeology - it is the drawing surface only.
 """
@@ -32,18 +32,25 @@ MARGIN = 4
 #: These were 3 and 2 units - a ratio of 1.5, which is not enough for the eye
 #: to read one as the silhouette and the other as detail. What separates a
 #: shape from what is drawn inside it is the *ratio*, not the absolute
-#: weight, so the detail line came down rather than the outline going up: at
-#: 3 against 1.5 the contrast is still double, and the outline is lighter
-#: than it was when the two were 3 and 2.
+#: weight, so the detail line came down rather than the outline going up, and
+#: the pair has been walked down together since: 3/2, then 2.6/1.3, now 2/1.
+#: The ratio of two is the part that has to hold.
 #:
-#: Three units is also still thick enough that the round joins visibly blunt
-#: a corner, which is most of what keeps a drawn icon friendly.
-OUTLINE = 2.6
-DETAIL = 1.3
+#: Two units is where it stops, and the reason is arithmetic rather than
+#: taste. A symbol is 64 units and a legend shows it at 64 pixels, so a unit
+#: is a pixel there and DETAIL is exactly one: at 1.0 the catalogue leaves 15
+#: strokes finer than a legend pixel, and at 0.9 it leaves 103. Below one an
+#: internal line stops being a line and becomes a grey smudge, and the whole
+#: point of the detail weight is that it still reads. Lighter than this would
+#: have to come from drawing less, not from drawing thinner.
+OUTLINE = 2.0
+DETAIL = 1.0
 
 #: Corner radius, clamped to a quarter of the shorter side so small parts stay
-#: crisp. Raised with the outline: a heavier stroke needs a wider corner to
-#: turn through, or the join reads as a blob.
+#: crisp. It was raised when the outline was heavy - a thick stroke needs a
+#: wider corner to turn through, or the join reads as a blob - and left where
+#: it is as the stroke came back down, because the rounding now carries the
+#: friendliness the weight used to.
 RADIUS = 4
 
 #: Coordinates snap to this fraction of a unit. Half a unit is fine enough for

@@ -35,13 +35,13 @@ DEFAULT_PAD_RATIO = 0.06
 #: The trace pipeline works in analysis pixels, where an object spans six or
 #: seven hundred units, and it writes stroke widths of one to three straight
 #: into that space. That is a third of a percent of the symbol, against the
-#: template set's four and a half: a traced symbol came out twelve to twenty
-#: times thinner than a drawn one, so a user's own artefact landed on the map
-#: as a hairline ghost beside the built-in icons.
+#: template set's three: a traced symbol came out ten times thinner than a
+#: drawn one, so a user's own artefact landed on the map as a hairline ghost
+#: beside the built-in icons.
 #:
 #: Duplicated rather than imported because icon_grid pulls in Qt and this
 #: module is QGIS-free; tests/test_svg_builder.py holds the two in step.
-HOUSE_OUTLINE_RATIO = 2.6 / 64.0
+HOUSE_OUTLINE_RATIO = 2.0 / 64.0
 
 _NUMBER = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?"
 _NUMBER_RE = re.compile(_NUMBER)

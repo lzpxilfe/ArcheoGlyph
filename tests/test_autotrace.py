@@ -275,3 +275,40 @@ def test_a_round_find_is_never_spun():
     _rot_bgr, rot_mask = stand_upright(bgr, mask)
     assert rot_mask.shape == mask.shape
     assert int(np.abs(rot_mask.astype(int) - mask.astype(int)).sum()) == 0
+
+
+def test_a_traced_outline_takes_the_artefact_colour():
+    """
+    A traced symbol has to look like it belongs to the drawn catalogue.
+
+    In QGIS the outline colour is the user's, so a flat "#111111" cost
+    nothing there. Everywhere else - preview sheets, documentation, any plain
+    SVG viewer - it put a near-black ring around a traced artefact standing
+    beside a catalogue drawn in its own muted colour, and the same stroke
+    width read as far heavier than it is. The catalogue darkens the fill by
+    QColor.darker(140); this does the same.
+    """
+    from archeoglyph.generators.autotrace import pipeline as pl
+
+    img = synthetic.ellipse_blade()
+    for style in ("Line", "Measured"):
+        svg = _run(img, style=style)
+        heaviest, colour = 0.0, None
+        for el in ET.fromstring(svg).iter():
+            stroke = str(el.attrib.get("stroke", "")).strip()
+            if not stroke.startswith("#"):
+                continue
+            width = float(el.attrib.get("stroke-width", 0.0) or 0.0)
+            if width > heaviest:
+                heaviest, colour = width, stroke.split()[-1]
+        assert colour is not None, f"{style} drew no stroked outline"
+        assert colour != "#111111", (
+            f"{style} still draws its outline in a flat near-black")
+        channels = [int(colour[i:i + 2], 16) for i in (1, 3, 5)]
+        assert max(channels) - min(channels) > 4, (
+            f"{style} drew its outline in the grey {colour}, which carries "
+            f"none of the artefact's own colour")
+
+    assert pl.HOUSE_OUTLINE_DARKEN == pytest.approx(1.0 / 1.4), (
+        "the catalogue darkens an outline with QColor.darker(140); these two "
+        "have to stay in step or a traced symbol stops matching a drawn one")
