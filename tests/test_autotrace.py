@@ -371,3 +371,61 @@ def test_the_grabcut_vote_is_not_a_single_draw():
     assert len(segment.GRABCUT_SEEDS) % 2 == 1, (
         "an even number of seeds can tie on a boundary pixel")
     assert len(set(segment.GRABCUT_SEEDS)) == len(segment.GRABCUT_SEEDS)
+
+
+def test_a_mark_too_small_to_see_at_legend_size_is_not_drawn():
+    """
+    A symbol is 64 grid units and a legend shows it at 64 pixels, so a unit is
+    a legend pixel and icon_grid.DETAIL - the internal line weight - is
+    exactly one. A mark spanning two or three pixels is not a line at that
+    size, it is a speck, and the styles were emitting twenty-four of them
+    inside a round artefact.
+    """
+    from archeoglyph.generators.autotrace.geometry import (
+        LEGEND_MARK_MIN_SPAN, keep_marks_that_read)
+
+    extent = 640.0
+    floor = LEGEND_MARK_MIN_SPAN * extent
+    speck = [[100, 100], [100 + floor * 0.4, 100 + floor * 0.4]]
+    stroke = [[100, 100], [100 + floor * 3.0, 100 + floor * 3.0]]
+
+    kept = keep_marks_that_read([speck, stroke], extent)
+    assert len(kept) == 1, f"expected the speck dropped and the stroke kept, got {kept}"
+    assert kept[0] == stroke
+
+    assert keep_marks_that_read([speck] * 20, extent) == [], (
+        "twenty specks are still twenty specks")
+
+
+def test_a_traced_symbol_is_no_busier_than_the_busiest_drawn_one():
+    """
+    The cap comes from the catalogue this has to sit beside: over its 188
+    symbols the median artefact carries 2 interior marks, the ninetieth
+    percentile 5, and the busiest 11. A traced symbol may be as busy as the
+    busiest drawn one and no busier - it was carrying 24.
+    """
+    from archeoglyph.generators.autotrace.geometry import (
+        MAX_INTERIOR_MARKS, keep_marks_that_read)
+
+    extent = 640.0
+    long_enough = extent * 0.3
+    lines = [[[0, i * 4], [long_enough * (1.0 - i * 0.01), i * 4]]
+             for i in range(40)]
+    kept = keep_marks_that_read(lines, extent)
+    assert len(kept) == MAX_INTERIOR_MARKS
+
+    spans = [max(p[0] for p in line) - min(p[0] for p in line) for line in kept]
+    assert spans == sorted(spans, reverse=True), (
+        "the cap kept an arbitrary eleven; it has to keep the largest eleven")
+
+
+def test_bold_interior_structure_survives_the_filter():
+    """
+    The filter must not be a way of drawing nothing. A mirror with two bold
+    concentric rings has interior structure that belongs in the symbol.
+    """
+    img = synthetic.mirror_with_rings()
+    for style in ("Line", "Measured"):
+        svg = _run(img, style=style)
+        assert _path_count(svg) >= 2, (
+            f"{style} kept only the silhouette of a disc with two bold rings")

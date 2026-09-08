@@ -39,8 +39,10 @@ from .enhance import (
     prepare_detail_source,
 )
 from .geometry import (
+    MAX_INTERIOR_MARKS,
     circle_path,
     clamp,
+    keep_marks_that_read,
     merge_distinct_lines,
     polyline_to_path,
     remove_near_horizontal_lines,
@@ -841,6 +843,28 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             max_lines=max(8, ink_cap + 4),
             min_arc_len=6.0,
         )
+
+    # Everything above chose *which* marks say what this artefact is. This
+    # asks whether they can be seen at the size the symbol is used, which is
+    # a separate question and the one that was going unasked: the styles were
+    # emitting twenty-four interior marks inside a round artefact, half of
+    # them two or three pixels across on a 64px legend marker.
+    #
+    # A folded motif is exempt from the count: it is stamped once per fold and
+    # trimming it would leave the face decorated round part of its turn and
+    # bare for the rest, which reads as damage (see replay_rotational_motif).
+    # A drawing is exempt too - there the ink strokes are the content, not an
+    # inference about it - but its specks still go, because a speck is
+    # unreadable whatever drew it.
+    if internal_lines:
+        _mx, _my, _mw, _mh = cv2.boundingRect(main_contour)
+        artefact_extent = float(max(_mw, _mh))
+        if legend_mode and folded_motif_lines:
+            pass
+        else:
+            internal_lines = keep_marks_that_read(
+                internal_lines, artefact_extent,
+                max_marks=None if is_drawing else MAX_INTERIOR_MARKS)
 
     if is_typology:
         palette_seeds = list(material_palette[:4]) if material_palette else [final_color]

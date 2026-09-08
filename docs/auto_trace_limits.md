@@ -183,6 +183,75 @@ between radial bands (the lotus gave 8 and 7 in its two halves; the dragon
 11 and 18, which is the right refusal for the wrong reason — the margin is
 one fold, not a gap).
 
+## The silhouette lump was the test harness, not the tracer
+
+For several rounds this document and its author treated a lumpy silhouette on
+the roof tiles as a defect in the tracer. It was not. The render script that
+produced those sheets pinned `mask_backend` to `opencv`. The plugin's default
+is `auto`, which prefers the ONNX salient-object model and cross-checks it
+against the OpenCV mask:
+
+| find | opencv | onnx (what `auto` picks) |
+| --- | --- | --- |
+| lotus roof tile end | 615269 px, solidity 0.972, circularity 0.782 | **324000 px, 0.994, 0.876** |
+| dragon roof tile end | 369142 px, 0.969, 0.767 | **354364 px, 0.996, 0.889** |
+| comb-pattern jar | 483113 px, 0.945, 0.659 | **458769 px, 0.995, 0.716** |
+| bronze mirror | 455613 px, 0.994, 0.869 | **450488 px, 0.998, 0.897** |
+
+The white support block under the lotus tile is **43 percent of the OpenCV
+mask** and none of the ONNX one. `auto` chose the model mask on all of them.
+
+This matters for a user only if they run `opencv` — the "no extra download"
+setting — where the lump is real. It is a reason to install the model, not a
+bug in the tracer.
+
+## Twenty-four marks nobody could see
+
+With the default backend the silhouettes came out clean and a different
+defect was left in plain sight: Line and Measured were drawing **24 interior
+marks** inside a round artefact, and half of them were specks.
+
+| find / style | median mark span (of the symbol box) | at 64 px |
+| --- | --- | --- |
+| comb-pattern jar, Line | 0.031 | **2.0 px** |
+| dragon tile, Line | 0.050 | **3.2 px** |
+| bipa-shaped dagger, Measured | 0.044 | **2.8 px** |
+| bronze mirror, Line | 0.063 | 4.0 px |
+
+A symbol is 64 grid units and a legend shows it at 64 pixels, so a unit is a
+legend pixel and `icon_grid.DETAIL` — the internal line weight — is exactly
+one. A mark two or three pixels across is not a line at that size. Two rules
+follow, both taken from measurements rather than taste:
+
+- `geometry.LEGEND_MARK_MIN_SPAN` = four detail-widths. Shorter than the least
+  that can read as a stroke, and it goes.
+- `geometry.MAX_INTERIOR_MARKS` = 11, the busiest symbol in the drawn
+  catalogue (whose median artefact carries 2 and whose ninetieth percentile
+  is 5). A traced symbol may be as busy as the busiest drawn one, no busier.
+  What survives is kept largest first.
+
+A folded rotational motif is exempt from the count — it is stamped once per
+fold, and trimming it would leave the face decorated round part of its turn
+and bare for the rest. A drawing is exempt too, because there the ink strokes
+are the content rather than an inference about it; its specks still go.
+
+### What this does not fix
+
+The comb-pattern jar's Line output is clean now and the daggers keep the marks
+they should. The **bronze mirror and the two roof tiles still carry large
+shapeless blobs** in Measured, and this change does not touch them: they are
+neither too small nor too many, they are meaningless.
+
+A shape rule was measured and rejected. Thickness at legend size does not
+separate them: a mark that reads correctly on the stone dagger is 8.2 px
+thick, and one that reads as dirt on the dragon tile is 3.0 px. Any threshold
+that cut the blobs would cut good marks with them.
+
+Those blobs are the same problem as the rotational motif — there is nothing
+readable on a worn dark disc in one photograph, so whatever is extracted is
+invented. The answer is the refusal logic already in this document, not
+another filter.
+
 ## The unsupported-boundary measurement, not shipped
 
 A cast shadow fused to the silhouette puts a lump on every traced symbol that

@@ -297,3 +297,63 @@ def line_center(points):
     xs = [float(p[0]) for p in points]
     ys = [float(p[1]) for p in points]
     return (sum(xs) / len(xs), sum(ys) / len(ys))
+
+
+#: The smallest mark worth drawing, as a fraction of the artefact's own
+#: extent.
+#:
+#: A symbol is 64 grid units and a legend shows it at 64 pixels, so a unit is
+#: a legend pixel and ``icon_grid.DETAIL`` - the internal line weight - is
+#: exactly one of them. A mark whose whole span is two or three pixels is not
+#: a line at that size, it is a speck, and four of them end to end is the
+#: least that can read as a stroke.
+#:
+#: This was measured on nine photographed finds. Line and Measured were
+#: drawing twenty-four interior marks inside a round artefact with a median
+#: span of 0.031 to 0.063 of the box - two to four legend pixels - which came
+#: out as scattered blobs that read as dirt rather than decoration.
+#:
+#: Duplicated from icon_grid rather than imported, like
+#: svg_builder.HOUSE_OUTLINE_RATIO, because icon_grid pulls in Qt and this
+#: module is QGIS-free; tests/test_svg_builder.py holds them in step.
+LEGEND_MARK_MIN_SPAN = 4.0 / 64.0
+
+#: The most interior marks a traced symbol may carry.
+#:
+#: Taken from the drawn catalogue, which is the house style this has to sit
+#: beside: over its 188 symbols the median artefact carries 2 interior marks,
+#: the ninetieth percentile 5, and the busiest one 11. A traced symbol may be
+#: as busy as the busiest drawn one and no busier.
+MAX_INTERIOR_MARKS = 11
+
+
+def keep_marks_that_read(lines, extent,
+                         min_span=LEGEND_MARK_MIN_SPAN,
+                         max_marks=MAX_INTERIOR_MARKS):
+    """
+    Drop interior marks too small to read at legend size, then the surplus.
+
+    ``extent`` is the artefact's own size in the same pixels as ``lines`` -
+    the longer side of its bounding box - because a mark's legibility is
+    relative to the artefact it sits on, not to the image it was cropped from.
+
+    What survives is ordered largest first, so a cap keeps the marks that
+    carry the most and drops the ones nobody would see.
+    """
+    if not lines or not (extent > 0):
+        return list(lines or [])
+    floor = float(min_span) * float(extent)
+    measured = []
+    for line in lines:
+        points = [pt for pt in line if pt is not None and len(pt) >= 2]
+        if len(points) < 2:
+            continue
+        xs = [float(pt[0]) for pt in points]
+        ys = [float(pt[1]) for pt in points]
+        span = max(max(xs) - min(xs), max(ys) - min(ys))
+        if span >= floor:
+            measured.append((span, list(line)))
+    measured.sort(key=lambda item: item[0], reverse=True)
+    if max_marks is not None and max_marks > 0:
+        measured = measured[:int(max_marks)]
+    return [line for _span, line in measured]

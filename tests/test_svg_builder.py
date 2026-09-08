@@ -75,6 +75,16 @@ def test_the_house_outline_ratio_matches_the_drawn_catalogue():
         icon_grid.OUTLINE / icon_grid.UNITS
     ), "icon_grid.OUTLINE changed; update svg_builder.HOUSE_OUTLINE_RATIO"
 
+    # The same duplication, for the same reason, one module along: a traced
+    # mark has to be at least four detail-widths long to read as a stroke
+    # rather than a speck, and the detail width is a grid unit.
+    from archeoglyph.generators.autotrace import geometry as geo
+
+    assert geo.LEGEND_MARK_MIN_SPAN == pytest.approx(
+        4.0 * icon_grid.DETAIL / icon_grid.UNITS
+    ), ("icon_grid.DETAIL changed; update geometry.LEGEND_MARK_MIN_SPAN, or "
+        "traced symbols will keep marks the legend cannot show")
+
 
 def test_finalize_keeps_viewbox_for_relative_paths_and_flags_empty():
     svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50"><path d="m 1,1 l 5,5" stroke="#000"/></svg>'
