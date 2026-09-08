@@ -37,6 +37,7 @@ from .colors import (
 from .enhance import (
     estimate_masked_edge_density,
     prepare_detail_source,
+    relief_ink_sheet,
 )
 from .geometry import (
     MAX_INTERIOR_MARKS,
@@ -325,13 +326,28 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
         except Exception:
             is_drawing = False
     ink_lines = []
+    relief_sheet = None
     if is_drawing or is_mono:
         try:
             erode_px = max(2, int(round(0.015 * min(target_mask.shape[:2]))))
             ink_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * erode_px + 1, 2 * erode_px + 1))
             ink_mask = cv2.erode(target_mask, ink_kernel)
-            ink_source = (processing_bgr if is_drawing else detail_bgr).copy()
-            if not is_drawing:
+            if is_roundish and not is_drawing:
+                # A round artefact's decoration is shallow relief, and reading
+                # it straight off the photograph gave lighting, not ornament -
+                # on a lotus roof tile end, a diagonal stripe across the face
+                # where its lit and shadowed halves met. Turning the relief
+                # into a rubbing first hands this the kind of input it is
+                # already good at, and the same photograph then yields the
+                # petal ring, the boss and the bead ring.
+                _rx, _ry, _rw, _rh = cv2.boundingRect(main_contour)
+                relief_sheet = relief_ink_sheet(processing_bgr, target_mask,
+                                                max(_rw, _rh) / 2.0)
+            if relief_sheet is not None:
+                ink_source = relief_sheet
+            else:
+                ink_source = (processing_bgr if is_drawing else detail_bgr).copy()
+            if relief_sheet is None and not is_drawing:
                 # Flatten the background to the object tone so the silhouette
                 # edge itself does not read as a dark stroke.
                 inside = target_mask > 0
@@ -831,18 +847,30 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
         drawing_limit = 80 if is_mono else max(3, line_detail_count + 2)
         internal_lines = [list(pl) for pl in ink_lines[:drawing_limit]]
     elif is_mono and is_roundish and ink_lines and not (legend_mode and folded_motif_lines):
-        # Round photographs: real strokes (rings, incised motifs) come first,
-        # motif-extractor candidates only fill the remaining budget. A folded
-        # motif at legend size is the exception - merging raw strokes in front
-        # of it pushed the eight replayed petals down to two.
-        ink_cap = max(6, texture_count)
-        internal_lines = merge_distinct_lines(
-            [list(pl) for pl in ink_lines[:ink_cap]],
-            list(internal_lines),
-            min_center_sep=3.0,
-            max_lines=max(8, ink_cap + 4),
-            min_arc_len=6.0,
-        )
+        if relief_sheet is not None:
+            # The ink was traced from a rubbing of this artefact's own relief,
+            # so it is the content, exactly as it is for a real rubbing above -
+            # and the region extractors it used to be merged with are reading
+            # the photograph's shading. On a lotus roof tile end the merge kept
+            # a diagonal band spanning three quarters of the face, which was
+            # the boundary between its lit and shadowed halves, in front of the
+            # petal ring.
+            internal_lines = [list(pl) for pl in
+                              ink_lines[:80 if is_mono else max(3, line_detail_count + 2)]]
+        else:
+            # Round photographs with no relief reading: real strokes (rings,
+            # incised motifs) come first, motif-extractor candidates only fill
+            # the remaining budget. A folded motif at legend size is the
+            # exception - merging raw strokes in front of it pushed the eight
+            # replayed petals down to two.
+            ink_cap = max(6, texture_count)
+            internal_lines = merge_distinct_lines(
+                [list(pl) for pl in ink_lines[:ink_cap]],
+                list(internal_lines),
+                min_center_sep=3.0,
+                max_lines=max(8, ink_cap + 4),
+                min_arc_len=6.0,
+            )
 
     # Everything above chose *which* marks say what this artefact is. This
     # asks whether they can be seen at the size the symbol is used, which is
@@ -862,9 +890,17 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
         if legend_mode and folded_motif_lines:
             pass
         else:
+            # The count is exempt wherever the strokes are the content rather
+            # than an inference about it: a real drawing, and a photograph
+            # whose ink was traced from its own relief. Eleven marks is the
+            # busiest drawn *legend symbol*, and Line and Measured are
+            # documentation plates, not markers - capping them there cut a
+            # lotus rosette of 125 strokes down to ten arcs. The size floor
+            # still applies to both: a speck is unreadable whatever drew it.
+            strokes_are_content = is_drawing or relief_sheet is not None
             internal_lines = keep_marks_that_read(
                 internal_lines, artefact_extent,
-                max_marks=None if is_drawing else MAX_INTERIOR_MARKS)
+                max_marks=None if strokes_are_content else MAX_INTERIOR_MARKS)
 
     if is_typology:
         palette_seeds = list(material_palette[:4]) if material_palette else [final_color]

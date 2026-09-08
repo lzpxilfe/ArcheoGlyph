@@ -235,22 +235,52 @@ fold, and trimming it would leave the face decorated round part of its turn
 and bare for the rest. A drawing is exempt too, because there the ink strokes
 are the content rather than an inference about it; its specks still go.
 
+### The blobs, fixed by changing what is read rather than what is kept
+
+Three attempts to tell decoration from lighting *after* extraction all failed
+on the same nine photographs, and a fourth was measured and rejected:
+
+| rule tried | what killed it |
+| --- | --- |
+| thickness at legend size | a good mark on the stone dagger is 8.2 px, a bad one on the dragon tile 3.0 px |
+| size of a closed region | the drawn catalogue uses closed interior shapes up to 0.88 of the tile |
+| stability under a re-crop | the pots score 0.08 and 0.33, the discs 0.42 to 0.58 - backwards |
+| concentric radial bands | works (a lotus tile gives the same five bands over three re-crops, a dragon tile a different set each time) but only ever yields rings |
+
+The information needed is not in the extracted marks, because decoration and
+lighting arrive there in the same shapes. What was wrong was **what was being
+read**, not what was being kept.
+
+A roof tile end's decoration is *height*, and a photograph carries height only
+as shading. But the shading is local: subtract a wide blur and the lamp goes,
+because a lamp is broad and a groove is not. What remains is **a rubbing of
+the object** — and a rubbing is an input this tracer already reads well.
+
+So for a round photograph, `enhance.relief_ink_sheet` renders the relief as
+ink on paper and the existing ink-centreline tracer works on that. The
+silhouette still comes from the photograph; only the ink comes from the
+relief. On the lotus roof tile end this yields the petal ring, the boss with
+its ring of beads and the outer bead ring — the drawing an archaeologist would
+make — where reading the photograph directly gave a diagonal band across three
+quarters of the face.
+
+Those strokes are the content, as a real rubbing's are, so they are exempt
+from `MAX_INTERIOR_MARKS`: that cap is the busiest drawn *legend symbol*, and
+Line and Measured are documentation plates. Capping them there cut a
+125-stroke rosette down to ten arcs. The size floor still applies — a speck is
+unreadable whatever drew it.
+
 ### What this does not fix
 
-The comb-pattern jar's Line output is clean now and the daggers keep the marks
-they should. The **bronze mirror and the two roof tiles still carry large
-shapeless blobs** in Measured, and this change does not touch them: they are
-neither too small nor too many, they are meaningless.
+The comb-pattern jar's Line output is clean and the daggers keep the marks
+they should; neither is round, so the relief route leaves them alone.
 
-A shape rule was measured and rejected. Thickness at legend size does not
-separate them: a mark that reads correctly on the stone dagger is 8.2 px
-thick, and one that reads as dirt on the dragon tile is 3.0 px. Any threshold
-that cut the blobs would cut good marks with them.
-
-Those blobs are the same problem as the rotational motif — there is nothing
-readable on a worn dark disc in one photograph, so whatever is extracted is
-invented. The answer is the refusal logic already in this document, not
-another filter.
+The **bronze mirror** gains little. Its surface is worn and dark and the
+relief map finds mostly its rim, which is honest — a plain disc is what that
+photograph supports. The **rotational motif** is still read separately and
+still refused on all three of these photographs; nothing here changes that
+gate, and the fold count remains unrepeatable across crops for the reason
+recorded above.
 
 ## The unsupported-boundary measurement, not shipped
 

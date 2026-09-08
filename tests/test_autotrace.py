@@ -429,3 +429,60 @@ def test_bold_interior_structure_survives_the_filter():
         svg = _run(img, style=style)
         assert _path_count(svg) >= 2, (
             f"{style} kept only the silhouette of a disc with two bold rings")
+
+
+def test_relief_becomes_ink_and_the_lighting_does_not():
+    """
+    The decoration on a roof tile end is height, and a photograph carries
+    height only as shading - which is why reading marks straight off the
+    photograph produced lighting artefacts, including a band across three
+    quarters of a lotus tile's face where its lit and shadowed halves met.
+
+    Subtracting a wide blur removes the lamp, which is broad, and keeps the
+    grooves, which are not. What is left is a rubbing of the object.
+    """
+    cv2 = pytest.importorskip("cv2")
+    from archeoglyph.generators.autotrace.enhance import relief_ink_sheet
+
+    size, radius = 400, 150
+    centre = (size // 2, size // 2)
+    face = np.zeros((size, size), dtype=np.uint8)
+    cv2.circle(face, centre, radius, 255, -1)
+
+    plate = np.full((size, size), 150, dtype=np.uint8)
+    for step in range(8):                       # eight grooves, the decoration
+        angle = 2.0 * np.pi * step / 8.0
+        cv2.line(plate, centre,
+                 (int(centre[0] + radius * 0.85 * np.cos(angle)),
+                  int(centre[1] + radius * 0.85 * np.sin(angle))), 96, 5)
+    lamp = np.linspace(-46, 46, size, dtype=np.float32)[None, :]
+    lit = np.clip(plate.astype(np.float32) + lamp, 0, 255).astype(np.uint8)
+
+    sheet = relief_ink_sheet(cv2.cvtColor(lit, cv2.COLOR_GRAY2BGR), face, radius)
+    ink = cv2.cvtColor(sheet, cv2.COLOR_BGR2GRAY) < 128
+
+    left = int(ink[:, :size // 2].sum())
+    right = int(ink[:, size // 2:].sum())
+    assert left > 0 and right > 0, "the grooves did not survive at all"
+    assert min(left, right) > 0.45 * max(left, right), (
+        f"the ink is lopsided - {left} on the lit side against {right} on the "
+        f"shadowed one - so the lamp came through as decoration")
+
+
+def test_a_flat_lit_disc_yields_almost_no_ink():
+    """A plain disc under the same lamp has nothing to draw."""
+    cv2 = pytest.importorskip("cv2")
+    from archeoglyph.generators.autotrace.enhance import relief_ink_sheet
+
+    size, radius = 400, 150
+    face = np.zeros((size, size), dtype=np.uint8)
+    cv2.circle(face, (size // 2, size // 2), radius, 255, -1)
+    lamp = np.linspace(-46, 46, size, dtype=np.float32)[None, :]
+    flat = np.clip(np.full((size, size), 150, dtype=np.float32) + lamp,
+                   0, 255).astype(np.uint8)
+
+    sheet = relief_ink_sheet(cv2.cvtColor(flat, cv2.COLOR_GRAY2BGR), face, radius)
+    ink = int((cv2.cvtColor(sheet, cv2.COLOR_BGR2GRAY) < 128).sum())
+    assert ink < 0.02 * int((face > 0).sum()), (
+        f"a plain disc under a lamp produced {ink} pixels of ink; the lamp is "
+        f"being drawn as decoration")

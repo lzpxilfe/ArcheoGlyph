@@ -270,3 +270,45 @@ def extract_annular_relief_lines(bgr_img, target_mask, main_contour, max_lines=1
     except Exception as e:
         log_exception("extract_annular_relief_lines", e)
         return []
+
+
+def relief_ink_sheet(bgr_img, mask, radius):
+    """
+    A photograph of shallow relief, rendered as ink on paper.
+
+    The decoration on a roof tile end or a mirror is height, and a photograph
+    carries height only as shading - which is why every attempt to pull marks
+    straight out of the photograph produced lighting artefacts. But the
+    shading is *local*: subtract a wide blur and what is left is the grooves,
+    with the lamp's broad gradient gone. Threshold that and the result is a
+    rubbing of the object, which is an input this tracer already knows how to
+    read.
+
+    The silhouette is not taken from here - a rubbing has no outline - so the
+    caller keeps its own mask. Only the ink comes from this.
+
+    On a lotus roof tile end this recovers the petal ring, the boss with its
+    ring of beads, and the outer bead ring: the drawing an archaeologist would
+    make. Reading the same photograph directly gave a diagonal stripe across
+    the face, which was the boundary between its lit and shadowed halves.
+    """
+    if bgr_img is None or mask is None or not (radius > 0):
+        return bgr_img
+    try:
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        # Wide enough to be the lighting, narrow enough to leave the grooves.
+        illumination = cv2.GaussianBlur(gray, (0, 0),
+                                        sigmaX=max(9.0, float(radius) * 0.22))
+        local = np.clip(gray.astype(np.int16) - illumination.astype(np.int16) + 128,
+                        0, 255).astype(np.uint8)
+        block = int(max(11, float(radius) * 0.16)) | 1
+        ink = cv2.adaptiveThreshold(local, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                    cv2.THRESH_BINARY_INV, block, 6)
+        ink = cv2.bitwise_and(ink, mask)
+        ink = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        sheet = np.full(gray.shape, 240, dtype=np.uint8)
+        sheet[ink > 0] = 40
+        return cv2.cvtColor(sheet, cv2.COLOR_GRAY2BGR)
+    except Exception as exc:
+        log_exception("relief_ink_sheet", exc)
+        return bgr_img
