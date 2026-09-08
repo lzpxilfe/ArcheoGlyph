@@ -94,6 +94,66 @@ Everything refused is refused out loud, with a log line naming the fold
 count and score. Stamping petals onto a dragon-motif tile would be worse
 than drawing it plain.
 
+## A second opinion before the decoration is drawn
+
+The frame above is this project's own invention, and the cost of it being
+wrong is the worst failure this tracer has. So the answer is checked against
+a published method that reaches it a completely different way: Loy and
+Eklundh (ECCV 2006), the baseline the CVPR symmetry competitions use for
+rotation symmetry. Matched feature pairs each vote — two patches that look
+alike are related by some rotation, and a rotation through a known angle
+about an unknown centre pins that centre down exactly — so the centre is an
+**output** of the vote, never an input to it. That is precisely the part this
+project kept getting wrong.
+
+Measured on the same nine photographs, as a fraction of the face radius:
+
+| find | our frame vs. the vote | plain ellipse fit vs. the vote |
+| --- | --- | --- |
+| lotus roof tile end | **0.008** | 0.21 |
+| dragon roof tile end | **0.010** | 0.05 |
+| bronze mirror | **0.012** | 0.02 |
+| comb-pattern jar | 0.47 | 0.26 |
+| bipa-shaped dagger | 0.64 | 0.35 |
+| polished stone dagger | 0.81 | 0.76 |
+| ground stone tool | 0.90 | 0.73 |
+| slender bronze dagger | 1.60 | 0.80 |
+
+Two independent methods land within one percent of a radius of each other on
+every decorated disc, and half a radius apart or more on everything that is
+not one. So the vote runs as the last check before a motif is committed —
+only when the score has already passed, where it costs 0.2–0.5 s — and a
+disagreement past 0.12 of a radius refuses the reading. Silence is not
+disagreement: a worn or plain surface gives the vote nothing to match, and a
+guard that fired on that would refuse the artefacts most in need of help.
+
+On this corpus the guard changes no outcome: the only find that passes the
+score gate is the lotus tile, and there the two methods agree. It is a lock,
+not an improvement.
+
+**Only the centre is taken from that method.** Its fold-count step was
+measured on the same photographs and does not separate an eight-petal tile
+from a dragon — both came out at a matched-pair concentration of 0.28, the
+tile reading 8 and the dragon 4. Four statistics on those pair angles were
+tried and each either named the wrong count for the tile or scored a control
+above it: Rayleigh on the descriptor orientation difference, Rayleigh on the
+positional rotation, bootstrap stability of the winning count, and agreement
+between radial bands (the lotus gave 8 and 7 in its two halves; the dragon
+11 and 18, which is the right refusal for the wrong reason — the margin is
+one fold, not a gap).
+
+## The direction not taken: relief from one photograph, learned
+
+Recovering shallow relief from a *single* image is an active problem with
+published results — MonoRelief and MonoRelief V2 do exactly this, and unlike
+the lamp-moving path below they need nothing of the photographer. That would
+plug straight into the `relief` argument `run_autotrace` already takes.
+
+It is not used here: no pretrained weights are released, and the method needs
+PyTorch and Depth-Anything-V2 behind it, which is not a dependency a QGIS
+plugin can carry. If weights appear in a form that runs under the
+`onnxruntime` this plugin already uses, this is the first thing to try.
+
 ## Moving the lamp: reading relief the way it is meant to be read
 
 There is a way to get the decoration from the object itself rather than from

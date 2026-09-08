@@ -51,6 +51,7 @@ from .io import (
 from .lines import (
     extract_internal_lines_multisource,
 )
+from .feature_symmetry import centre_disagrees, vote_for_centre
 from .round_motif import (
     FRAME_MIN_SCORE,
     find_rotational_frame,
@@ -440,8 +441,21 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             motif_source = cv2.cvtColor(processing_bgr, cv2.COLOR_BGR2GRAY)
         frame = find_rotational_frame(motif_source, target_mask)
         if frame is not None and frame.score >= FRAME_MIN_SCORE:
-            folded_motif_lines = replay_rotational_motif(
-                fold_rotational_motif(motif_source, frame), frame)
+            # Last check before decoration is committed to someone's artefact,
+            # and only here because it is the expensive one: ask a published
+            # method that finds the centre a completely different way whether
+            # it agrees. Silence from it is not disagreement - a plain disc
+            # has nothing to match - so only an actual conflict refuses.
+            voted = vote_for_centre(motif_source, target_mask,
+                                    max(frame.a, frame.b))
+            if centre_disagrees(frame, voted, max(frame.a, frame.b)):
+                log("Two methods put this artefact's decorated face in "
+                    f"different places - fitted ({frame.cx:.0f},{frame.cy:.0f}), "
+                    f"feature vote ({voted[0]:.0f},{voted[1]:.0f}) - so the "
+                    f"{frame.folds}-fold reading is not trusted; drawing it plain.")
+            else:
+                folded_motif_lines = replay_rotational_motif(
+                    fold_rotational_motif(motif_source, frame), frame)
         elif frame is not None:
             # Saying nothing here would be the ONNX fallback trap again: the
             # symbol comes out a plain disc and nothing says why.
