@@ -101,17 +101,6 @@ PALETTE = {
 }
 
 
-def tone(color_class, color, level):
-    """The symbol colour at one step of the ramp."""
-    return color_class(color.red(), color.green(), color.blue(), level)
-
-
-def ramp(value):
-    """Snap an opacity onto the ramp."""
-    value = int(value)
-    return min((SOFT, MID, SOLID), key=lambda step: abs(step - value))
-
-
 def snap(value):
     """Round a unit coordinate onto the grid."""
     return round(float(value) / SNAP) * SNAP

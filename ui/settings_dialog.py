@@ -2634,7 +2634,7 @@ class HfConnectionTestThread(QThread):
     def run(self):
         try:
             from huggingface_hub import HfApi
-            from huggingface_hub.utils import GatedRepoError, HfHubHTTPError, RepositoryNotFoundError
+            from huggingface_hub.utils import GatedRepoError, RepositoryNotFoundError
         except Exception:
             self.result_ready.emit({
                 "status": "error",
@@ -2670,7 +2670,7 @@ class HfConnectionTestThread(QThread):
             except RepositoryNotFoundError:
                 saw_missing = True
                 continue
-            except (HfHubHTTPError, Exception) as exc:
+            except Exception as exc:
                 last_error = str(exc)
                 continue
 

@@ -425,6 +425,25 @@ structure in the code, in the log line and here. Measured across all nine
 finds in all three styles, only the two pots change; the other seven come out
 byte-identical.
 
+### A stroke crossed twice used to come back in pieces
+
+Found in a review, not from a photograph. `ink_centerline.trace_skeleton`
+joins segments across a junction where the tangent continues, and it tracked
+which segments were still free by their original index while marking them
+spent by their union root. A stroke joined at one junction was therefore
+skipped at the next, so anything crossed twice - a line under hatching, an
+ornament crossed by a contour - came back in fragments. On a plain 39-pixel
+skeleton with two stubs it returned 24 points plus 12 instead of one polyline.
+
+Fixing the bookkeeping alone would have produced backwards joins: the ends
+recorded for the segments that entered a merge do not describe the ends of the
+concatenation that comes out of it. Which side of a junction a polyline meets
+is now read back from its current geometry.
+
+The effect on the traced finds is visible: the lotus tile's petal outlines
+close up, the dragon tile's coils come back as 28 curves rather than 80
+fragments, and the mirror's rim lines run continuously.
+
 ### What this does not fix
 
 The comb-pattern jar's Line output is clean and the daggers keep the marks

@@ -213,10 +213,15 @@ class TemplateGenerator:
         color = color or template_info['default_color']
         result = SymbolResult(source="template", style=str(template_type))
 
-        template_path = self._template_file(template_info)
+        # A drawn symbol wins over a shipped SVG. Only one entry carries both,
+        # and the file used to win: dropping hearth.svg into resources/templates
+        # would have silently replaced a symbol this catalogue draws on purpose,
+        # with nothing to say it had happened.
         svg_data = None
-        if template_path:
-            svg_data = self._load_and_colorize_svg(template_path, color)
+        if not template_info.get("draw"):
+            template_path = self._template_file(template_info)
+            if template_path:
+                svg_data = self._load_and_colorize_svg(template_path, color)
         if not svg_data:
             svg_data = self._create_placeholder_svg(template_type, color)
 
@@ -421,7 +426,7 @@ class TemplateGenerator:
             return ("_draw_bronze_weapon_symbol", ("spear", COLOR))
         elif "bronze sword" in key:
             return ("_draw_bronze_weapon_symbol", ("sword", COLOR))
-        elif "bronze dagger" in key or "bronze sword" in key:
+        elif "bronze dagger" in key:
             if "liaoning" in key:
                 return ("_draw_bronze_dagger_typology", ("liaoning", COLOR))
             elif "ordos" in key:
@@ -1400,13 +1405,21 @@ class TemplateGenerator:
         painter.drawPath(blade)
 
         old_pen = painter.pen()
-        # The midrib is the one thing every type shares and the thing a
-        # legend reader sees first; at 1.2 units it was a hairline that
-        # vanished at marker size, leaving ten identical leaves. It is set
-        # against the blade rather than fixed, because a weight that reads
-        # as a ridge on 비파형 reads as a slot cut through 세형.
-        ridge_pen = _pen(old_pen.color().darker(135),
-                         max(1.5, min(2.2, max(widths) * 0.28)))
+        # The midrib is the one thing every type shares and the thing a legend
+        # reader sees first, so it takes the heavier of the grid's two steps
+        # deliberately - it is a modelled ridge, not a scratch.
+        #
+        # It used to be written as max(1.5, min(2.2, max(widths) * 0.28)),
+        # "set against the blade", and that could never do anything: _weight
+        # snaps to two values, so the whole clamp had two possible outcomes.
+        # Nine of the ten variants hit the ceiling at 2.200 and one, 세형, fell
+        # to 1.904 and came out half the weight of its nine siblings for no
+        # reason a reader could see. Drawing it at the interior weight instead
+        # was tried and rejected: it took the artefact category's median
+        # interior detail from 5.0 percent of its tile to 2.9 against the
+        # features' 5.0, which is the balance
+        # test_an_artifact_carries_as_much_detail_as_a_feature exists to hold.
+        ridge_pen = _pen(old_pen.color().darker(135), 2.2)
         _clip_detail(painter, blade)
         painter.setPen(ridge_pen)
         painter.drawPath(g.line(32, 8, 32, 58))

@@ -98,3 +98,34 @@ def test_constraint_image_has_dark_lines_on_light_canvas():
     gray = canvas.mean(axis=2)
     assert (gray < 100).sum() > 50
     assert gray.mean() > 180
+
+
+def test_a_stroke_survives_crossing_more_than_one_junction():
+    """
+    A line crossed by hatching, or by a contour, meets a junction at each
+    crossing. The join loop tracked which segments were still free by their
+    original index but marked them spent by their union root, so a stroke that
+    had been joined at one junction was skipped at the next: a 39-pixel line
+    with two stubs came back as 24 points plus 12 rather than one polyline.
+
+    The orientation has to come back too. a_start and b_start were recorded
+    against the segments that entered the merge, and after a merge the
+    concatenation's ends are not theirs - reading the junction's side off the
+    current geometry is what keeps the second join from running backwards.
+    """
+    skeleton = np.zeros((24, 48), np.uint8)
+    skeleton[10, 2:41] = 1          # one long horizontal stroke
+    skeleton[8:11, 15] = 1          # crossed here
+    skeleton[8:11, 28] = 1          # and here
+
+    lines = ink.trace_skeleton(skeleton)
+    longest = max(lines, key=len)
+    assert len(longest) >= 30, (
+        f"the stroke came back in pieces: {sorted((len(pl) for pl in lines), reverse=True)}")
+
+    xs = [pt[0] for pt in longest]
+    assert xs == sorted(xs) or xs == sorted(xs, reverse=True), (
+        "the joined stroke doubles back on itself, so a later join was "
+        "concatenated the wrong way round")
+    assert min(xs) <= 3 and max(xs) >= 39, (
+        f"the stroke spans {min(xs)}..{max(xs)}, not the whole skeleton")

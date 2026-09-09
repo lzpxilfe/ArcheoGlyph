@@ -246,16 +246,6 @@ class LocalGenerator:
         )
         return style_controls_prompt_hint(controls, prefix="style controls")
         
-    def _generate_comfyui(self, image_path, prompt):
-        """Generate using ComfyUI API."""
-        # ComfyUI requires a workflow JSON
-        # This is a simplified implementation - real usage would need proper workflow
-        
-        raise NotImplementedError(
-            "ComfyUI support is coming soon. "
-            "Please use Automatic1111 WebUI for now."
-        )
-        
     def _bytes_to_image(self, image_bytes):
         """Convert raw bytes to QImage."""
         image = QImage()

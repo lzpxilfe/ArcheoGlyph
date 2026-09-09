@@ -41,6 +41,13 @@ QGIS_FREE_MODULES = [
     "generators.autotrace.pipeline",
     "generators.autotrace.svg_builder",
     "generators.autotrace.model_store",
+    "generators.autotrace.stroke_font",
+    # Reached only through a function-local import (relief) or through
+    # contour_generator, which is not on this list (sam_backend), so neither
+    # was covered here. Both are Qt-free and have to stay that way.
+    "generators.autotrace.relief",
+    "generators.autotrace.feature_symmetry",
+    "generators.autotrace.sam_backend",
 ]
 
 

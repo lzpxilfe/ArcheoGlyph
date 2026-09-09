@@ -23,7 +23,6 @@ class AutoTraceOptions:
     synthetic_structure: bool = False
     input_kind: str = "auto"
     type_code: str = ""
-    seed: int = 0
 
     def normalized(self):
         """Return a copy with enum-like fields clamped to their valid values."""

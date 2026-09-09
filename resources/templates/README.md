@@ -1,18 +1,13 @@
-# Template SVG Files
+# Template SVG files
 
-This directory contains SVG templates for different artifact types:
+This directory is empty on purpose. Every one of the catalogue's 188 symbols
+is drawn in code, on the 64-unit grid in `generators/icon_grid.py`, so that
+they read as one set and can be published without depending on anyone else's
+artwork.
 
-- pottery.svg - Pottery/ceramics
-- stone_tool.svg - Stone tools
-- bronze.svg - Bronze artifacts
-- iron.svg - Iron artifacts
-- ornament.svg - Ornaments/jewelry
-
-Templates will be loaded by the TemplateGenerator when the user selects 
-"Use Template" mode. If a template is not found, a placeholder shape 
-will be generated programmatically.
-
-Programmatic fallback templates include:
-- Bronze weapon symbols (sword, dagger-axe, spear)
-- Kofun variants (enpun, zenpokouen, makimuku-en, hotategai, sohochuen, hofun, zenpokoho, makimuku-ho, yosumi, daijobo)
-- Archaeology paper-style symbols (north arrow, scale bar, Harris matrix context, stratigraphic unit, pottery sherd sections)
+An SVG dropped in here is still picked up: `TemplateGenerator._template_file`
+looks for the `file` name a catalogue entry carries and colourises it. That is
+a way to override a symbol locally, not the way the catalogue works. An entry
+that also carries a `draw` function keeps its drawn symbol - the file does not
+win, because a silent replacement of a deliberate drawing is not an override,
+it is a surprise.

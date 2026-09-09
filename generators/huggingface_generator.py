@@ -144,20 +144,6 @@ class HuggingFaceGenerator:
             return self.DEFAULT_MODEL_ID
         return value
 
-    def _get_error_detail(self, response):
-        """Extract compact error detail from HF JSON/text responses."""
-        try:
-            data = response.json()
-            if isinstance(data, dict):
-                detail = str(data.get("error", data))
-                if data.get("estimated_time") is not None:
-                    detail += f" (estimated_time={data['estimated_time']}s)"
-                return detail
-            return str(data)
-        except Exception:
-            text = response.text.strip()
-            return text if text else ""
-
     def _build_prompt(
         self,
         prompt,

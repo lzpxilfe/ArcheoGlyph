@@ -245,12 +245,6 @@ def typology_tones(base_rgb: Sequence[float], palette_rgb: Optional[Sequence[Seq
     return shadow, mid, highlight, patina
 
 
-def _blend_arrays(base: np.ndarray, mix: np.ndarray, t: np.ndarray) -> np.ndarray:
-    """Per-pixel blend with int() truncation, matching blend_rgb."""
-    t = t[..., None] if t.ndim == base.ndim - 1 else t
-    return np.trunc(base * (1.0 - t) + mix * t)
-
-
 def harmonize_typology(
     rgb: np.ndarray,
     alpha: np.ndarray,

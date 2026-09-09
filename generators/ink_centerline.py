@@ -440,20 +440,42 @@ def trace_skeleton(
                 if cos >= join_min_cos:
                     pairs.append((cos, a, a_start, b, b_start))
         pairs.sort(reverse=True)
-        used = set()
-        for _, a, a_start, b, b_start in pairs:
-            if a in used or b in used or not (alive[a] and alive[b]):
-                continue
+        jcy, jcx = jcenters[jl]
+
+        def _joins_at_start(root):
+            """Whether this junction sits at the head of the root's polyline.
+
+            Asked of the merged polyline rather than remembered from the
+            segment that entered the merge: after a join, polylines[root] is a
+            concatenation and the ends recorded for its parts no longer name
+            its ends. Reading it back from the geometry is what makes a second
+            join at a second junction come out the right way round.
+            """
+            head, tail = polylines[root][0], polylines[root][-1]
+            to_head = (head[0] - jcx) ** 2 + (head[1] - jcy) ** 2
+            to_tail = (tail[0] - jcx) ** 2 + (tail[1] - jcy) ** 2
+            return to_head <= to_tail
+
+        # Each arm of a junction may be joined once, and it is the *root* that
+        # is spent, not the segment that named it: alive[] was read by original
+        # index and cleared by root, so a stroke that had already been joined
+        # at one junction was skipped at the next and came out in pieces.
+        used_roots = set()
+        for _, a, _a_start, b, _b_start in pairs:
             ra, rb = _find(a), _find(b)
-            if ra == rb:
+            if ra == rb or ra in used_roots or rb in used_roots:
                 continue
-            pa = polylines[ra] if not a_start else list(reversed(polylines[ra]))
-            pb = polylines[rb] if b_start else list(reversed(polylines[rb]))
+            pa = polylines[ra]
+            if _joins_at_start(ra):
+                pa = list(reversed(pa))
+            pb = polylines[rb]
+            if not _joins_at_start(rb):
+                pb = list(reversed(pb))
             polylines[ra] = pa + pb[1:]
             alive[rb] = False
             parent[rb] = ra
-            used.add(a)
-            used.add(b)
+            used_roots.add(ra)
+            used_roots.add(rb)
 
     out = [pl for i, pl in enumerate(polylines) if alive[i] and _arc_length(pl) >= min_arc_length]
     out.sort(key=_arc_length, reverse=True)
