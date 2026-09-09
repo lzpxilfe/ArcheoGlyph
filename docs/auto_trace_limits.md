@@ -26,12 +26,19 @@ Two things had to be right for this:
   label card. The mask already selects a single component and ignores the
   card; no change was needed.
 
-## Identity in the decoration: this does not work from a photograph
+## Counting the folds: this does not work from a photograph
 
 A bronze mirror and a roof tile end are plain discs without their
 decoration — indistinguishable from a posthole. That decoration is **shallow
 relief**, which a photograph carries only as shading under whatever light
 the object happened to be under.
+
+This section is about the *rotational motif*: counting how many times the
+ornament repeats and replaying one sector. Drawing the ornament itself is a
+different question and it was solved later, by reading the relief as a
+rubbing — see "The blobs, fixed by changing what is read rather than what is
+kept" below. The fold count is still refused on all three of these
+photographs, for the reason recorded here.
 
 Seven approaches were tried and measured, and all seven read the lotus tile
 as 10, 8 or 12 petals depending on which pixel the image started at:
@@ -237,8 +244,9 @@ are the content rather than an inference about it; its specks still go.
 
 ### The blobs, fixed by changing what is read rather than what is kept
 
-Three attempts to tell decoration from lighting *after* extraction all failed
-on the same nine photographs, and a fourth was measured and rejected:
+Five attempts to sort the marks out *after* extraction all failed on the same
+nine photographs - three to tell decoration from lighting, a fourth measured
+and rejected, and a fifth, later, to tell one kind of decoration from another:
 
 | rule tried | what killed it |
 | --- | --- |
@@ -246,6 +254,7 @@ on the same nine photographs, and a fourth was measured and rejected:
 | size of a closed region | the drawn catalogue uses closed interior shapes up to 0.88 of the tile |
 | stability under a re-crop | the pots score 0.08 and 0.33, the discs 0.42 to 0.58 - backwards |
 | concentric radial bands | works (a lotus tile gives the same five bands over three re-crops, a dragon tile a different set each time) but only ever yields rings |
+| mean mark width, to tell cut from raised | the lotus tile 1.79 percent of the artefact, the dragon 1.70 - indistinguishable |
 
 The information needed is not in the extracted marks, because decoration and
 lighting arrive there in the same shapes. What was wrong was **what was being
@@ -279,13 +288,60 @@ Three further things had to follow, each measured:
   traced curves to sixty-four, and what it removed were the short pieces
   joining the long ones, so the petal outlines came out as dashes. A marker
   still gets both.
-- **A dense drawing is drawn lighter, not thicker.** A stroke weight chosen
-  for a symbol with five marks buries a plate with four hundred: the two tiles
-  laid down 58 and 61 percent of their own tile in ink where the drawn
-  catalogue's busiest symbol covers 48. Past that ceiling the detail weight is
-  scaled to bring the drawing back to the catalogue's median of 27 percent —
-  a plate of four hundred curves is not entitled to the busiest symbol's
-  budget on the grounds of being busy.
+- **A dense drawing is drawn lighter, not thicker — but only down to the
+  legend floor.** A stroke weight chosen for a symbol with five marks buries a
+  plate with four hundred: the two tiles laid down 58 and 61 percent of their
+  own tile in ink where the drawn catalogue's busiest symbol covers 48. Past
+  that ceiling the drawing is brought back to the catalogue's median of 27
+  percent — a plate of four hundred curves is not entitled to the busiest
+  symbol's budget on the grounds of being busy.
+
+  Paying the whole bill in weight was the first attempt and it was wrong. It
+  put the interior line at 0.70 of a grid unit on the lotus tile and 0.67 on
+  the dragon, and a symbol is 64 units shown at 64 legend pixels, so a unit is
+  a pixel: the ornament was drawn thinner than the legend can show. Nothing is
+  gained by drawing eighty curves nobody can see.
+
+  So the weight now stops at `svg_builder.HOUSE_DETAIL_RATIO`, which is
+  `icon_grid.DETAIL` written down a second time, and whatever is still owed is
+  paid in **marks**, longest first
+  (`geometry.keep_marks_within_ink_budget`). Both tiles land at the floor
+  exactly, keeping all eighty curves at 1.00 units against 0.70 and 0.67
+  before; the bronze mirror gains the seventy-six curves the merged reading
+  found for it and is drawn at the floor too. The six finds that are not flat
+  discs come out byte-identical.
+
+**Both readings are traced, because neither wins and the choice cannot be
+made.** Decoration is either cut into the surface or raised out of it, and the
+two want different ink. Inking the dark side of the local-contrast map — the
+shadow inside a cut — is the drawing on the lotus tile, whose grooves *are*
+the petal outlines. It is only half the drawing on the dragon tile, whose body
+is raised: it finds the shadowed flank of each coil and returns a mass of
+squiggles. Inking where the relief changes fastest instead returns the coil.
+
+On the dragon tile the groove reading returns 143 curves whose longest spans
+0.54 of the artefact; the relief-edge reading returns 80 whose longest spans
+0.79, and that longest one is the coil. On the lotus tile the order reverses:
+the groove reading is plainly better on the petal lobes.
+
+Which reading an artefact wants cannot be told from its photograph — that was
+the fifth failed separator in the table above, mean mark width, 1.79 percent
+against 1.70. So both are traced and merged with `merge_distinct_lines`, and
+the merge beats either alone on all three:
+
+| | curves | total length | longest curve |
+| --- | --- | --- | --- |
+| lotus tile | 215 | 22.1 | 0.66 |
+| dragon tile | 211 | 22.2 | 0.79 |
+| bronze mirror | 107 | 12.7 | 0.96 |
+
+Lengths are in artefact widths. The lotus gains its rim and bead rings, the
+dragon its coil, the mirror both rim lines.
+
+The steep-relief reading uses a percentile inside the face rather than Otsu:
+on the worn dark mirror a global threshold kept two polylines where the
+percentile keeps seventy. It sits at 86; at 80 the mirror grew a chord across
+its face.
 
 **The gate is a flat face, not merely a round one.** `is_roundish` admits a
 comb-pattern jar, whose shading is the curve of its own body rather than
@@ -299,9 +355,10 @@ circle-fill test the outline logic already uses.
 The comb-pattern jar's Line output is clean and the daggers keep the marks
 they should; neither is round, so the relief route leaves them alone.
 
-The **bronze mirror** gains little. Its surface is worn and dark and the
-relief map finds mostly its rim, which is honest — a plain disc is what that
-photograph supports. The **rotational motif** is still read separately and
+The **bronze mirror** gains its rim lines and a scatter of surface marks and
+little else. Its surface is worn and dark, and that is honest — a nearly plain
+disc is what that photograph supports. The **rotational motif** is still read
+separately and
 still refused on all three of these photographs; nothing here changes that
 gate, and the fold count remains unrepeatable across crops for the reason
 recorded above.
@@ -392,7 +449,14 @@ are catalogued in the manifest as a warning to the next reader).
 | --- | --- | --- |
 | blades, stone tools | works | works |
 | pottery vessels | outline only, no surface pattern | pattern read |
-| mirrors, roof tile ends | outline only — declined, drawn plain | motif read and replayed |
+| mirrors, roof tile ends | relief read as a rubbing: the ornament, not the motif | motif read and replayed |
 
-With a multi-light stack, mirrors and roof tile ends move into the last
-column without needing a rubbing at all.
+The last row is the one that moved. A flat-faced disc's relief is now turned
+into a rubbing and traced, so a lotus roof tile end comes out with its rim,
+bead ring, petal ring and boss instead of a plain circle. What is still
+declined on these photographs is the **rotational motif** — counting the folds
+and replaying one sector — which needs a repeat the frame can find, and none
+of the three passes its gate.
+
+With a multi-light stack, mirrors and roof tile ends gain the motif column too
+without needing a rubbing at all.

@@ -11,7 +11,7 @@ import numpy as np
 
 from ...log import log
 from ..ink_centerline import extract_ink_polylines, looks_like_drawing, simplify_polyline
-from .svg_builder import HOUSE_OUTLINE_RATIO, smooth_closed_path
+from .svg_builder import HOUSE_DETAIL_RATIO, HOUSE_OUTLINE_RATIO, smooth_closed_path
 from ..style_control_utils import (
     STYLE_CONTROL_EXAGGERATION,
     STYLE_CONTROL_FACTUALITY,
@@ -35,6 +35,8 @@ from .colors import (
     muted_hex,
 )
 from .enhance import (
+    INCISED,
+    MODELLED,
     estimate_masked_edge_density,
     prepare_detail_source,
     relief_ink_sheet,
@@ -44,6 +46,7 @@ from .geometry import (
     circle_path,
     clamp,
     keep_marks_that_read,
+    keep_marks_within_ink_budget,
     merge_distinct_lines,
     polyline_to_path,
     remove_near_horizontal_lines,
@@ -347,36 +350,54 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             erode_px = max(2, int(round(0.015 * min(target_mask.shape[:2]))))
             ink_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * erode_px + 1, 2 * erode_px + 1))
             ink_mask = cv2.erode(target_mask, ink_kernel)
+            floor = max(6.0, 0.02 * float(min(target_mask.shape[:2])))
+
+            def _trace(source):
+                return [
+                    [[int(x), int(y)] for x, y in simplify_polyline(pline, epsilon=1.2)]
+                    for pline in extract_ink_polylines(
+                        source, mask=ink_mask, min_arc_length=floor)
+                ]
+
             if is_flat_faced_disc and not is_drawing:
                 # A round artefact's decoration is shallow relief, and reading
                 # it straight off the photograph gave lighting, not ornament -
                 # on a lotus roof tile end, a diagonal stripe across the face
                 # where its lit and shadowed halves met. Turning the relief
                 # into a rubbing first hands this the kind of input it is
-                # already good at, and the same photograph then yields the
-                # petal ring, the boss and the bead ring.
+                # already good at.
+                #
+                # Both readings are traced and merged rather than one being
+                # chosen, because the choice cannot be made from the
+                # photograph: incised and modelled decoration have the same
+                # mean mark width (1.79 and 1.70 percent of the artefact on
+                # the two tiles), and five attempts to separate them by
+                # measurement all failed. Merging is better than either alone
+                # on all three discs - the lotus gains its rim and bead rings,
+                # the dragon its coil, the mirror keeps both its rim lines.
                 _rx, _ry, _rw, _rh = cv2.boundingRect(main_contour)
+                face_radius = max(_rw, _rh) / 2.0
                 relief_sheet = relief_ink_sheet(processing_bgr, target_mask,
-                                                max(_rw, _rh) / 2.0)
-            if relief_sheet is not None:
-                ink_source = relief_sheet
+                                                face_radius, reading=INCISED)
+                ink_lines = merge_distinct_lines(
+                    _trace(relief_sheet),
+                    _trace(relief_ink_sheet(processing_bgr, target_mask,
+                                            face_radius, reading=MODELLED)),
+                    min_center_sep=max(3.0, max(_rw, _rh) * 0.012),
+                    max_lines=400,
+                    min_arc_len=max(_rw, _rh) * 0.03,
+                )
             else:
                 ink_source = (processing_bgr if is_drawing else detail_bgr).copy()
-            if relief_sheet is None and not is_drawing:
-                # Flatten the background to the object tone so the silhouette
-                # edge itself does not read as a dark stroke.
-                inside = target_mask > 0
-                if inside.any():
-                    fill_value = np.median(ink_source[inside].reshape(-1, 3), axis=0).astype(np.uint8)
-                    ink_source[~inside] = fill_value
-            ink_lines = [
-                [[int(x), int(y)] for x, y in simplify_polyline(pline, epsilon=1.2)]
-                for pline in extract_ink_polylines(
-                    ink_source,
-                    mask=ink_mask,
-                    min_arc_length=max(6.0, 0.02 * float(min(target_mask.shape[:2]))),
-                )
-            ]
+                if not is_drawing:
+                    # Flatten the background to the object tone so the
+                    # silhouette edge itself does not read as a dark stroke.
+                    inside = target_mask > 0
+                    if inside.any():
+                        fill_value = np.median(
+                            ink_source[inside].reshape(-1, 3), axis=0).astype(np.uint8)
+                        ink_source[~inside] = fill_value
+                ink_lines = _trace(ink_source)
         except Exception:
             ink_lines = []
     skip_round_motifs = is_drawing
@@ -1094,25 +1115,54 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
         # outline weight, so what a detail stroke actually ends up as is that
         # weight times its share of the heaviest - and each line is drawn
         # twice, the halo being the wider of the two.
-        halo_width = detail_width + 0.48
-        heaviest = max(outline_width, halo_width)
-        if drawn_length > 0 and symbol_extent > 0 and heaviest > 0:
-            # Every line is laid down twice - a halo and the stroke over it -
-            # so both count towards the ink.
+        def _ink_share(width, length):
+            halo = float(width) + 0.48
+            heaviest = max(float(outline_width), halo)
+            if not (heaviest > 0) or not (symbol_extent > 0):
+                return 0.0
             painted = (HOUSE_OUTLINE_RATIO * symbol_extent
-                       * (halo_width + detail_width) / heaviest)
-            share = (drawn_length * painted) / (symbol_extent * symbol_extent)
+                       * (halo + float(width)) / heaviest)
+            return (float(length) * painted) / (symbol_extent * symbol_extent)
+
+        if drawn_length > 0 and symbol_extent > 0 and outline_width > 0:
+            share = _ink_share(detail_width, drawn_length)
             if share > INTERIOR_INK_CEILING:
                 # Out of band, so bring it to the middle of the set rather than
                 # to its loudest edge: the ceiling is where the catalogue's
                 # *busiest* symbol sits, and a plate of four hundred traced
                 # curves is not entitled to that on the grounds of being busy.
-                lighter = float(INTERIOR_INK_MEDIAN / share)
-                log(f"Interior ink would cover {share * 100:.0f}% of this symbol "
+                #
+                # The overspend is paid in weight first and marks after, and
+                # the weight stops at the legend floor. Paying it all in weight
+                # was the first attempt and it drew the two roof tile ends at
+                # 0.53 and 0.71 of a grid unit - a unit is a legend pixel, so
+                # the ornament went under the size the legend can show. What
+                # cannot be seen is not worth keeping, so past the floor the
+                # bill is settled by dropping marks, longest first.
+                was_share = share
+                was_width, was_count = detail_width, len(internal_lines)
+                floor_width = (float(outline_width)
+                               * HOUSE_DETAIL_RATIO / HOUSE_OUTLINE_RATIO)
+                if detail_width > floor_width:
+                    lighter, heavier = floor_width, float(detail_width)
+                    for _ in range(40):
+                        middle = (lighter + heavier) / 2.0
+                        if _ink_share(middle, drawn_length) > INTERIOR_INK_MEDIAN:
+                            heavier = middle
+                        else:
+                            lighter = middle
+                    detail_width = heavier
+                share = _ink_share(detail_width, drawn_length)
+                if share > INTERIOR_INK_CEILING:
+                    allowed = drawn_length * (INTERIOR_INK_MEDIAN / share)
+                    internal_lines, drawn_length = keep_marks_within_ink_budget(
+                        internal_lines, allowed)
+                    share = _ink_share(detail_width, drawn_length)
+                log(f"Interior ink came to {was_share * 100:.0f}% of this symbol "
                     f"against the catalogue's {INTERIOR_INK_CEILING * 100:.0f}%; "
-                    f"drawing its {len(internal_lines)} traced curves "
-                    f"{lighter:.2f} times lighter.")
-                detail_width *= lighter
+                    f"drew {len(internal_lines)} of its {was_count} traced curves "
+                    f"at {detail_width / was_width:.2f} times the weight, "
+                    f"landing at {share * 100:.0f}%.")
         svg_output.append(
             f'<path d="{path_data}" fill="none" stroke="{outline_color}" stroke-width="{outline_width:.2f}" '
             'stroke-linecap="round" stroke-linejoin="round"/>'

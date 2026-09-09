@@ -43,6 +43,17 @@ DEFAULT_PAD_RATIO = 0.06
 #: module is QGIS-free; tests/test_svg_builder.py holds the two in step.
 HOUSE_OUTLINE_RATIO = 2.0 / 64.0
 
+#: The house weight of an interior line, as a fraction of the symbol's side.
+#:
+#: This is the floor, not a target. A symbol is 64 units and a legend shows it
+#: at 64 pixels, so a unit is a pixel there: a line thinner than this cannot
+#: be drawn in the legend at all. Anything that wants less ink than it has
+#: marks has to drop marks, not go under this.
+#:
+#: Duplicated from icon_grid.DETAIL for the same reason as the outline weight
+#: above; tests/test_svg_builder.py holds them in step.
+HOUSE_DETAIL_RATIO = 1.0 / 64.0
+
 _NUMBER = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?"
 _NUMBER_RE = re.compile(_NUMBER)
 _PATH_TOKEN_RE = re.compile(r"[MLHVCSQTAZmlhvcsqtaz]|" + _NUMBER)

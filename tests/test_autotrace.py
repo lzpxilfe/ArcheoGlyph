@@ -1,4 +1,5 @@
 import io as std_io
+import re
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -395,6 +396,115 @@ def test_a_mark_too_small_to_see_at_legend_size_is_not_drawn():
 
     assert keep_marks_that_read([speck] * 20, extent) == [], (
         "twenty specks are still twenty specks")
+
+
+def test_the_ink_budget_is_paid_in_marks_not_in_invisible_lines():
+    """
+    The budget used to be paid entirely in stroke weight, and on the two roof
+    tile ends that put the interior line at 0.53 and 0.71 of a grid unit. A
+    unit is a legend pixel, so the ornament was drawn thinner than the legend
+    can show: four hundred curves, none of them visible.
+
+    Past the floor the bill is settled by dropping marks instead, longest
+    first, because a mark that cannot be seen carries nothing.
+    """
+    from archeoglyph.generators.autotrace.geometry import (
+        keep_marks_within_ink_budget, polyline_length)
+
+    long_line = [[0, 0], [100, 0]]
+    short_line = [[0, 10], [10, 10]]
+    lines = [short_line, long_line, short_line]
+
+    kept, drawn = keep_marks_within_ink_budget(lines, 120.0)
+    assert kept == lines, "it all fits; nothing should be dropped"
+    assert drawn == pytest.approx(120.0)
+
+    kept, drawn = keep_marks_within_ink_budget(lines, 105.0)
+    assert kept == [long_line], "the long mark carries the most; it stays"
+    assert drawn == pytest.approx(100.0)
+
+    # Never nothing: one mark is kept even when the budget cannot afford it,
+    # because a symbol with a blank interior is a worse answer than a heavy one.
+    kept, drawn = keep_marks_within_ink_budget(lines, 1.0)
+    assert kept == [long_line]
+
+    assert polyline_length(long_line) == pytest.approx(100.0)
+    assert polyline_length([[0, 0]]) == 0.0
+
+
+def test_a_round_artefact_keeps_its_interior_lines_at_legend_weight():
+    """
+    The contract the budget may not break: whatever it does to fit the ink
+    inside the catalogue's band, what is left on the page is drawn at a weight
+    the legend can render. A symbol is 64 units shown at 64 pixels, so a grid
+    unit is a legend pixel and icon_grid.DETAIL is the floor.
+    """
+    from archeoglyph.generators import icon_grid
+    from archeoglyph.generators.autotrace import svg_builder as sb
+
+    img = synthetic.mirror_with_rings()
+    for style in ("Line", "Measured"):
+        out, info = sb.finalize_svg(_run(img, style=style))
+        side = float(info["viewbox"][2])
+        widths = []
+        for node in ET.fromstring(out).iter():
+            raw = node.attrib.get("stroke-width")
+            if raw is None:
+                continue
+            widths.append(float(re.search(r"[\d.]+$", raw.strip()).group(0)))
+        assert widths, f"{style} drew no strokes"
+        floor = side * icon_grid.DETAIL / icon_grid.UNITS
+        assert min(widths) >= floor * 0.999, (
+            f"{style} drew a {min(widths):.2f} stroke on a {side:.0f} symbol; "
+            f"the legend floor is {floor:.2f}. The budget has to be paid in "
+            f"marks once the weight reaches the floor, not in more thinning")
+
+
+def test_the_two_relief_readings_are_different_pictures():
+    """
+    Decoration is either cut into the surface or raised out of it, and the two
+    want different ink. INCISED inks the dark side - the shadow in a groove -
+    which is the drawing on a lotus roof tile end. MODELLED inks where the
+    relief changes fastest, which is the drawing on a dragon tile, whose body
+    is raised: the groove reading finds only the shadowed flank of each coil
+    and returns squiggles where this returns the coil.
+
+    Which one an artefact wants cannot be told from the photograph - the mean
+    mark width is 1.79 percent of the artefact on the lotus tile and 1.70 on
+    the dragon - so both are traced and merged. This is what makes that worth
+    doing: they are not the same picture.
+    """
+    cv2 = pytest.importorskip("cv2")
+    from archeoglyph.generators.autotrace.enhance import (
+        INCISED, MODELLED, relief_ink_sheet)
+
+    size, radius = 400, 150
+    centre = (size // 2, size // 2)
+    face = np.zeros((size, size), dtype=np.uint8)
+    cv2.circle(face, centre, radius, 255, -1)
+
+    plate = np.full((size, size), 150, dtype=np.uint8)
+    cv2.circle(plate, (centre[0] - 60, centre[1]), 34, 96, -1)   # a cut hollow
+    cv2.circle(plate, (centre[0] + 60, centre[1]), 34, 205, -1)  # a raised boss
+    bgr = cv2.cvtColor(cv2.GaussianBlur(plate, (0, 0), 3.0), cv2.COLOR_GRAY2BGR)
+
+    def _ink(reading):
+        sheet = relief_ink_sheet(bgr, face, radius, reading=reading)
+        return cv2.cvtColor(sheet, cv2.COLOR_BGR2GRAY) < 128
+
+    groove, relief = _ink(INCISED), _ink(MODELLED)
+    assert groove.any() and relief.any(), "a reading returned no ink at all"
+
+    overlap = float((groove & relief).sum()) / float((groove | relief).sum())
+    assert overlap < 0.75, (
+        f"the two readings agree on {overlap:.0%} of their ink; if they were "
+        f"the same picture there would be nothing to gain by merging them")
+
+    # The groove reading is the default, so a caller that does not name one
+    # still gets what it got before the split.
+    default = cv2.cvtColor(relief_ink_sheet(bgr, face, radius),
+                           cv2.COLOR_BGR2GRAY) < 128
+    assert (default == groove).all()
 
 
 def test_a_traced_symbol_is_no_busier_than_the_busiest_drawn_one():

@@ -276,32 +276,49 @@ def extract_annular_relief_lines(bgr_img, target_mask, main_contour, max_lines=1
 #: Measured against the groove width on photographs of roof tile ends.
 GROOVE_MEDIAN = 13
 
+#: The two ways decoration is cut into or raised out of a surface, and so the
+#: two things worth inking. See relief_ink_sheet.
+INCISED = "incised"
+MODELLED = "modelled"
 
-def relief_ink_sheet(bgr_img, mask, radius):
+#: How steep the relief has to be to be inked in the modelled reading, as a
+#: percentile of the slope inside the artefact. Lower keeps more; at 80 a
+#: spurious chord appeared across the bronze mirror's face.
+MODELLED_PERCENTILE = 86.0
+
+
+def relief_ink_sheet(bgr_img, mask, radius, reading=INCISED):
     """
     A photograph of shallow relief, rendered as ink on paper.
 
     The decoration on a roof tile end or a mirror is height, and a photograph
     carries height only as shading - which is why every attempt to pull marks
     straight out of the photograph produced lighting artefacts. But the
-    shading is *local*: subtract a wide blur and what is left is the grooves,
-    with the lamp's broad gradient gone. Threshold that and the result is a
-    rubbing of the object, which is an input this tracer already knows how to
-    read.
+    shading is *local*: subtract a wide blur and what is left is the relief,
+    with the lamp's broad gradient gone. What to ink from that depends on how
+    the decoration was made, and the two readings are different pictures:
+
+    ``INCISED`` inks the dark side - the shadow inside a cut groove. On a
+    lotus roof tile end that is the drawing: the grooves *are* the petal
+    outlines.
+
+    ``MODELLED`` inks where the relief changes fastest, in either direction.
+    On a dragon tile, whose body is raised rather than cut, the groove reading
+    finds only the shadowed flank of each coil and returns a mass of squiggles
+    where this returns the coil.
+
+    Neither wins outright and the two cannot be told apart from the
+    photograph: the mean mark width is 1.79 percent of the artefact on the
+    lotus tile and 1.70 on the dragon. So callers trace both and merge.
 
     The silhouette is not taken from here - a rubbing has no outline - so the
     caller keeps its own mask. Only the ink comes from this.
-
-    On a lotus roof tile end this recovers the petal ring, the boss with its
-    ring of beads, and the outer bead ring: the drawing an archaeologist would
-    make. Reading the same photograph directly gave a diagonal stripe across
-    the face, which was the boundary between its lit and shadowed halves.
     """
     if bgr_img is None or mask is None or not (radius > 0):
         return bgr_img
     try:
         gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
-        # Wide enough to be the lighting, narrow enough to leave the grooves.
+        # Wide enough to be the lighting, narrow enough to leave the relief.
         illumination = cv2.GaussianBlur(gray, (0, 0),
                                         sigmaX=max(9.0, float(radius) * 0.22))
         local = np.clip(gray.astype(np.int16) - illumination.astype(np.int16) + 128,
@@ -313,9 +330,25 @@ def relief_ink_sheet(bgr_img, mask, radius):
         # on the dragon tile the longest single curve goes from 0.21 of the
         # artefact's width to 0.54 when this is applied.
         local = cv2.medianBlur(local, GROOVE_MEDIAN)
-        block = int(max(11, float(radius) * 0.16)) | 1
-        ink = cv2.adaptiveThreshold(local, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                    cv2.THRESH_BINARY_INV, block, 6)
+
+        if reading == MODELLED:
+            field = local.astype(np.float32)
+            slope = cv2.magnitude(cv2.Sobel(field, cv2.CV_32F, 1, 0, ksize=5),
+                                  cv2.Sobel(field, cv2.CV_32F, 0, 1, ksize=5))
+            slope = cv2.GaussianBlur(slope, (0, 0), sigmaX=1.5)
+            inside = slope[mask > 0]
+            if inside.size < 16:
+                return bgr_img
+            # A percentile inside the face, not Otsu: a worn dark mirror has
+            # so little contrast that a global threshold keeps almost nothing
+            # - two polylines, where this keeps seventy.
+            level = float(np.percentile(inside, MODELLED_PERCENTILE))
+            ink = ((slope >= level) * 255).astype(np.uint8)
+        else:
+            block = int(max(11, float(radius) * 0.16)) | 1
+            ink = cv2.adaptiveThreshold(local, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                        cv2.THRESH_BINARY_INV, block, 6)
+
         ink = cv2.bitwise_and(ink, mask)
         ink = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
         sheet = np.full(gray.shape, 240, dtype=np.uint8)

@@ -85,6 +85,13 @@ def test_the_house_outline_ratio_matches_the_drawn_catalogue():
     ), ("icon_grid.DETAIL changed; update geometry.LEGEND_MARK_MIN_SPAN, or "
         "traced symbols will keep marks the legend cannot show")
 
+    # And the weight of that mark, which is the floor the ink budget may not
+    # go under: below a grid unit the legend has nothing to draw with.
+    assert sb.HOUSE_DETAIL_RATIO == pytest.approx(
+        icon_grid.DETAIL / icon_grid.UNITS
+    ), ("icon_grid.DETAIL changed; update svg_builder.HOUSE_DETAIL_RATIO, or "
+        "the ink budget will thin interior lines out of the legend")
+
 
 def test_finalize_keeps_viewbox_for_relative_paths_and_flags_empty():
     svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50"><path d="m 1,1 l 5,5" stroke="#000"/></svg>'

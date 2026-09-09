@@ -357,3 +357,51 @@ def keep_marks_that_read(lines, extent,
     if max_marks is not None and max_marks > 0:
         measured = measured[:int(max_marks)]
     return [line for _span, line in measured]
+
+
+def polyline_length(line):
+    """Arc length of a polyline, in the pixels its points are given in."""
+    points = [pt for pt in (line or []) if pt is not None and len(pt) >= 2]
+    if len(points) < 2:
+        return 0.0
+    return float(sum(
+        math.hypot(float(points[i + 1][0]) - float(points[i][0]),
+                   float(points[i + 1][1]) - float(points[i][1]))
+        for i in range(len(points) - 1)))
+
+
+def keep_marks_within_ink_budget(lines, allowed_length):
+    """
+    Drop interior marks until the ink they lay down fits the budget.
+
+    The alternative is to keep every mark and thin the stroke until the total
+    fits, which is what this replaces: on a lotus roof tile end that put the
+    interior line at 0.53 of a grid unit, and a unit is a legend pixel, so the
+    ornament was drawn thinner than the legend can show. Nothing is gained by
+    drawing four hundred curves nobody can see.
+
+    So the weight stops at the legend floor and the rest of the overspend is
+    paid in marks, longest first: what survives is drawn at a weight that
+    reads, and what goes is the short pieces that carried the least.
+
+    Returns ``(lines, drawn_length)`` - the caller needs the new length,
+    because it is no longer the length it measured before.
+    """
+    measured = [(polyline_length(line), list(line)) for line in (lines or [])]
+    measured = [item for item in measured if item[0] > 0]
+    total = float(sum(item[0] for item in measured))
+    if not measured:
+        return [], 0.0
+    if not (allowed_length > 0):
+        return [], 0.0
+    if total <= float(allowed_length):
+        return [line for _length, line in measured], total
+    measured.sort(key=lambda item: item[0], reverse=True)
+    kept = []
+    running = 0.0
+    for length, line in measured:
+        if running + length > float(allowed_length) and kept:
+            break
+        kept.append(line)
+        running += length
+    return kept, running
