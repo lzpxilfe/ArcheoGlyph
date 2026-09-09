@@ -499,6 +499,41 @@ This path has been verified on synthetic stacks built from known height
 fields, not on real multi-light photographs of Korean artefacts — none were
 available to this work.
 
+## Writing a typology code into the symbol
+
+Some of this plugin's users classify their finds and want the class readable
+on the map, not only in the attribute table. A checkbox and a text field put a
+code such as `IIa2b` into the symbol; unchecked, nothing changes and the SVG
+comes out byte-identical.
+
+The code is cut as **stroke polylines**, in `generators/autotrace/stroke_font.py`,
+rather than as SVG `<text>`. Three reasons, all about this plugin:
+`svg_sanitize.ALLOWED_TAGS` has no `text` element, so a text node would be
+stripped; `svg_builder.geometry_bbox` measures geometry, so a text node would
+fall outside the box the symbol is cropped and squared to; and QGIS renders an
+SVG marker through Qt, which substitutes fonts, so a code would look different
+on every machine that opened the project. There is also a fourth, about the
+material: every symbol here is original vector geometry drawn in code, which
+is what lets it be published at all.
+
+The glyphs sit on a three-by-five grid, the smallest that carries the whole
+alphabet legibly. Lower case is cut as small capitals on the same baseline,
+because in a typology code the case is meaning - `IIa` is not `IIA` - and a
+three-by-five cell has no room for real ascenders.
+
+Placement is measured rather than fixed. The code is set inside the artefact
+where it fits, walking up from the foot of the silhouette until a sample grid
+lands wholly inside the mask. Where fitting it across the artefact would shrink
+it below about five legend pixels of cap height it goes **underneath** the
+drawing instead, at full size - which is what an archaeological plate does
+anyway. A slender bronze dagger is exactly that case: five characters across
+its blade came out as a squint.
+
+Its stroke is half the heaviest already in the file, because `svg_builder`
+scales that heaviest one to the house outline weight - half of it is one grid
+unit, which is one legend pixel, which is the floor below which the code could
+not be read at all.
+
 ## What to feed it instead
 
 The reading works, and works exactly, when the repeat is clean. A **rubbing

@@ -568,6 +568,62 @@ def test_a_vessel_is_drawn_with_its_rim_and_a_blade_is_not():
         f"carry a rim and a shoulder that the blade has no business having")
 
 
+def test_a_symbol_without_a_typology_code_is_unchanged():
+    """
+    The code is opt-in. An empty one has to leave the symbol exactly as it
+    was, byte for byte, or every user who does not classify their finds pays
+    for a feature they did not ask for.
+    """
+    img = synthetic.ellipse_blade()
+    assert _run(img, style="Measured") == _run(img, style="Measured", type_code="")
+    assert _run(img, style="Measured") == _run(img, style="Measured", type_code="   ")
+
+
+def test_a_typology_code_is_drawn_where_it_can_be_read():
+    """
+    Inside the artefact when it fits there and underneath it when it does not:
+    a slender blade is narrow enough that fitting five characters across it
+    shrank them to a squint, so past a floor the code goes under the drawing,
+    which is what an archaeological plate does anyway.
+
+    Whichever it is, the strokes are drawn at the legend floor - the code is
+    of no use in a symbol too small to read it.
+    """
+    import xml.etree.ElementTree as ET
+
+    from archeoglyph.generators import icon_grid
+    from archeoglyph.generators.autotrace import svg_builder as sb
+
+    for name in ("ellipse_blade", "open_vessel", "plain_disc"):
+        img = getattr(synthetic, name)()
+        bare = _run(img, style="Measured")
+        coded = _run(img, style="Measured", type_code="IIa2b")
+        assert _path_count(coded) > _path_count(bare), f"{name} drew no code"
+
+        out, info = sb.finalize_svg(coded)
+        side = float(info["viewbox"][2])
+        widths = []
+        for node in ET.fromstring(out).iter():
+            raw = node.attrib.get("stroke-width")
+            if raw is not None:
+                widths.append(float(re.search(r"[\d.]+$", raw.strip()).group(0)))
+        floor = side * icon_grid.DETAIL / icon_grid.UNITS
+        assert min(widths) >= floor * 0.999, (
+            f"{name} drew a {min(widths):.2f} stroke on a {side:.0f} symbol; "
+            f"the legend floor is {floor:.2f}")
+
+
+def test_a_typology_code_is_trimmed_and_bounded():
+    from archeoglyph.generators.autotrace.options import (
+        MAX_TYPE_CODE, AutoTraceOptions)
+
+    assert AutoTraceOptions(type_code="  IIa2b  ").normalized().type_code == "IIa2b"
+    assert AutoTraceOptions(type_code="II  a").normalized().type_code == "II a"
+    long_code = AutoTraceOptions(type_code="X" * 40).normalized().type_code
+    assert len(long_code) == MAX_TYPE_CODE
+    assert AutoTraceOptions().normalized().type_code == ""
+
+
 def test_a_traced_symbol_is_no_busier_than_the_busiest_drawn_one():
     """
     The cap comes from the catalogue this has to sit beside: over its 188

@@ -171,6 +171,7 @@ class ContourGenerator:
             exaggeration=controls[STYLE_CONTROL_EXAGGERATION],
             synthetic_structure=bool(synthetic),
             input_kind=kwargs.get("input_kind") or self.settings.value("ArcheoGlyph/autotrace_input_kind", "auto"),
+            type_code=kwargs.get("type_code") or "",
         ).normalized()
 
     # ------------------------------------------------------------------
@@ -191,6 +192,7 @@ class ContourGenerator:
         exaggeration=None,
         synthetic_structure=None,
         input_kind=None,
+        type_code=None,
         light_stack=None,
     ):
         """
@@ -211,6 +213,7 @@ class ContourGenerator:
             detail_mode=detail_mode, round_strategy=round_strategy, factuality=factuality,
             symbolic_looseness=symbolic_looseness, exaggeration=exaggeration,
             synthetic_structure=synthetic_structure, input_kind=input_kind,
+            type_code=type_code,
         )
         return run_autotrace(loaded.bgr, options, self._mask_provider(loaded),
                              relief=self._relief_for(loaded, light_stack))

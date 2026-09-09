@@ -27,6 +27,7 @@ from ..i18n import apply_settings_language, tr
 from ..generators.style_utils import STYLE_LEGEND, STYLE_OPTIONS
 from ..generators.template_generator import template_display_name
 from ..generators.symbol_result import SymbolResult
+from ..generators.autotrace.options import MAX_TYPE_CODE
 from ..generators.style_control_utils import (
     STYLE_CONTROL_DEFAULTS,
     STYLE_CONTROL_MAX,
@@ -474,6 +475,34 @@ class ArcheoGlyphDialog(QDialog):
         input_kind_row.addWidget(self.input_kind_combo, 1)
         basic_layout.addLayout(input_kind_row)
 
+        # A typology code written into the symbol, for people who classify
+        # their finds and want the class readable on the map. Off by default:
+        # unchecked, the symbol is exactly what it was before.
+        type_code_row = QHBoxLayout()
+        self.type_code_check = QCheckBox(tr("Typology code:"))
+        self.type_code_check.setChecked(
+            self.settings.value("ArcheoGlyph/autotrace_type_code_on", False, type=bool)
+        )
+        self.type_code_check.setToolTip(
+            tr("Write a classification code into the symbol, for example IIa2b.\n"
+            "It is drawn inside the artefact where it fits and underneath it\n"
+            "where it does not.")
+        )
+        self.type_code_check.toggled.connect(self._on_type_code_changed)
+        type_code_row.addWidget(self.type_code_check)
+        self.type_code_edit = QLineEdit()
+        self.type_code_edit.setMaxLength(MAX_TYPE_CODE)
+        # Translatable: the notation is Latin everywhere, but a translator
+        # whose field uses a different example should be able to change it.
+        self.type_code_edit.setPlaceholderText(tr("IIa2b"))
+        self.type_code_edit.setText(
+            str(self.settings.value("ArcheoGlyph/autotrace_type_code", "") or "")
+        )
+        self.type_code_edit.setEnabled(self.type_code_check.isChecked())
+        self.type_code_edit.editingFinished.connect(self._on_type_code_changed)
+        type_code_row.addWidget(self.type_code_edit, 1)
+        basic_layout.addLayout(type_code_row)
+
         self.synthetic_structure_check = QCheckBox(tr("Add schematic structure lines"))
         self.synthetic_structure_check.setChecked(
             self.settings.value("ArcheoGlyph/autotrace_synthetic_structure", False, type=bool)
@@ -840,6 +869,9 @@ class ArcheoGlyphDialog(QDialog):
         self.autotrace_detail_mode_combo.setEnabled(is_autotrace)
         self.round_strategy_combo.setEnabled(is_autotrace)
         self.input_kind_combo.setEnabled(is_autotrace)
+        self.type_code_check.setEnabled(is_autotrace)
+        self.type_code_edit.setEnabled(is_autotrace
+                                       and self.type_code_check.isChecked())
         self.synthetic_structure_check.setEnabled(is_autotrace)
 
         # Show prompt input for HF mode (and maybe others in future)
@@ -872,6 +904,14 @@ class ArcheoGlyphDialog(QDialog):
                 border-radius: 4px;
             }}
         """)
+
+    def _on_type_code_changed(self, *_args):
+        """Remember the code and whether it is wanted, like the other options."""
+        enabled = bool(self.type_code_check.isChecked())
+        self.type_code_edit.setEnabled(enabled)
+        self.settings.setValue("ArcheoGlyph/autotrace_type_code_on", enabled)
+        self.settings.setValue("ArcheoGlyph/autotrace_type_code",
+                               self.type_code_edit.text().strip())
 
     def _on_input_kind_changed(self, _index):
         """Persist the input-type choice."""
@@ -1121,6 +1161,8 @@ class ArcheoGlyphDialog(QDialog):
                     'round_strategy': round_strategy,
                     'input_kind': str(self.input_kind_combo.currentData() or "auto"),
                     'synthetic_structure': self.synthetic_structure_check.isChecked(),
+                    'type_code': (self.type_code_edit.text().strip()
+                                  if self.type_code_check.isChecked() else ""),
                     STYLE_CONTROL_FACTUALITY: controls[STYLE_CONTROL_FACTUALITY],
                     STYLE_CONTROL_SYMBOLIC_LOOSENESS: controls[STYLE_CONTROL_SYMBOLIC_LOOSENESS],
                     STYLE_CONTROL_EXAGGERATION: controls[STYLE_CONTROL_EXAGGERATION],

@@ -6,11 +6,14 @@ This is the former ContourGenerator.generate body with settings access
 replaced by AutoTraceOptions and mask extraction delegated to the caller.
 """
 
+import re
+
 import cv2
 import numpy as np
 
 from ...log import log
 from ..ink_centerline import extract_ink_polylines, looks_like_drawing, simplify_polyline
+from .stroke_font import text_extent, text_polylines
 from .svg_builder import HOUSE_DETAIL_RATIO, HOUSE_OUTLINE_RATIO, smooth_closed_path
 from ..style_control_utils import (
     STYLE_CONTROL_EXAGGERATION,
@@ -115,6 +118,105 @@ HOUSE_OUTLINE_DARKEN = 1.0 / 1.4
 #: the weight is scaled to bring the drawing back to the median.
 INTERIOR_INK_MEDIAN = 0.27
 INTERIOR_INK_CEILING = 1.76 * INTERIOR_INK_MEDIAN
+
+
+#: How tall a typology code is set, as a share of the artefact's longer side.
+TYPE_CODE_HEIGHT = 0.16
+
+#: How much of the artefact's width a code may span before it is set smaller.
+TYPE_CODE_WIDTH = 0.80
+
+#: The gap between the artefact and a code that would not fit inside it.
+TYPE_CODE_GAP = 0.05
+
+#: The smallest a code may be set, as a share of the artefact's longer side.
+#: A three-by-five glyph needs about five legend pixels of cap height to read,
+#: and a symbol is shown at 64 of them. Below this the code goes under the
+#: artefact at full size instead of inside it as a squint: a slender dagger is
+#: narrow enough that fitting five characters across it produced exactly that.
+TYPE_CODE_MIN_HEIGHT = 0.09
+
+_STROKE_WIDTH_RE = re.compile(r'stroke-width="([\d.]+)"')
+
+
+def _fits_inside(mask, x, y, width, height):
+    """Whether a box is wholly inside the silhouette, sampled on a grid."""
+    if mask is None or not (width > 0 and height > 0):
+        return False
+    rows, cols = mask.shape[:2]
+    for u in range(5):
+        for v in range(3):
+            px = int(round(x + (width * u / 4.0)))
+            py = int(round(y + (height * v / 2.0)))
+            if not (0 <= px < cols and 0 <= py < rows) or mask[py, px] == 0:
+                return False
+    return True
+
+
+def _type_code_paths(code, drawn, mask, bounds, color):
+    """
+    A typology code, cut in stroke_font and set into the symbol.
+
+    Inside the silhouette when it fits there, and underneath it when it does
+    not - a blade has no room for five characters across it, and a caption
+    under the drawing is what an archaeological plate does anyway.
+
+    The stroke is half the heaviest already in the file, because svg_builder
+    scales that heaviest one to the house outline weight: half of it is one
+    grid unit, which is one legend pixel, which is the floor below which the
+    code could not be read at all.
+    """
+    bx, by, bw, bh = (float(v) for v in bounds)
+    side = max(bw, bh)
+    if not (side > 0):
+        return []
+
+    height = side * TYPE_CODE_HEIGHT
+    width, _ = text_extent(code, height)
+    if width <= 0:
+        return []
+
+    # Inside the artefact, if it can be set there without shrinking past the
+    # point of being readable.
+    top = None
+    inside_height = height
+    if width > bw * TYPE_CODE_WIDTH:
+        inside_height = height * (bw * TYPE_CODE_WIDTH) / width
+    if inside_height >= side * TYPE_CODE_MIN_HEIGHT:
+        inside_width, _ = text_extent(code, inside_height)
+        left = bx + (bw - inside_width) / 2.0
+        for step in range(9):
+            candidate = by + bh - (inside_height * 1.35) - (step * inside_height * 0.5)
+            if candidate < by:
+                break
+            if _fits_inside(mask, left, candidate, inside_width, inside_height):
+                top, height, width = candidate, inside_height, inside_width
+                break
+
+    if top is None:
+        # Underneath it, then, which is what a plate does anyway. Here the
+        # code may span the whole symbol rather than the artefact's own width.
+        if width > side:
+            height *= side / width
+            width, _ = text_extent(code, height)
+        left = bx + (bw - width) / 2.0
+        top = by + bh + (side * TYPE_CODE_GAP)
+
+    heaviest = max([float(m) for chunk in drawn
+                    for m in _STROKE_WIDTH_RE.findall(chunk)] or [2.0])
+    stroke = heaviest * (HOUSE_DETAIL_RATIO / HOUSE_OUTLINE_RATIO)
+    ink = darken_hex(color, 0.45)
+
+    paths = []
+    for line in text_polylines(code, height, origin=(left, top)):
+        line_path = polyline_to_path([[int(round(x)), int(round(y))]
+                                      for x, y in line])
+        if line_path:
+            paths.append(
+                f'<path d="{line_path}" fill="none" stroke="{ink}" '
+                f'stroke-width="{stroke:.2f}" stroke-linecap="round" '
+                'stroke-linejoin="round"/>')
+    return paths
 
 
 def run_autotrace(bgr, options, mask_provider, relief=None):
@@ -1330,6 +1432,11 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
                         f'<path d="{line_path}" fill="none" stroke="{detail_color}" stroke-opacity="0.72" '
                         'stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>'
                     )
+
+    if options.type_code:
+        svg_output.extend(
+            _type_code_paths(options.type_code, svg_output, target_mask,
+                             cv2.boundingRect(main_contour), final_color))
 
     svg_output.append("</svg>")
     return "".join(svg_output)

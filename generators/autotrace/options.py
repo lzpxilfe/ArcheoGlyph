@@ -22,6 +22,7 @@ class AutoTraceOptions:
     exaggeration: int = 22
     synthetic_structure: bool = False
     input_kind: str = "auto"
+    type_code: str = ""
     seed: int = 0
 
     def normalized(self):
@@ -38,7 +39,20 @@ class AutoTraceOptions:
             symbolic_looseness=_clamp_pct(self.symbolic_looseness, 34),
             exaggeration=_clamp_pct(self.exaggeration, 22),
             color=(str(self.color).strip() or None) if self.color else None,
+            type_code=_clean_type_code(self.type_code),
         )
+
+
+#: How long a typology code may be. Long enough for the codes these classes
+#: actually use - IIa2b, III-2, Aa1 - and short enough that the glyphs stay
+#: above the legend floor when they are fitted across a symbol.
+MAX_TYPE_CODE = 12
+
+
+def _clean_type_code(value):
+    if not value:
+        return ""
+    return " ".join(str(value).split())[:MAX_TYPE_CODE]
 
 
 def _clamp_pct(value, default):

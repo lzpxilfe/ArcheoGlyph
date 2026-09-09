@@ -65,6 +65,15 @@ CATALOG = {
     "Drawings and rubbings are traced from their ink strokes; photographs\n"
     "go through background removal first.":
         "실측도와 탁본은 먹선을 따라 추적하고, 사진은 먼저 배경을 제거합니다.",
+    "Typology code:": "형식 코드:",
+    # The notation is Latin in Korean archaeology too, so the example stands
+    # as it is; it is in the catalogue so a translator can still change it.
+    "IIa2b": "IIa2b",
+    "Write a classification code into the symbol, for example IIa2b.\n"
+    "It is drawn inside the artefact where it fits and underneath it\n"
+    "where it does not.":
+        "IIa2b 같은 분류 코드를 심볼에 새깁니다.\n"
+        "들어갈 자리가 있으면 유물 안에, 없으면 유물 아래에 그립니다.",
     "Add schematic structure lines": "도식 구조선 추가",
     "Off by default: only lines observed in the image are drawn.\n"
     "Enable to add conventional rim/shoulder, centre and terminal lines.":
