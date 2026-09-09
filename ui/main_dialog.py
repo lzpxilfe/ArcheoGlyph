@@ -73,7 +73,10 @@ class GenerationThread(QThread):
             result = SymbolResult.coerce(raw, source=self.source_label, style=self.style_label)
             self.result_ready.emit(result, "")
         except Exception as e:
-            self.result_ready.emit(None, "" if self._cancel.is_set() else str(e))
+            if self._cancel.is_set():
+                self.result_ready.emit(None, "")
+            else:
+                self.result_ready.emit(None, str(e) or repr(e))
 
 
 class ImageDropArea(QLabel):
@@ -850,7 +853,8 @@ class ArcheoGlyphDialog(QDialog):
         
     def on_image_loaded(self, file_path):
         """Handle when an image is loaded."""
-        self.generate_btn.setEnabled(True)
+        if self.generation_thread is None or not self.generation_thread.isRunning():
+            self.generate_btn.setEnabled(True)
         self._update_input_quality_notice(file_path)
         
     def clear_input(self):
@@ -1109,7 +1113,13 @@ class ArcheoGlyphDialog(QDialog):
             
     def generate_symbol(self):
         """Generate symbol based on current settings."""
-
+        # One at a time. self.generation_thread is the only Python reference to
+        # a running QThread, so rebinding it while that thread is alive lets
+        # sip delete the C++ object underneath it - Qt then calls terminate and
+        # takes QGIS down with any unsaved work. The Generate button is not
+        # enough of a guard on its own: dropping a second image re-enables it.
+        if self.generation_thread is not None and self.generation_thread.isRunning():
+            return
 
         # Validate inputs
         if self.hf_radio.isChecked():
@@ -1121,10 +1131,7 @@ class ArcheoGlyphDialog(QDialog):
             
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0) # Indeterminate mode since we can't track exact progress in thread
-        self.generate_btn.setEnabled(False)
-        self.cancel_btn.setEnabled(True)
-        self.save_btn.setEnabled(False)
-        self.apply_btn.setEnabled(False)
+        self._set_running(True)
         # Ensure slider values are persisted before any generator reads QSettings.
         self._persist_style_parameters()
         
@@ -1234,7 +1241,7 @@ class ArcheoGlyphDialog(QDialog):
                     QMessageBox.warning(self, tr("No Template"), tr("Adjust template filters and select a valid template."))
                     self.progress_bar.setVisible(False)
                     self.progress_bar.setRange(0, 100)
-                    self.generate_btn.setEnabled(True)
+                    self._set_running(False)
                     return
                 kwargs = {
                     'template_type': template_name,
@@ -1249,15 +1256,20 @@ class ArcheoGlyphDialog(QDialog):
                 self.generation_thread.start()
             
         except Exception as e:
-            self.on_generation_finished(None, str(e))
+            # Never empty: an empty error is how a cancellation is signalled.
+            self.on_generation_finished(None, str(e) or repr(e))
 
     def on_generation_finished(self, result, error_message):
         """Handle generation results."""
         self.progress_bar.setVisible(False)
         self.progress_bar.setRange(0, 100) # Reset to normal
-        self.generate_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(False)
-        cancelled = self.generation_thread is not None and self.generation_thread.cancelled
+        self._set_running(False)
+        # Read the cancellation out of the result itself, not off whatever
+        # self.generation_thread points at now: generate_symbol can fail before
+        # it creates a thread, and then a *previous* cancellation turned a real
+        # error into "Generation cancelled." GenerationThread.run emits an empty
+        # error only when it was cancelled, so the two are already distinct.
+        cancelled = result is None and not error_message
         self._current_generator = None  # Release reference
         self._set_mode_info_with_controls(show_controls=True)
         
@@ -1314,6 +1326,20 @@ class ArcheoGlyphDialog(QDialog):
         if result.warnings:
             info += " | " + tr("; ").join(result.warnings[:3])
         self._set_mode_info_with_controls(show_controls=False, base_text=info)
+
+    def _set_running(self, running):
+        """Put every control that starts or feeds a generation into one state.
+
+        Kept in one place because the buttons were drifting apart: an early
+        return could leave Cancel enabled with nothing to cancel, and the drop
+        area stayed live so a second image could re-arm Generate mid-run.
+        """
+        self.generate_btn.setEnabled(not running)
+        self.cancel_btn.setEnabled(running)
+        self.image_drop.setEnabled(not running)
+        if running:
+            self.save_btn.setEnabled(False)
+            self.apply_btn.setEnabled(False)
 
     def cancel_generation(self):
         """Stop a running generation."""

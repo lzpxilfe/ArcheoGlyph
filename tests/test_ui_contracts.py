@@ -94,6 +94,47 @@ def test_worker_threads_do_not_shadow_qthread_finished():
     assert not offenders, "\n".join(offenders)
 
 
+def test_no_dialog_rebinds_a_thread_handle_without_checking_it_is_idle():
+    """
+    A dialog's thread attribute is the only Python reference to its QThread.
+    Rebinding it while that thread runs lets sip delete the C++ object, and Qt
+    answers by terminating the process - QGIS dies with unsaved work.
+
+    The settings dialog always guarded on isRunning(); the main dialog did not,
+    and its Generate button was re-enabled by dropping a second image, so the
+    crash was two clicks away.
+    """
+    for path in DIALOGS:
+        source, _ = _classes(path)
+        tree = ast.parse(source)
+        for func in ast.walk(tree):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            assigned = {
+                target.attr
+                for node in ast.walk(func)
+                if isinstance(node, ast.Assign)
+                for target in node.targets
+                if isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+                and target.attr.endswith("_thread")
+                and not isinstance(node.value, ast.Constant)
+            }
+            if not assigned:
+                continue
+            guards = {
+                node.func.attr
+                for node in ast.walk(func)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+            }
+            assert "isRunning" in guards, (
+                f"{path}:{func.name} assigns {sorted(assigned)} without ever "
+                f"asking isRunning(); a live QThread whose last reference is "
+                f"dropped takes the process down with it")
+
+
 def test_every_mask_backend_can_be_selected_in_settings():
     """
     Each backend the segmentation layer accepts must be offered in the

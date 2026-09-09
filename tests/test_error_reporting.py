@@ -16,7 +16,7 @@ LOGGERS = {"log", "log_exception", "logMessage"}
 # Handlers that are deliberately silent: (module, what the handler guards).
 ALLOWED_SILENT = {
     # Probing for something optional is not a failure.
-    ("generators/contour_generator.py", "the QGIS profile directory probe"),
+    ("generators/autotrace/model_store.py", "the QGIS profile directory probe"),
     ("generators/symbol_result.py", "importing Qt outside QGIS"),
     # A logging call that fails must not raise from inside a logging guard.
     ("generators/huggingface_generator.py", "logging the prompt influence"),

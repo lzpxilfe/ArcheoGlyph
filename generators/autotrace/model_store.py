@@ -15,6 +15,26 @@ from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Tuple
 
 MODELS_SUBDIR = os.path.join("archeoglyph", "models")
+
+
+def profile_base_dir():
+    """QGIS profile directory (model store root), with a plain-Python fallback.
+
+    Kept here rather than in contour_generator because the Settings dialog asks
+    for it: that module pulls in the whole trace pipeline, which imports cv2 at
+    module scope, so asking it for a directory made the Settings dialog
+    unopenable on an install without OpenCV - the one screen a user needs to
+    fix that.
+    """
+    try:
+        from qgis.core import QgsApplication
+
+        base = QgsApplication.qgisSettingsDirPath()
+        if base:
+            return base
+    except Exception:
+        pass
+    return os.path.join(os.path.expanduser("~"), ".archeoglyph")
 _REMBG_RELEASE = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/"
 
 

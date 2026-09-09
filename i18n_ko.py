@@ -65,6 +65,18 @@ CATALOG = {
     "Drawings and rubbings are traced from their ink strokes; photographs\n"
     "go through background removal first.":
         "실측도와 탁본은 먹선을 따라 추적하고, 사진은 먼저 배경을 제거합니다.",
+    "Keys are stored in the QGIS authentication database.":
+        "키는 QGIS 인증 데이터베이스에 저장됩니다.",
+    "The QGIS authentication database is unavailable, so keys are stored in "
+    "QGIS settings in plain text. Set a master password in "
+    "Settings > Options > Authentication to protect them.":
+        "QGIS 인증 데이터베이스를 쓸 수 없어 키가 QGIS 설정에 평문으로 "
+        "저장됩니다. 설정 > 옵션 > 인증에서 마스터 비밀번호를 지정하면 "
+        "보호됩니다.",
+    "A key is stored but the authentication database is locked. Unlock it to "
+    "see or change it.":
+        "키가 저장되어 있지만 인증 데이터베이스가 잠겨 있습니다. 잠금을 풀어야 "
+        "보거나 바꿀 수 있습니다.",
     "Typology code:": "형식 코드:",
     # The notation is Latin in Korean archaeology too, so the example stands
     # as it is; it is in the catalogue so a translator can still change it.

@@ -25,8 +25,10 @@ from ..i18n import (
     available_languages,
     tr,
 )
-from ..auth import get_api_key, set_api_key, storage_description
+from ..log import log_exception
+from ..auth import read_api_key, set_api_key, storage_description
 from ..generators.autotrace.model_store import (
+    profile_base_dir,
     DEFAULT_MODEL_KEY,
     MODEL_SPECS,
     download_model,
@@ -143,7 +145,14 @@ class SettingsDialog(QDialog):
         self.hf_test_thread = None
         self.onnx_download_thread = None
         self.setup_ui()
-        self.load_settings()
+        try:
+            self.load_settings()
+        except Exception as exc:
+            # The dialog opens even if one stored value cannot be read. It is
+            # the screen a user comes to when something is wrong - installing
+            # onnxruntime, copying diagnostics, re-entering a key - so it must
+            # not be the screen that refuses to open.
+            log_exception("Could not load every setting; showing defaults", exc)
 
     def _running_threads(self):
         return [
@@ -1388,8 +1397,6 @@ class SettingsDialog(QDialog):
 
     def _profile_dir(self):
         """QGIS profile directory that holds downloaded models."""
-        from ..generators.contour_generator import profile_base_dir
-
         return profile_base_dir()
 
     def _selected_onnx_key(self):
@@ -1438,6 +1445,12 @@ class SettingsDialog(QDialog):
 
     def download_onnx_model(self):
         """Download the selected model in the background, verifying it."""
+        # One at a time: self.onnx_download_thread is the only Python reference
+        # to a running QThread, and rebinding it lets sip delete the C++ object
+        # underneath a live download - Qt terminates the process for that.
+        running = getattr(self, "onnx_download_thread", None)
+        if running is not None and running.isRunning():
+            return
         spec = MODEL_SPECS.get(self._selected_onnx_key())
         if spec is None:
             return
@@ -1619,8 +1632,18 @@ class SettingsDialog(QDialog):
         language = str(self.settings.value(LANGUAGE_SETTING, "auto") or "auto")
         index = self.language_combo.findData(language)
         self.language_combo.setCurrentIndex(index if index >= 0 else 0)
-        gemini_key = get_api_key("gemini", self.settings)
-        hf_key = get_api_key("huggingface", self.settings)
+        gemini_key, gemini_readable = read_api_key("gemini", self.settings)
+        hf_key, hf_readable = read_api_key("huggingface", self.settings)
+        # A key that is stored but unreadable (a locked authentication
+        # database) leaves the field blank, which is indistinguishable from
+        # "no key" - and saving then wrote that blank over the real one.
+        self._key_readable = {"gemini": gemini_readable, "huggingface": hf_readable}
+        for widget, readable in ((self.gemini_key_input, gemini_readable),
+                                 (self.hf_key_input, hf_readable)):
+            widget.setPlaceholderText(
+                "" if readable
+                else tr("A key is stored but the authentication database is "
+                        "locked. Unlock it to see or change it."))
         # Loading must not change stored settings; normalise for display only.
         hf_model = self._normalize_hf_model_id(
             self.settings.value('ArcheoGlyph/hf_model_id', HF_DEFAULT_MODEL_ID)
@@ -1731,8 +1754,15 @@ class SettingsDialog(QDialog):
         self.settings.setValue(
             LANGUAGE_SETTING, str(self.language_combo.currentData() or "auto")
         )
-        set_api_key("gemini", self.gemini_key_input.text(), self.settings)
-        set_api_key("huggingface", self.hf_key_input.text(), self.settings)
+        for service, widget in (("gemini", self.gemini_key_input),
+                                ("huggingface", self.hf_key_input)):
+            typed = widget.text()
+            if not typed.strip() and not getattr(
+                    self, "_key_readable", {}).get(service, True):
+                # The field is blank because the database would not open, not
+                # because the user cleared it. Leave the stored key alone.
+                continue
+            set_api_key(service, typed, self.settings)
         self.settings.setValue('ArcheoGlyph/hf_model_id', self._normalize_hf_model_id(self.hf_model_input.text()))
         mask_backend = self.mask_backend_combo.currentData()
         onnx_model_key = self._selected_onnx_key()
@@ -1848,6 +1878,11 @@ class SettingsDialog(QDialog):
 
     def test_huggingface_connection(self):
         """Test Hugging Face connection asynchronously."""
+        # One at a time, for the reason in download_onnx_model: this
+        # attribute is the only reference keeping the QThread alive.
+        running = getattr(self, "hf_test_thread", None)
+        if running is not None and running.isRunning():
+            return
         api_key = self.hf_key_input.text().strip()
 
         if not api_key:
@@ -2155,6 +2190,11 @@ class SettingsDialog(QDialog):
             
     def test_gemini_connection(self):
         """Test Gemini API connection (Async)."""
+        # One at a time, for the reason in download_onnx_model: this
+        # attribute is the only reference keeping the QThread alive.
+        running = getattr(self, "test_thread", None)
+        if running is not None and running.isRunning():
+            return
         api_key = self.gemini_key_input.text().strip()
         
         if not api_key:

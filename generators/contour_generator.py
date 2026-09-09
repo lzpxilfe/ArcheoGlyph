@@ -25,7 +25,12 @@ from .style_control_utils import (
 )
 from .autotrace.options import AutoTraceOptions
 from .autotrace.io import adaptive_prescale, load_image, resize_alpha
-from .autotrace.model_store import DEFAULT_MODEL_KEY, installed_model, models_dir
+from .autotrace.model_store import (
+    DEFAULT_MODEL_KEY,
+    installed_model,
+    models_dir,
+    profile_base_dir,
+)
 from .autotrace.pipeline import run_autotrace
 from .autotrace.sam_backend import SamBackend
 from .autotrace.segment import OnnxSalientBackend, normalize_backend, onnx_available, select_mask
@@ -34,17 +39,6 @@ from ..log import log, log_exception
 EMPTY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"></svg>'
 
 
-def profile_base_dir():
-    """QGIS profile directory (model store root), with a plain-Python fallback."""
-    try:
-        from qgis.core import QgsApplication
-
-        base = QgsApplication.qgisSettingsDirPath()
-        if base:
-            return base
-    except Exception:
-        pass
-    return os.path.join(os.path.expanduser("~"), ".archeoglyph")
 
 
 def _settings_bool(settings, key, default=False):

@@ -20,8 +20,14 @@ from archeoglyph.i18n_ko import CATALOG
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PLACEHOLDER = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)")
+# Every file that can put text in front of a user. The list used to hold only
+# the two dialogs and the template names, which meant a string built in another
+# module and handed to a widget as a variable was invisible to these tests -
+# auth.storage_description() reached the settings dialog as raw English prose
+# that way, and it is a security warning.
 TRANSLATED_SOURCES = [
     "archeoglyph.py",
+    "auth.py",
     "ui/main_dialog.py",
     "ui/settings_dialog.py",
     "generators/template_generator.py",

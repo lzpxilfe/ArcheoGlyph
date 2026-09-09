@@ -182,6 +182,49 @@ def test_auth_module_falls_back_to_settings_without_qgis_auth(service):
     assert auth.get_api_key(service, settings) == ""
 
 
+def test_a_locked_auth_database_is_not_mistaken_for_an_empty_one():
+    """
+    Dismissing the QGIS master-password prompt makes the stored key
+    unreadable. Before this, that came back as "" - indistinguishable from
+    "no key" - the settings dialog rendered a blank field, and pressing Save
+    wrote that blank over the real key. Worse, storing into a config the
+    database would not open pointed the settings at a *new* empty config and
+    orphaned the original.
+    """
+    from archeoglyph import auth
+    from tests.conftest import _FakeQSettings
+
+    settings = _FakeQSettings()
+    spec = auth.SERVICES["gemini"]
+    settings.setValue(spec["config_key"], "cfg-1")
+
+    class _LockedManager:
+        def isDisabled(self):
+            return False
+
+    original_manager, original_read = auth._auth_manager, auth._read_config
+    auth._auth_manager = lambda: _LockedManager()
+    auth._read_config = lambda manager, config_id: None
+    try:
+        key, readable = auth.read_api_key("gemini", settings)
+        assert key == ""
+        assert readable is False, (
+            "a locked database has to be distinguishable from an empty slot")
+
+        assert auth.set_api_key("gemini", "", settings) is False
+        assert settings.value(spec["config_key"], "") == "cfg-1", (
+            "storing into a locked database repointed the settings at a new "
+            "config and orphaned the stored key")
+        assert not settings.value(spec["legacy_key"], ""), (
+            "a locked database must not silently downgrade the key to plaintext")
+    finally:
+        auth._auth_manager, auth._read_config = original_manager, original_read
+
+    # And with the database open, nothing changes about the ordinary path.
+    key, readable = auth.read_api_key("gemini", _FakeQSettings())
+    assert (key, readable) == ("", True)
+
+
 # ------------------------------------------------------- Korean subject terms
 
 def _gemini_prompt(note):

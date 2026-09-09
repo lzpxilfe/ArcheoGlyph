@@ -46,9 +46,15 @@ def _read_config(manager, config_id):
     return config
 
 
-def get_api_key(service, settings):
+def read_api_key(service, settings):
     """
-    Return the stored key for ``service`` ("gemini" / "huggingface").
+    Return ``(key, readable)`` for ``service`` ("gemini" / "huggingface").
+
+    ``readable`` is False when a key *is* stored but the authentication
+    database would not hand it over - normally because the user dismissed the
+    QGIS master-password prompt. The distinction matters: without it a locked
+    database and an empty slot both looked like "no key", and saving the
+    settings then wrote that emptiness over the real one.
 
     Migrates a plaintext key from the legacy QSettings entry on first use.
     """
@@ -59,19 +65,28 @@ def get_api_key(service, settings):
         if config_id:
             try:
                 config = _read_config(manager, config_id)
-                if config is not None:
-                    stored = config.configMap().get("password", "")
-                    if stored:
-                        return stored
             except Exception as e:
                 log_exception(f"Could not read the stored {service} key", e)
+                return "", False
+            if config is None:
+                log(f"A {service} key is stored but the authentication database "
+                    f"would not open it; leaving it alone.", level="warning")
+                return "", False
+            stored = config.configMap().get("password", "")
+            if stored:
+                return stored, True
 
     legacy = str(settings.value(spec["legacy_key"], "") or "").strip()
     if legacy and manager is not None:
         # Move it into the auth database, then drop the plaintext copy.
         if set_api_key(service, legacy, settings):
-            return legacy
-    return legacy
+            return legacy, True
+    return legacy, True
+
+
+def get_api_key(service, settings):
+    """The stored key for ``service``, or "" when there is none to be had."""
+    return read_api_key(service, settings)[0]
 
 
 def set_api_key(service, api_key, settings):
@@ -94,6 +109,14 @@ def set_api_key(service, api_key, settings):
 
         config_id = str(settings.value(spec["config_key"], "") or "").strip()
         config = _read_config(manager, config_id) if config_id else None
+        if config is None and config_id:
+            # A key is stored and the database will not open it. Storing a new
+            # one here would point the settings at a fresh empty config and
+            # orphan the real key, so refuse and say why.
+            log(f"Not overwriting the stored {service} key: the authentication "
+                f"database did not open. Unlock it and try again.",
+                level="warning")
+            return False
         if config is None:
             config = QgsAuthMethodConfig()
             config.setMethod("Basic")
@@ -135,11 +158,18 @@ def clear_api_key(service, settings):
 
 
 def storage_description(settings):
-    """Short text for the settings dialog describing where keys are kept."""
+    """Short text for the settings dialog describing where keys are kept.
+
+    Translated here rather than at the call site: the second branch is a
+    security warning, and it went to the dialog as raw English prose with no
+    catalogue entry, so the readers who most needed it could not read it.
+    """
+    from .i18n import tr
+
     if _auth_manager() is not None:
-        return "Keys are stored in the QGIS authentication database."
+        return tr("Keys are stored in the QGIS authentication database.")
     log("QGIS authentication system unavailable; keys fall back to QSettings.", level="warning")
-    return (
+    return tr(
         "The QGIS authentication database is unavailable, so keys are stored in "
         "QGIS settings in plain text. Set a master password in "
         "Settings > Options > Authentication to protect them."
