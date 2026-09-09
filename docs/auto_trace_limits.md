@@ -350,6 +350,39 @@ mirror fill their enclosing circle to 0.968 and above; the jar reaches 0.714
 and a ground stone tool 0.630, so the route is gated on the same 0.94
 circle-fill test the outline logic already uses.
 
+### The marker was the bigger gap, and a tone was not the answer
+
+Everything above is about the plates. The **marker** style was worse and
+nobody had looked: it never traced a photograph's surface at all, so a lotus
+roof tile end and a bare disc of the same size came out as the same grey
+circle. On a map that is the whole identity of the find, gone.
+
+The first attempt was a *tone* - render where the ink is dense as a pale
+filled patch and draw only the marks a drawn symbol would carry over it, on
+the theory that eighty curves are illegible at legend size anyway. Measured
+against the plate's own eighty curves at 64 pixels it lost on all three
+discs: the lotus rosette became pale confetti with three stray arcs, the
+dragon's coils became camouflage blotches, the mirror lost its rim lines. The
+premise was wrong - the curves *are* legible at 64 pixels, once they are
+drawn at the legend floor, which the ink budget above had just fixed.
+
+Two thresholds were tried and both failed for the same reason: a density
+field coarse enough to give one clean patch covers 51 to 64 percent of the
+face and says nothing, and one fine enough to follow the ornament comes back
+as the strokes themselves. The tone was measured and dropped.
+
+What worked was simpler. A flat decorated face is now traced whatever the
+style asked for, and where that trace finds more readable marks than the
+busiest drawn symbol carries - `MAX_INTERIOR_MARKS`, the catalogue's own
+number - the marker draws that ornament in place of its two structural cues.
+The lotus tile gains its rim and its central boss ring, the dragon tile its
+coils, the mirror its rim; the comb-pattern pots and every blade are
+untouched, because their traces do not reach eleven readable marks.
+
+The count is doing two jobs and it is the same question both times: *is there
+more here than a drawn symbol would hold?* Below it, draw the marks. Above
+it, the artefact is decorated, and that is worth saying even in a marker.
+
 ### What this does not fix
 
 The comb-pattern jar's Line output is clean and the daggers keep the marks

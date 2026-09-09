@@ -507,6 +507,34 @@ def test_the_two_relief_readings_are_different_pictures():
     assert (default == groove).all()
 
 
+def test_a_decorated_disc_does_not_come_out_as_a_plain_one():
+    """
+    The marker style draws two interior marks, which is right for a silhouette
+    that carries its own meaning and useless for a decorated disc: a lotus
+    roof tile end and a plain disc were coming out as the same grey circle,
+    which was the largest thing this set got wrong.
+
+    So a flat decorated face is traced whatever the style asked for, and when
+    the trace finds more readable marks than the busiest drawn symbol carries,
+    the marker draws that ornament instead of its two structural cues.
+    """
+    plain = _path_count(_run(synthetic.plain_disc(), style="Simple Symbol"))
+    rosette = _path_count(_run(synthetic.rosette_disc(), style="Simple Symbol"))
+
+    assert rosette >= plain + 8, (
+        f"a rosette drew {rosette} paths and a bare disc of the same size "
+        f"{plain}; at marker size the two artefacts read as the same object")
+
+    # And the control holds in the other direction: a disc with two rings and
+    # a boss is not "decorated" in this sense - it is inside the count a drawn
+    # symbol carries, so it keeps the marker's own structural reading.
+    rings = _path_count(_run(synthetic.mirror_with_rings(),
+                             style="Simple Symbol"))
+    assert rings < plain + 8, (
+        f"two rings and a boss drew {rings} paths against a bare disc's "
+        f"{plain}; that is the ornament route firing on a plain artefact")
+
+
 def test_a_traced_symbol_is_no_busier_than_the_busiest_drawn_one():
     """
     The cap comes from the catalogue this has to sit beside: over its 188

@@ -44,6 +44,46 @@ def mirror_with_rings(size=400):
     return img
 
 
+def plain_disc(size=400):
+    """The same disc as mirror_with_rings, with nothing on its face.
+
+    The control for every question of the form "does this artefact carry
+    decoration": whatever is drawn on the mirror and not here is the reading,
+    and whatever is drawn on both is the shape.
+    """
+    img = blank(size, color=(235, 235, 235))
+    cv2.circle(img, (size // 2, size // 2), int(size * 0.4), (70, 120, 160), -1)
+    return img
+
+
+def rosette_disc(size=400):
+    """A disc carrying more ornament than a drawn symbol would ever hold.
+
+    Rim, bead ring, eight petals and a boss - the layout of a lotus roof tile
+    end, cut as grooves so the relief reading has something to find. The
+    control for it is plain_disc, which is the same disc with a bare face.
+    """
+    img = plain_disc(size)
+    c = (size // 2, size // 2)
+    r = int(size * 0.4)
+    groove = (44, 74, 100)
+    cv2.circle(img, c, int(r * 0.90), groove, 3)
+    cv2.circle(img, c, int(r * 0.74), groove, 3)
+    for step in range(12):                       # the bead ring
+        angle = 2.0 * np.pi * step / 12.0
+        cv2.circle(img, (int(c[0] + r * 0.82 * np.cos(angle)),
+                         int(c[1] + r * 0.82 * np.sin(angle))),
+                   max(2, int(r * 0.05)), groove, 2)
+    for step in range(8):                        # the petals
+        angle = 2.0 * np.pi * step / 8.0
+        cv2.ellipse(img, (int(c[0] + r * 0.44 * np.cos(angle)),
+                          int(c[1] + r * 0.44 * np.sin(angle))),
+                    (int(r * 0.26), int(r * 0.15)),
+                    float(np.degrees(angle)), 0, 360, groove, 3)
+    cv2.circle(img, c, int(r * 0.14), groove, 3)
+    return cv2.GaussianBlur(img, (0, 0), 1.2)
+
+
 def dark_flint_on_white(size=400):
     """Dark grey flint shape on white paper with a soft cast shadow to the lower right."""
     img = blank(size, color=(252, 252, 252))

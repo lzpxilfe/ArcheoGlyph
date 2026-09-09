@@ -345,7 +345,12 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             is_drawing = False
     ink_lines = []
     relief_sheet = None
-    if is_drawing or is_mono:
+    # A flat decorated face is traced whatever the style asked for. Simple
+    # Symbol does not draw traced ink, but it still has to know the artefact
+    # is decorated: without this a lotus roof tile end and a plain disc came
+    # out as the same grey circle, which is the largest thing this set was
+    # getting wrong.
+    if is_drawing or is_mono or is_flat_faced_disc:
         try:
             erode_px = max(2, int(round(0.015 * min(target_mask.shape[:2]))))
             ink_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * erode_px + 1, 2 * erode_px + 1))
@@ -400,6 +405,19 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
                 ink_lines = _trace(ink_source)
         except Exception:
             ink_lines = []
+
+    # Where a find has more readable traced marks than the busiest drawn
+    # symbol it *is* decorated, whatever the style then chooses to draw. Read
+    # here, off the traced ink, so every style gets the same verdict about the
+    # same artefact - the per-style selection below decides what to draw, not
+    # what is there, and Simple Symbol discards the traced ink entirely.
+    traced_marks = []
+    _tx, _ty, _tw, _th = cv2.boundingRect(main_contour)
+    if ink_lines and not is_drawing:
+        readable_ink = keep_marks_that_read(ink_lines, float(max(_tw, _th)),
+                                            max_marks=None)
+        if len(readable_ink) > MAX_INTERIOR_MARKS:
+            traced_marks = readable_ink
     skip_round_motifs = is_drawing
 
     texture_lines = [] if (fast_round_structural or legend_mode or is_drawing) else extract_internal_lines_multisource(
@@ -534,7 +552,17 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
                 # All of it or none: see replay_rotational_motif.
                 internal_lines = list(folded_motif_lines)
             else:
-                internal_lines = round_motif_lines[:1] if round_motif_lines else round_lines[:1]
+                if traced_marks:
+                    # A decorated disc has to look decorated: a lotus roof
+                    # tile end and a plain one were coming out as the same
+                    # grey circle. Its own traced ornament beats the one ring
+                    # the motif reader offers - that ring is a guess about
+                    # where a repeat might be, and these are the marks that
+                    # are actually on the face.
+                    internal_lines = traced_marks[:MAX_INTERIOR_MARKS]
+                else:
+                    internal_lines = (round_motif_lines[:1] if round_motif_lines
+                                      else round_lines[:1])
         else:
             internal_lines = profile_lines[:1] + spine_lines[:1]
             if terminal_count > 0:
@@ -1219,7 +1247,12 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             # meaning, and wrong for one whose meaning is the decoration: a
             # sixteen-line eight-fold motif came out as two stray slivers.
             # A folded motif is drawn whole or not at all.
-            simple_detail_cap = len(folded_motif_lines) if folded_motif_lines else 2
+            if folded_motif_lines:
+                simple_detail_cap = len(folded_motif_lines)
+            elif traced_marks:
+                simple_detail_cap = MAX_INTERIOR_MARKS
+            else:
+                simple_detail_cap = 2
             for line in internal_lines[:simple_detail_cap]:
                 line_path = polyline_to_path(line)
                 if line_path:
