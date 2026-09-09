@@ -8,12 +8,20 @@ QGIS-free. Two entry points:
   lines, normalised to a square unit viewBox.
 * ``finalize_svg`` - post-process any SVG text so it behaves well as a QGIS
   marker: crop the viewBox to the drawn geometry, make it square and centred,
-  and expose the body fill / outline stroke as QGIS ``param()`` placeholders so
-  the symbol can be recoloured from the Layer Styling panel.
+  and expose solid paints as QGIS ``param()`` placeholders so they can be
+  changed from the Layer Styling panel.
 
 QGIS parametric SVG convention (see QGIS docs, "Parameterizable SVG"):
     fill="param(fill) #hex"  stroke="param(outline) #hex"
     stroke-width="param(outline-width) 1.5"
+
+**What Auto Trace actually gets is the outline, not the fill.** Only a solid
+paint can carry a placeholder - QGIS substitutes the attribute, and there is
+nowhere to put one inside a gradient's stops - and every body fill the trace
+pipeline writes is a ``url(#...)`` gradient. So a traced symbol comes back with
+``param(outline)`` and ``param(outline-width)`` and no ``param(fill)``, in all
+three styles. Its body colour is chosen when the symbol is generated, from the
+dialog's colour picker, and is fixed thereafter.
 """
 
 from __future__ import annotations

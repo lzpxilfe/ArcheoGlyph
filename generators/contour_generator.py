@@ -243,7 +243,12 @@ class ContourGenerator:
     def generate_result(self, image_path, cancel_check=None, **kwargs):
         """
         Run ``generate`` and return a SymbolResult whose SVG is cropped to the
-        object, squared, and parametrised for QGIS (param(fill)/param(outline)).
+        object, squared, and parametrised for QGIS.
+
+        In practice that is ``param(outline)`` and ``param(outline-width)``:
+        the body is painted with a gradient, which cannot carry a placeholder,
+        so its colour is settled here and not in the Layer Styling panel. See
+        the note in ``autotrace/svg_builder``.
         """
         from .symbol_result import SymbolResult
         from .autotrace.svg_builder import finalize_svg

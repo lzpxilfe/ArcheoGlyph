@@ -183,3 +183,33 @@ def test_provenance_keeps_only_the_file_name_of_the_source_image():
     result.record_provenance(image_path="/home/someone/private/dig 2026/sherd.jpg")
     assert result.meta["input"] == "sherd.jpg"
     assert "private" not in str(result.meta)
+
+
+def test_a_traced_symbol_carries_the_outline_placeholder_and_not_the_fill():
+    """
+    The module promises QGIS param() placeholders. Only a solid paint can carry
+    one - a gradient has nowhere to put it - and every body fill Auto Trace
+    writes is a url(#...) gradient, so what a traced symbol actually gets is
+    param(outline) and param(outline-width). The docstrings said "recoloured
+    from the Layer Styling panel" for a body colour that is fixed at
+    generation time; this pins what is true so the promise cannot drift back.
+    """
+    gradient = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+        '<defs><linearGradient id="g"><stop offset="0%" stop-color="#8b7355"/>'
+        '</linearGradient></defs>'
+        '<path d="M 10,10 L 90,90" fill="url(#g)" stroke="none"/>'
+        '<path d="M 10,10 L 90,90" fill="none" stroke="#423c37" stroke-width="2.2"/>'
+        '</svg>'
+    )
+    out, info = sb.finalize_svg(gradient)
+    assert "param(outline)" in out and "param(outline-width)" in out
+    assert "param(fill)" not in out
+    assert "fill" not in info
+
+    # A solid body, however, is parametrised - the machinery works, the trace
+    # pipeline simply never hands it a solid fill.
+    solid = gradient.replace('fill="url(#g)"', 'fill="#8b7355"')
+    out, info = sb.finalize_svg(solid)
+    assert "param(fill)" in out
+    assert info["fill"] == "#8b7355"
