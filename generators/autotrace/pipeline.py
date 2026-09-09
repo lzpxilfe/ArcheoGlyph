@@ -11,7 +11,7 @@ import re
 import cv2
 import numpy as np
 
-from ...log import log
+from ...log import log, log_exception
 from ..ink_centerline import extract_ink_polylines, looks_like_drawing, simplify_polyline
 from .stroke_font import text_extent, text_polylines
 from .svg_builder import HOUSE_DETAIL_RATIO, HOUSE_OUTLINE_RATIO, smooth_closed_path
@@ -420,7 +420,13 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
                 # Smooth curves between gentle vertices, hard corners kept.
                 path_data = smooth_closed_path(final_points, corner_deg=38.0)
 
-    profile_lines = estimate_profile_bands(target_mask, max_lines=max(1, profile_count))
+    # Read once and shared: the schematic structure lines and a vessel's rim
+    # and shoulder are the same measurement, and asking twice drew the pot's
+    # first band twice - the identical polyline, four strokes once haloed. The
+    # slider path still sees exactly the budget it asked for.
+    all_profile_lines = estimate_profile_bands(
+        target_mask, max_lines=max(2, profile_count))
+    profile_lines = all_profile_lines[:max(1, profile_count)]
     round_lines = estimate_round_bands(
         target_mask,
         max_lines=max(0, min(2, profile_count + 1)),
@@ -444,7 +450,8 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
     elif options.input_kind == "auto":
         try:
             is_drawing, _drawing_metrics = looks_like_drawing(processing_bgr, target_mask)
-        except Exception:
+        except Exception as exc:
+            log_exception("Could not tell a drawing from a photograph", exc)
             is_drawing = False
     # A vessel keeps its rim and shoulder whatever the sliders say. These come
     # from the outline changing curvature, not from the photograph - they are
@@ -458,8 +465,11 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
     # cannot be double-counted and cannot be dropped by a branch that strips
     # horizontals (Line does, deliberately - but a rim is not a stray bar).
     vessel_bands = []
-    if not is_drawing and looks_like_a_vessel(target_mask):
-        vessel_bands = estimate_profile_bands(target_mask, max_lines=2)[:2]
+    if not is_drawing and not profile_lines and looks_like_a_vessel(target_mask):
+        # Only when the schematic reading is off, and reusing what it already
+        # measured: both are the same bands, and drawing them from both places
+        # laid the pot's rim down twice.
+        vessel_bands = all_profile_lines[:2]
         if vessel_bands:
             log(f"Drawing {len(vessel_bands)} structural bands on this vessel "
                 f"- its rim and shoulder, not its decoration.")
@@ -523,7 +533,11 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
                             ink_source[inside].reshape(-1, 3), axis=0).astype(np.uint8)
                         ink_source[~inside] = fill_value
                 ink_lines = _trace(ink_source)
-        except Exception:
+        except Exception as exc:
+            # This wraps both relief readings and the whole ink trace. Swallowed
+            # silently it produced an undecorated symbol with nothing in the
+            # log, which is how a missing import in this block went unnoticed.
+            log_exception("Could not read the ink from this image", exc)
             ink_lines = []
 
     # Where a find has more readable traced marks than the busiest drawn
@@ -1116,6 +1130,16 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             for i in range(len(line) - 1))
     _mx, _my, _mw, _mh = cv2.boundingRect(main_contour)
     symbol_extent = float(max(_mw, _mh))
+
+    if not path_data:
+        # No silhouette worth drawing. Emitting <path d=""/> anyway abandoned
+        # the crop for the whole document (see svg_builder.geometry_bbox), so
+        # every stroke was then scaled against the analysis frame instead of
+        # against the artefact. It draws nothing either way.
+        log("No silhouette could be traced from this image; "
+            "returning an empty symbol.")
+        svg_output.append("</svg>")
+        return "".join(svg_output)
 
     if is_typology:
         palette_seeds = list(material_palette[:4]) if material_palette else [final_color]

@@ -88,26 +88,44 @@ def supported(character):
     return character in _GLYPHS or character.upper() in _GLYPHS
 
 
+def _glyph_strokes(character):
+    """The strokes for ``character``, or [] when it travels without marking."""
+    glyph = _GLYPHS.get(character)
+    if glyph is None:
+        glyph = _GLYPHS.get(character.upper())
+    return glyph or []
+
+
 def _glyph_scale(character):
     """1.0 for a capital or a digit, SMALL_CAPS for the lower case cut from it."""
     return 1.0 if character in _GLYPHS else SMALL_CAPS
 
 
+def _inked(text):
+    """``(index within the pen's travel, character)`` for every drawn glyph."""
+    return list(enumerate(ch for ch in (text or "") if supported(ch)))
+
+
 def text_extent(text, height):
     """
-    ``(width, height)`` of ``text`` set at capital height ``height``.
+    ``(width, height)`` of the ink ``text`` lays down at capital height
+    ``height``, measured from the first mark to the last.
 
-    The advance is monospaced but the last glyph's own width is not: a small
-    capital is narrower than a capital, so a code ending in lower case is
-    narrower than the pen travel suggests. The caller centres the code on this
-    number, so it has to be the ink and not the travel.
+    Two things make this narrower than the pen's travel. A small capital is
+    narrower than a capital, so a code ending in lower case stops short of the
+    advance. And a space travels without marking: counting it as a glyph cell
+    reported ``"A "`` as 50 units wide where the ink is 20, and reserved a box
+    for ``" A"`` thirty units left of where the glyph lands. The caller centres
+    the code on this number and tests that box against the silhouette, so it
+    has to be the ink.
     """
-    drawable = [ch for ch in (text or "") if supported(ch)]
-    if not drawable:
+    marks = [(i, ch) for i, ch in _inked(text) if _glyph_strokes(ch)]
+    if not marks:
         return (0.0, 0.0)
     unit = float(height) / CELL_H
-    width = (ADVANCE * (len(drawable) - 1)
-             + CELL_W * _glyph_scale(drawable[-1])) * unit
+    first, _ = marks[0]
+    last, last_ch = marks[-1]
+    width = (ADVANCE * (last - first) + CELL_W * _glyph_scale(last_ch)) * unit
     return (width, float(height))
 
 
@@ -125,8 +143,13 @@ def text_polylines(text, height, origin=(0.0, 0.0)):
     ox, oy = (float(origin[0]), float(origin[1]))
     baseline = oy + float(height)
 
+    marks = [i for i, ch in _inked(text) if _glyph_strokes(ch)]
+    if not marks:
+        return []
+    # The origin is where the ink starts, so leading spaces do not shift the
+    # code away from the box the caller reserved for it.
     lines = []
-    pen = 0.0
+    pen = -ADVANCE * unit * marks[0]
     for character in text:
         glyph = _GLYPHS.get(character)
         if glyph is None:

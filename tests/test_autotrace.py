@@ -624,6 +624,69 @@ def test_a_typology_code_is_trimmed_and_bounded():
     assert AutoTraceOptions().normalized().type_code == ""
 
 
+def test_a_vessel_band_is_read_once():
+    """
+    The rim and shoulder come from estimate_profile_bands, and so do the
+    schematic structure lines the user can switch on. The vessel reading was
+    added outside the block that clears the schematic ones, so with that switch
+    on the estimator ran twice and its first band was drawn twice - the
+    identical polyline, laid down four times once each is haloed. Measured on a
+    photographed comb pot: 15 paths became 19, one of them repeated four times.
+    """
+    from archeoglyph.generators.autotrace import pipeline as pl
+
+    calls = []
+    original = pl.estimate_profile_bands
+
+    def counting(mask, max_lines=3):
+        out = original(mask, max_lines=max_lines)
+        calls.append(len(out))
+        return out
+
+    img = synthetic.open_vessel()
+    pl.estimate_profile_bands = counting
+    try:
+        for synthetic_structure in (False, True):
+            calls.clear()
+            _run(img, style="Measured", synthetic_structure=synthetic_structure)
+            assert len(calls) <= 1, (
+                f"synthetic_structure={synthetic_structure}: the profile "
+                f"estimator ran {len(calls)} times on one artefact, so the same "
+                f"bands are in internal_lines twice")
+    finally:
+        pl.estimate_profile_bands = original
+
+
+def test_a_straight_sided_silhouette_is_not_a_vessel_by_default():
+    """
+    The vessel test asks where the silhouette is widest. np.argmax reports the
+    *first* row of a tie, so a straight-sided shape - every row the same width -
+    answered "at 0.0 of my height", i.e. always a vessel. The plateau's centre
+    is the honest answer to the same question, and on the nine photographed
+    finds it widens the margin rather than narrowing it: the two pots read 0.08
+    and 0.18 against 0.40 for the nearest thing that is not a pot.
+    """
+    import numpy as np
+
+    from archeoglyph.generators.autotrace.structure import looks_like_a_vessel
+
+    # A straight-sided box: every row ties at the maximum width.
+    box = np.zeros((200, 200), np.uint8)
+    box[20:190, 40:160] = 255
+    assert not looks_like_a_vessel(box), (
+        "a box with parallel sides is not an open vessel")
+
+    # A box that narrows only at the very foot is still not one.
+    footed = box.copy()
+    footed[150:190, 40:160] = 0
+    footed[150:190, 70:130] = 255
+    assert not looks_like_a_vessel(footed)
+
+    # A real pot still reads as one.
+    from archeoglyph.generators.autotrace.segment import get_mask_opencv
+    assert looks_like_a_vessel(get_mask_opencv(synthetic.open_vessel()))
+
+
 def test_a_traced_symbol_is_no_busier_than_the_busiest_drawn_one():
     """
     The cap comes from the catalogue this has to sit beside: over its 188

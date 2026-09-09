@@ -48,9 +48,17 @@ def estimate_spine_line(mask):
 VESSEL_MIN_ASPECT = 0.45
 
 #: Where a vessel is widest, as a share of its height from the top. An open
-#: pot is widest at or near its rim; the pots measure 0.03 and 0.19 and the
-#: next lowest of the other seven finds is a ground stone tool at 0.38.
+#: pot is widest at or near its rim; measured as the centre of the widest
+#: plateau, the two pots read 0.08 and 0.18 and the next lowest of the other
+#: seven finds is a ground stone tool at 0.40.
 VESSEL_WIDEST_BY = 0.33
+
+#: How close to the widest row still counts as part of the widest plateau.
+#: The question is where the silhouette is broad, not which single row won by a
+#: pixel: np.argmax answers with the *first* row of a tie, so a shape with
+#: parallel sides - every row equal - reported "widest at 0.0" and passed
+#: whatever it was.
+VESSEL_PLATEAU = 0.98
 
 #: How much narrower a vessel's base is than its rim. The pots measure 0.59
 #: and 0.43; the closest of the other seven is 0.83.
@@ -73,8 +81,8 @@ def looks_like_a_vessel(mask):
     The pipeline's own ``is_roundish`` is deliberately not consulted: a deep
     bowl passes it, and using it as a veto threw out one of the two pots this
     was written for. The two profile tests already separate every disc in the
-    set - the mirror is widest at 0.46 of its height, the roof tile ends at
-    0.42 and 0.83, and the pots at 0.03 and 0.19.
+    set - measured as plateau centres, the mirror is widest at 0.50 of its
+    height, the roof tile ends at 0.47 and 0.84, and the pots at 0.08 and 0.18.
     """
     if mask is None:
         return False
@@ -93,7 +101,8 @@ def looks_like_a_vessel(mask):
     aspect = min(box_w, height) / float(max(box_w, height))
     if aspect < VESSEL_MIN_ASPECT:
         return False
-    if (float(np.argmax(row_widths)) / height) >= VESSEL_WIDEST_BY:
+    plateau = np.flatnonzero(row_widths >= row_widths.max() * VESSEL_PLATEAU)
+    if (float(plateau.mean()) / height) >= VESSEL_WIDEST_BY:
         return False
     rim = float(row_widths[int(height * 0.15)])
     base = float(row_widths[int(height * 0.85)])

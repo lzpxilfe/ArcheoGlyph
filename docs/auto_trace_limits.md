@@ -402,9 +402,16 @@ shoulder**, from `estimate_profile_bands` gated by `structure.looks_like_a_vesse
 
 | | least-square aspect | widest at | base / rim |
 | --- | --- | --- | --- |
-| comb pot | 0.70 | **0.03** | **0.59** |
-| comb pot (b) | 0.94 | **0.19** | **0.43** |
-| the other seven | 0.12 - 0.99 | 0.38 - 0.98 | 0.83 - 1.82 |
+| comb pot | 0.70 | **0.08** | **0.59** |
+| comb pot (b) | 0.94 | **0.18** | **0.43** |
+| the other seven | 0.12 - 0.99 | 0.40 - 0.99 | 0.83 - 1.82 |
+
+"Widest at" is the centre of the widest plateau, not the first row that
+reaches the maximum. `np.argmax` answers with the first, so a silhouette with
+parallel sides - every row the same width - reported "widest at 0.0" and
+passed whatever it was. Reading the plateau's centre asks the question that
+was meant and widens the margin: the nearest non-vessel moves from 0.38 to
+0.40 while the pots move from 0.03 and 0.19 to 0.08 and 0.18.
 
 An open pot is wide at the rim, widest near the top and narrower at the base.
 Both margins are comfortable: the nearest non-vessel is widest at 0.38 and has

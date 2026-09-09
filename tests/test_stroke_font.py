@@ -71,3 +71,24 @@ def test_the_extent_matches_what_is_drawn():
 
     assert sf.text_extent("", 30.0) == (0.0, 0.0)
     assert sf.text_extent("가", 30.0) == (0.0, 0.0)
+
+
+def test_a_space_is_travel_and_not_ink():
+    """
+    text_extent is what the caller centres the code on and what it tests
+    against the silhouette, so it has to measure the ink. A space advances the
+    pen but marks nothing: counting it as a full glyph cell reported "A " as
+    50 units wide where the ink is 20, and put the reserved box for " A" thirty
+    units to the left of where the glyph actually lands.
+    """
+    for code in ("A ", " A", "  A  ", "II a"):
+        width, height = sf.text_extent(code, 40.0)
+        lines = sf.text_polylines(code, 40.0, origin=(0.0, 0.0))
+        xs = [pt[0] for line in lines for pt in line]
+        assert min(xs) == pytest.approx(0.0, abs=0.001), (
+            f"{code!r}: the ink starts at {min(xs):.1f}, not at the origin")
+        assert max(xs) == pytest.approx(width, abs=0.001), (
+            f"{code!r}: extent says {width:.1f}, the ink ends at {max(xs):.1f}")
+        assert height == 40.0
+
+    assert sf.text_extent("   ", 40.0) == (0.0, 0.0)

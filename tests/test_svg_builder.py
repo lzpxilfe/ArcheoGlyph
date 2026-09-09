@@ -93,6 +93,37 @@ def test_the_house_outline_ratio_matches_the_drawn_catalogue():
         "the ink budget will thin interior lines out of the legend")
 
 
+def test_an_empty_path_does_not_disable_cropping():
+    """
+    An empty ``d`` is empty geometry, not unparseable geometry. It used to be
+    read as "unsupported path syntax: do not crop", so one of them left the
+    whole analysis frame as the viewBox and every stroke was then scaled
+    against that frame instead of against the artefact: measured on a 600px
+    frame holding a 112px drawing, the outline came out at 18.75 instead of
+    3.5, a five-fold error with nothing in the log.
+
+    The pipeline emits one whenever the traced silhouette has two points or
+    fewer, so this is reachable, not hypothetical.
+    """
+    real = ('<path d="M 100,100 L 200,200" fill="none" stroke="#111" '
+            'stroke-width="2.20"/>')
+    empty = '<path d="" fill="none" stroke="#111" stroke-width="2.20"/>'
+    frame = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">{}</svg>'
+
+    _, alone = sb.finalize_svg(frame.format(real))
+    _, with_empty = sb.finalize_svg(frame.format(empty + real))
+
+    assert with_empty["viewbox"] == alone["viewbox"], (
+        f"an empty path moved the viewBox from {alone['viewbox']} to "
+        f"{with_empty['viewbox']}")
+    assert with_empty["outline_width"] == pytest.approx(alone["outline_width"])
+
+    # A path this module genuinely cannot measure still stops the crop.
+    relative = '<path d="m 1,1 l 5,5" stroke="#000"/>'
+    _, unmeasurable = sb.finalize_svg(frame.format(relative + real))
+    assert unmeasurable["viewbox"] == (0.0, 0.0, 600.0, 600.0)
+
+
 def test_finalize_keeps_viewbox_for_relative_paths_and_flags_empty():
     svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50"><path d="m 1,1 l 5,5" stroke="#000"/></svg>'
     out, info = sb.finalize_svg(svg)

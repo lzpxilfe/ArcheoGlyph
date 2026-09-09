@@ -187,8 +187,14 @@ def geometry_bbox(root: ET.Element):
     for el in _iter_drawables(root):
         box = _element_bbox(el)
         if box is None:
-            if _local(el.tag) == "path":
+            if _local(el.tag) == "path" and _PATH_TOKEN_RE.search(
+                    el.attrib.get("d", "")):
                 return None  # unsupported path syntax: do not crop
+            # An *empty* path is empty geometry, not unmeasurable geometry: it
+            # draws nothing, so it measures nothing and the crop stands. Read
+            # as unmeasurable, one of them left the whole analysis frame as the
+            # viewBox and every stroke was scaled against that instead of
+            # against the artefact - a five-fold error, silently.
             continue
         boxes.append(box)
     return union_bbox(boxes)
