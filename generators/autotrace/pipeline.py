@@ -219,7 +219,7 @@ def _type_code_paths(code, drawn, mask, bounds, color):
     return paths
 
 
-def run_autotrace(bgr, options, mask_provider, relief=None):
+def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
     """
     Full Auto Trace pipeline on an 8-bit BGR image.
 
@@ -231,8 +231,18 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
         ``bgr``, built from a stack of differently lit photographs. The
         silhouette still comes from the photograph - a relief map has no
         clean outline - and only the decoration is read from this.
+    :param cancel_check: optional callable asked between the slow stages -
+        segmentation, the motif search, the ink trace. When it answers True
+        the trace stops and returns an empty SVG; the caller is expected to
+        throw that away. Without it the dialog's Cancel button disabled itself
+        and said "Cancelling...", and the trace ran to the end regardless.
     :return: SVG string in analysis-pixel coordinates
     """
+    def _cancelled():
+        return bool(cancel_check and cancel_check())
+
+    _empty = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"></svg>'
+
     options = options.normalized()
     style = options.style
     color = options.color
@@ -250,7 +260,11 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
         force_lowres_upscale=bool(options.force_lowres_upscale),
         detail_fast=detail_fast,
     )
+    if _cancelled():
+        return _empty
     target_mask = mask_provider(processing_bgr)
+    if _cancelled():
+        return _empty
     if target_mask is None:
         target_mask = np.zeros(processing_bgr.shape[:2], dtype=np.uint8)
     processing_bgr, target_mask = auto_upright(processing_bgr, target_mask)
@@ -271,6 +285,8 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
         boost=low_quality_input,
     )
 
+    if _cancelled():
+        return _empty
     contours, _ = cv2.findContours(target_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     if not contours:
         return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"></svg>'
@@ -1130,6 +1146,9 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             for i in range(len(line) - 1))
     _mx, _my, _mw, _mh = cv2.boundingRect(main_contour)
     symbol_extent = float(max(_mw, _mh))
+
+    if _cancelled():
+        return _empty
 
     if not path_data:
         # No silhouette worth drawing. Emitting <path d=""/> anyway abandoned

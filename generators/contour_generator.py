@@ -188,6 +188,7 @@ class ContourGenerator:
         input_kind=None,
         type_code=None,
         light_stack=None,
+        cancel_check=None,
     ):
         """
         Generate contour SVG from an image file.
@@ -210,7 +211,8 @@ class ContourGenerator:
             type_code=type_code,
         )
         return run_autotrace(loaded.bgr, options, self._mask_provider(loaded),
-                             relief=self._relief_for(loaded, light_stack))
+                             relief=self._relief_for(loaded, light_stack),
+                             cancel_check=cancel_check)
 
     def _relief_for(self, loaded, light_stack):
         """
@@ -238,7 +240,7 @@ class ContourGenerator:
                 f"of the reading.")
         return relief_from_light_stack(frames)
 
-    def generate_result(self, image_path, **kwargs):
+    def generate_result(self, image_path, cancel_check=None, **kwargs):
         """
         Run ``generate`` and return a SymbolResult whose SVG is cropped to the
         object, squared, and parametrised for QGIS (param(fill)/param(outline)).
@@ -249,7 +251,7 @@ class ContourGenerator:
         from .autotrace.svg_builder import add_provenance
         from ..defaults import PLUGIN_VERSION
 
-        svg = self.generate(image_path, **kwargs)
+        svg = self.generate(image_path, cancel_check=cancel_check, **kwargs)
         svg, info = finalize_svg(svg)
         result = SymbolResult(svg=svg, source="autotrace", style=str(kwargs.get("style") or ""), meta=info)
         result.record_provenance(

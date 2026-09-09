@@ -135,6 +135,35 @@ def test_no_dialog_rebinds_a_thread_handle_without_checking_it_is_idle():
                 f"dropped takes the process down with it")
 
 
+def test_cancel_reaches_every_generator_the_dialog_can_start():
+    """
+    The worker passes cancel_check only when it can see the parameter:
+
+        if "cancel_check" in inspect.signature(self.generator_func).parameters
+
+    A generator that took it through **kwargs was therefore never told, and
+    Auto Trace - the default mode and the slow one - ran to the end while the
+    dialog showed "Cancelling...". Passing it blindly is not the fix either:
+    the call would raise TypeError further down. Every entry point the dialog
+    dispatches to has to name the parameter.
+    """
+    import inspect
+
+    from archeoglyph.generators.contour_generator import ContourGenerator
+    from archeoglyph.generators.template_generator import TemplateGenerator
+
+    entry_points = [
+        (ContourGenerator, "generate_result"),
+        (ContourGenerator, "generate"),
+        (TemplateGenerator, "generate"),
+    ]
+    for cls, name in entry_points:
+        params = inspect.signature(getattr(cls, name)).parameters
+        assert "cancel_check" in params, (
+            f"{cls.__name__}.{name} does not name cancel_check, so the dialog "
+            f"cannot tell it to stop and Cancel is a lie in that mode")
+
+
 def test_every_mask_backend_can_be_selected_in_settings():
     """
     Each backend the segmentation layer accepts must be offered in the

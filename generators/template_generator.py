@@ -187,12 +187,20 @@ class TemplateGenerator:
         self.plugin_dir = plugin_dir
         self.template_dir = os.path.join(plugin_dir, 'resources', 'templates')
         
-    def generate(self, template_type, color=None):
+    def generate(self, template_type, color=None, cancel_check=None):
         """
         Generate a symbol from a built-in template.
 
+        :param cancel_check: optional callable asked before the drawing starts.
+            Named rather than swallowed by ``**kwargs`` because the dialog
+            decides whether Cancel works by inspecting this signature - with it
+            missing, Cancel disabled itself, said "Cancelling..." and did
+            nothing. Drawing one template is quick, so one checkpoint is the
+            whole of it.
         :return: SymbolResult carrying parametrised SVG (plus a raster preview)
         """
+        if cancel_check and cancel_check():
+            return None
         from .symbol_result import SymbolResult
         from .autotrace.svg_builder import add_provenance, finalize_svg
         from ..defaults import PLUGIN_VERSION
