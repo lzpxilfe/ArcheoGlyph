@@ -244,9 +244,10 @@ are the content rather than an inference about it; its specks still go.
 
 ### The blobs, fixed by changing what is read rather than what is kept
 
-Five attempts to sort the marks out *after* extraction all failed on the same
-nine photographs - three to tell decoration from lighting, a fourth measured
-and rejected, and a fifth, later, to tell one kind of decoration from another:
+Seven attempts to sort the marks out *after* extraction have now failed on the
+same nine photographs - three to tell decoration from lighting, a fourth
+measured and rejected, a fifth to tell one kind of decoration from another,
+and two more to find where a vessel's decoration sits:
 
 | rule tried | what killed it |
 | --- | --- |
@@ -255,6 +256,8 @@ and rejected, and a fifth, later, to tell one kind of decoration from another:
 | stability under a re-crop | the pots score 0.08 and 0.33, the discs 0.42 to 0.58 - backwards |
 | concentric radial bands | works (a lotus tile gives the same five bands over three re-crops, a dragon tile a different set each time) but only ever yields rings |
 | mean mark width, to tell cut from raised | the lotus tile 1.79 percent of the artefact, the dragon 1.70 - indistinguishable |
+| row-mean brightness, to find a pot's decorated zone | reads the pot's own shading, not its ornament: one band on a comb pot, two on a dagger |
+| row-mean local contrast, same | a comb pot and a stone dagger give the same profile shape |
 
 The information needed is not in the extracted marks, because decoration and
 lighting arrive there in the same shapes. What was wrong was **what was being
@@ -383,6 +386,38 @@ The count is doing two jobs and it is the same question both times: *is there
 more here than a drawn symbol would hold?* Below it, draw the marks. Above
 it, the artefact is decorated, and that is worth saying even in a marker.
 
+### A vessel gets its shape, and is not asked about its ornament
+
+The two rows at the bottom of that table are a pot's decorated zone, and both
+failed. A comb-pattern jar and a stone dagger give the same row-energy profile
+- the signal is the artefact's shape and its silhouette edge, not its
+ornament. `estimate_profile_bands`, which reads curvature rather than pixels,
+puts a band at 0.79 of one comb pot's height when its decoration is in the top
+half; it is not a decoration reader either, and it fires on a bronze mirror
+and a slender dagger just as readily.
+
+So the decorated zone is not read. What a vessel gets instead is its **rim and
+shoulder**, from `estimate_profile_bands` gated by `structure.looks_like_a_vessel`
+- three facts about the silhouette and none about the ornament:
+
+| | least-square aspect | widest at | base / rim |
+| --- | --- | --- | --- |
+| comb pot | 0.70 | **0.03** | **0.59** |
+| comb pot (b) | 0.94 | **0.19** | **0.43** |
+| the other seven | 0.12 - 0.99 | 0.38 - 0.98 | 0.83 - 1.82 |
+
+An open pot is wide at the rim, widest near the top and narrower at the base.
+Both margins are comfortable: the nearest non-vessel is widest at 0.38 and has
+a base 0.83 of its rim. The pipeline's own `is_roundish` is deliberately not
+consulted - a deep bowl passes it, and using it as a veto threw out one of the
+two pots this was written for.
+
+Drawing a rim and a shoulder is what archaeological illustration does for a
+vessel, and it is honest as long as it is called what it is. It is called
+structure in the code, in the log line and here. Measured across all nine
+finds in all three styles, only the two pots change; the other seven come out
+byte-identical.
+
 ### What this does not fix
 
 The comb-pattern jar's Line output is clean and the daggers keep the marks
@@ -481,7 +516,7 @@ are catalogued in the manifest as a warning to the next reader).
 | artefact | from a photograph | from a rubbing / drawing |
 | --- | --- | --- |
 | blades, stone tools | works | works |
-| pottery vessels | outline only, no surface pattern | pattern read |
+| pottery vessels | outline plus rim and shoulder; the surface pattern is not read | pattern read |
 | mirrors, roof tile ends | relief read as a rubbing: the ornament, not the motif | motif read and replayed |
 
 The last row is the one that moved. A flat-faced disc's relief is now turned

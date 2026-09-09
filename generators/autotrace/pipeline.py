@@ -94,6 +94,7 @@ from .structure import (
     estimate_round_bands,
     estimate_spine_line,
     estimate_terminal_bars,
+    looks_like_a_vessel,
 )
 
 
@@ -343,6 +344,23 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
             is_drawing, _drawing_metrics = looks_like_drawing(processing_bgr, target_mask)
         except Exception:
             is_drawing = False
+    # A vessel keeps its rim and shoulder whatever the sliders say. These come
+    # from the outline changing curvature, not from the photograph - they are
+    # the pot's shape, and showing it is the drawing convention for a pot.
+    # What is *not* claimed here is its decoration: six attempts to read a
+    # decorated zone out of these photographs all failed, and drawing the
+    # whole surface instead was covering the pots in speckle.
+    #
+    # Held apart from profile_lines above, which the styles spend on their own
+    # slider budgets: these are added after the style has chosen, so they
+    # cannot be double-counted and cannot be dropped by a branch that strips
+    # horizontals (Line does, deliberately - but a rim is not a stray bar).
+    vessel_bands = []
+    if not is_drawing and looks_like_a_vessel(target_mask):
+        vessel_bands = estimate_profile_bands(target_mask, max_lines=2)[:2]
+        if vessel_bands:
+            log(f"Drawing {len(vessel_bands)} structural bands on this vessel "
+                f"- its rim and shoulder, not its decoration.")
     ink_lines = []
     relief_sheet = None
     # A flat decorated face is traced whatever the style asked for. Simple
@@ -948,6 +966,9 @@ def run_autotrace(bgr, options, mask_provider, relief=None):
     # A drawing is exempt too - there the ink strokes are the content, not an
     # inference about it - but its specks still go, because a speck is
     # unreadable whatever drew it.
+    if vessel_bands:
+        internal_lines = list(vessel_bands) + list(internal_lines)
+
     if internal_lines:
         _mx, _my, _mw, _mh = cv2.boundingRect(main_contour)
         artefact_extent = float(max(_mw, _mh))

@@ -42,10 +42,80 @@ def estimate_spine_line(mask):
     return [points]
 
 
+#: How square a vessel's silhouette is at its least. A blade is narrower than
+#: this and a jar is not: the two daggers measure 0.20 and 0.12, the two
+#: comb-pattern pots 0.70 and 0.94.
+VESSEL_MIN_ASPECT = 0.45
+
+#: Where a vessel is widest, as a share of its height from the top. An open
+#: pot is widest at or near its rim; the pots measure 0.03 and 0.19 and the
+#: next lowest of the other seven finds is a ground stone tool at 0.38.
+VESSEL_WIDEST_BY = 0.33
+
+#: How much narrower a vessel's base is than its rim. The pots measure 0.59
+#: and 0.43; the closest of the other seven is 0.83.
+VESSEL_BASE_OF_RIM = 0.85
+
+
+def looks_like_a_vessel(mask):
+    """
+    Whether this silhouette is an open vessel, judged from its outline alone.
+
+    This gates the structural bands below, which fire on anything otherwise -
+    a bronze mirror and a slender dagger get them as readily as a jar.
+
+    It reads the silhouette and never the photograph, which matters: six
+    attempts to find a vessel's *decorated* zone in its photograph all failed
+    (see docs/auto_trace_limits.md), and this is deliberately not one of them.
+    An open pot is wide at the rim, widest near the top, and narrower at the
+    base - three facts about its shape, none about its ornament.
+
+    The pipeline's own ``is_roundish`` is deliberately not consulted: a deep
+    bowl passes it, and using it as a veto threw out one of the two pots this
+    was written for. The two profile tests already separate every disc in the
+    set - the mirror is widest at 0.46 of its height, the roof tile ends at
+    0.42 and 0.83, and the pots at 0.03 and 0.19.
+    """
+    if mask is None:
+        return False
+    ys, xs = np.where(mask > 0)
+    if len(ys) < 200:
+        return False
+    top, bot = int(ys.min()), int(ys.max())
+    height = bot - top + 1
+    if height < 24:
+        return False
+    row_widths = (mask[top:bot + 1] > 0).sum(axis=1).astype(np.float32)
+    if not row_widths.any():
+        return False
+
+    box_w = int(xs.max()) - int(xs.min()) + 1
+    aspect = min(box_w, height) / float(max(box_w, height))
+    if aspect < VESSEL_MIN_ASPECT:
+        return False
+    if (float(np.argmax(row_widths)) / height) >= VESSEL_WIDEST_BY:
+        return False
+    rim = float(row_widths[int(height * 0.15)])
+    base = float(row_widths[int(height * 0.85)])
+    if rim <= 0:
+        return False
+    return bool(base < rim * VESSEL_BASE_OF_RIM)
+
+
 def estimate_profile_bands(mask, max_lines=3):
     """
-    Estimate typological structural bands (rim/shoulder/base) from silhouette profile.
-    This creates symbol-like interior cues without relying on image texture.
+    Estimate structural bands (rim/shoulder/base) from the silhouette profile.
+
+    These are the vessel's *shape*, read off where its outline changes
+    curvature. They are not its decoration and must never be described as
+    such: six attempts to find a pot's decorated zone in its photograph all
+    failed, and the table recording them is in docs/auto_trace_limits.md.
+    Drawing a rim and a shoulder is the convention archaeological illustration
+    already uses for a vessel, and it is honest as long as that is what it is
+    called.
+
+    Gate this with looks_like_a_vessel: on its own it fires on a bronze mirror
+    and a slender dagger as readily as on a jar.
     """
     ys, xs = np.where(mask > 0)
     if len(xs) < 80:

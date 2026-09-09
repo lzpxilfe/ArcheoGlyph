@@ -56,6 +56,21 @@ def plain_disc(size=400):
     return img
 
 
+def open_vessel(size=400):
+    """A pot: wide at the rim, widest near the top, narrowing to the base."""
+    img = blank(size, color=(246, 246, 246))
+    pts = np.array([
+        [size * 0.18, size * 0.14],
+        [size * 0.82, size * 0.14],
+        [size * 0.74, size * 0.58],
+        [size * 0.60, size * 0.88],
+        [size * 0.40, size * 0.88],
+        [size * 0.26, size * 0.58],
+    ], dtype=np.int32)
+    cv2.fillPoly(img, [pts], (150, 118, 92))
+    return img
+
+
 def rosette_disc(size=400):
     """A disc carrying more ornament than a drawn symbol would ever hold.
 

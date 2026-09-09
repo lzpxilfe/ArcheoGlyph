@@ -535,6 +535,39 @@ def test_a_decorated_disc_does_not_come_out_as_a_plain_one():
         f"{plain}; that is the ornament route firing on a plain artefact")
 
 
+def test_only_a_vessel_gets_the_rim_and_shoulder_bands():
+    """
+    Structural bands are the *shape* of a pot - where its outline changes
+    curvature - and they fire on anything at all unless they are gated: a
+    bronze mirror and a slender dagger get them as readily as a jar.
+
+    The gate reads the silhouette and never the photograph, deliberately: six
+    attempts to find a vessel's decorated zone in its photograph all failed,
+    and this is not a seventh. An open pot is wide at the rim, widest near the
+    top, and narrower at the base.
+    """
+    from archeoglyph.generators.autotrace.segment import get_mask_opencv
+    from archeoglyph.generators.autotrace.structure import looks_like_a_vessel
+
+    def _is_vessel(img):
+        return looks_like_a_vessel(get_mask_opencv(img))
+
+    assert _is_vessel(synthetic.open_vessel()), "a pot is a vessel"
+    assert not _is_vessel(synthetic.plain_disc()), "a disc is not a vessel"
+    assert not _is_vessel(synthetic.ellipse_blade()), "a blade is not a vessel"
+    assert not _is_vessel(synthetic.mirror_with_rings()), (
+        "a deep bowl passes the pipeline's is_roundish test and so does a "
+        "mirror; the profile has to do the separating, not the roundness")
+
+
+def test_a_vessel_is_drawn_with_its_rim_and_a_blade_is_not():
+    vessel = _path_count(_run(synthetic.open_vessel(), style="Measured"))
+    blade = _path_count(_run(synthetic.ellipse_blade(), style="Measured"))
+    assert vessel > blade, (
+        f"the pot drew {vessel} paths and the blade {blade}; the pot should "
+        f"carry a rim and a shoulder that the blade has no business having")
+
+
 def test_a_traced_symbol_is_no_busier_than_the_busiest_drawn_one():
     """
     The cap comes from the catalogue this has to sit beside: over its 188
