@@ -13,7 +13,6 @@ from ..log import log_exception
 from .style_control_utils import resolve_style_controls, style_controls_prompt_hint
 from .symbol_result import SymbolResult
 from .style_utils import (
-    STYLE_COLORED,
     STYLE_LINE,
     STYLE_MEASURED,
     STYLE_TYPOLOGY,
@@ -34,12 +33,6 @@ class LocalGenerator:
     
     # Style prompts for different archaeological symbol styles
     STYLE_PROMPTS = {
-        STYLE_COLORED: (
-            "accurate archaeological artifact silhouette, flat color fill, "
-            "clean shape, precise outline, map symbol, "
-            "transparent background, centered, high contrast, "
-            "digital art, vector style"
-        ),
         STYLE_TYPOLOGY: (
             "archaeological typology symbol, standardized silhouette, "
             "bold contour, central axis cue, 1-3 structural bands, "
@@ -129,7 +122,7 @@ class LocalGenerator:
                 "Please ensure the server is running."
             )
             
-        base_prompt = self.STYLE_PROMPTS.get(self._normalize_style(style), self.STYLE_PROMPTS[STYLE_COLORED])
+        base_prompt = self.STYLE_PROMPTS.get(self._normalize_style(style), self.STYLE_PROMPTS[STYLE_TYPOLOGY])
         base_prompt += ", " + self._style_control_hint(
             factuality=factuality,
             symbolic_looseness=symbolic_looseness,

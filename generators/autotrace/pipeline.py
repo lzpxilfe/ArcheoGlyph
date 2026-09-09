@@ -24,16 +24,12 @@ from ..style_control_utils import (
 from ..style_utils import (
     STYLE_LINE,
     STYLE_MEASURED,
-    STYLE_TYPOLOGY,
     is_legend_style,
     normalize_style,
 )
 from .colors import (
-    blend_hex,
     darken_hex,
     extract_dominant_color,
-    extract_material_palette,
-    hex_luminance,
     lighten_hex,
     muted_hex,
 )
@@ -292,17 +288,9 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
         return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"></svg>'
 
     final_color = color if color else extract_dominant_color(processing_bgr, target_mask)
-    material_palette = []
-    if not color:
-        material_palette = extract_material_palette(
-            processing_bgr,
-            target_mask,
-            max_colors=4,
-        )
 
     style_key = normalize_style(style)
     legend_mode = is_legend_style(style)
-    is_typology = style_key == STYLE_TYPOLOGY and (not legend_mode)
     is_publication = style_key == STYLE_MEASURED
     is_line_drawing = style_key == STYLE_LINE
     is_mono = is_line_drawing or is_publication
@@ -389,10 +377,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
         symbolic_v <= 0.48
     )
 
-    if is_typology:
-        base_epsilon = 0.0026
-    else:
-        base_epsilon = 0.0014
+    base_epsilon = 0.0014
     if is_roundish:
         base_epsilon *= 0.72
     epsilon_factor = base_epsilon + (0.0018 * symbolic_v) + (0.0012 * exaggeration_v) - (0.0009 * factuality_v)
@@ -448,7 +433,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
         max_lines=max(0, min(2, profile_count + 1)),
     ) if is_roundish else []
     spine_lines = estimate_spine_line(target_mask)
-    terminal_target = terminal_count if is_typology else 2
+    terminal_target = 2
     terminal_lines = estimate_terminal_bars(
         target_mask,
         max_lines=terminal_target,
@@ -717,15 +702,6 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
             internal_lines = profile_lines[:1] + spine_lines[:1]
             if terminal_count > 0:
                 internal_lines += terminal_lines[:1]
-    elif is_typology:
-        if is_roundish:
-            internal_lines = round_lines[:1]
-            if round_motif_lines:
-                internal_lines += round_motif_lines[:max(2, min(5, round_motif_limit))]
-            if terminal_count > 0:
-                internal_lines += terminal_lines[:1]
-        else:
-            internal_lines = profile_lines[:profile_count] + spine_lines[:1] + terminal_lines[:terminal_count]
     elif is_publication:
         if is_roundish:
             if fast_round_structural:
@@ -1160,130 +1136,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
         svg_output.append("</svg>")
         return "".join(svg_output)
 
-    if is_typology:
-        palette_seeds = list(material_palette[:4]) if material_palette else [final_color]
-        harmonized_tones = []
-        for idx, seed in enumerate(palette_seeds):
-            mix_ratio = 0.34 if idx < 2 else 0.28
-            tone = blend_hex(final_color, seed, mix_ratio)
-            harmonized_tones.append(muted_hex(tone, keep=0.80))
-
-        if not harmonized_tones:
-            harmonized_tones.append(muted_hex(final_color, keep=0.66))
-        while len(harmonized_tones) < 3:
-            if len(harmonized_tones) == 1:
-                harmonized_tones.append(lighten_hex(harmonized_tones[0], 0.16))
-            else:
-                harmonized_tones.append(darken_hex(harmonized_tones[0], 0.84))
-
-        ordered_tones = sorted(
-            harmonized_tones[:3],
-            key=lambda c: hex_luminance(c),
-            reverse=True,
-        )
-        warm_highlight_color = ordered_tones[0]
-        base_color = ordered_tones[1]
-        deep_shadow_color = ordered_tones[2]
-        hi_luma = hex_luminance(warm_highlight_color)
-        mid_luma = hex_luminance(base_color)
-        lo_luma = hex_luminance(deep_shadow_color)
-        if (hi_luma - mid_luma) < 16.0:
-            warm_highlight_color = lighten_hex(base_color, 0.20)
-        if (mid_luma - lo_luma) < 16.0:
-            deep_shadow_color = darken_hex(base_color, 0.78)
-        if (hex_luminance(warm_highlight_color) - hex_luminance(deep_shadow_color)) < 34.0:
-            warm_highlight_color = lighten_hex(warm_highlight_color, 0.10)
-            deep_shadow_color = darken_hex(deep_shadow_color, 0.90)
-        patina_tone = (
-            harmonized_tones[3]
-            if len(harmonized_tones) > 3
-            else blend_hex(base_color, warm_highlight_color, 0.30)
-        )
-        patina_tone = muted_hex(patina_tone, keep=0.84)
-
-        outline_color = darken_hex(base_color, 0.56)
-        structure_color = darken_hex(blend_hex(base_color, deep_shadow_color, 0.42), 0.74)
-        shade_color = darken_hex(deep_shadow_color, 0.90)
-        highlight_color = lighten_hex(blend_hex(base_color, warm_highlight_color, 0.58), 0.10)
-
-        svg_output.append(
-            "<defs>"
-            f'<linearGradient id="agTypologyBase" x1="20%" y1="8%" x2="84%" y2="94%">'
-            f'<stop offset="0%" stop-color="{warm_highlight_color}" stop-opacity="1"/>'
-            f'<stop offset="55%" stop-color="{base_color}" stop-opacity="1"/>'
-            f'<stop offset="100%" stop-color="{deep_shadow_color}" stop-opacity="1"/>'
-            "</linearGradient>"
-            f'<radialGradient id="agTypologyHighlight" cx="30%" cy="24%" r="64%">'
-            f'<stop offset="0%" stop-color="{highlight_color}" stop-opacity="1"/>'
-            f'<stop offset="100%" stop-color="{base_color}" stop-opacity="0"/>'
-            "</radialGradient>"
-            f'<radialGradient id="agTypologyPatina" cx="66%" cy="70%" r="58%">'
-            f'<stop offset="0%" stop-color="{patina_tone}" stop-opacity="1"/>'
-            f'<stop offset="100%" stop-color="{base_color}" stop-opacity="0"/>'
-            "</radialGradient>"
-            f'<linearGradient id="agTypologyShadow" x1="44%" y1="0%" x2="58%" y2="100%">'
-            f'<stop offset="0%" stop-color="{base_color}" stop-opacity="0"/>'
-            f'<stop offset="100%" stop-color="{shade_color}" stop-opacity="1"/>'
-            "</linearGradient>"
-            "</defs>"
-        )
-
-        svg_output.append(
-            f'<path d="{path_data}" fill="url(#agTypologyBase)" fill-opacity="1.0" stroke="none" '
-            'stroke-linecap="round" stroke-linejoin="round"/>'
-        )
-        svg_output.append(
-            f'<path d="{path_data}" fill="url(#agTypologyHighlight)" fill-opacity="0.30" stroke="none" '
-            'stroke-linecap="round" stroke-linejoin="round"/>'
-        )
-        svg_output.append(
-            f'<path d="{path_data}" fill="url(#agTypologyPatina)" fill-opacity="0.28" stroke="none" '
-            'stroke-linecap="round" stroke-linejoin="round"/>'
-        )
-        svg_output.append(
-            f'<path d="{path_data}" fill="url(#agTypologyShadow)" fill-opacity="0.30" stroke="none" '
-            'stroke-linecap="round" stroke-linejoin="round"/>'
-        )
-        svg_output.append(
-            f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
-            'stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round"/>'
-        )
-
-        for line in profile_lines[:3]:
-            line_path = polyline_to_path(line)
-            if not line_path:
-                continue
-            svg_output.append(
-                f'<path d="{line_path}" fill="none" stroke="{shade_color}" stroke-opacity="0.44" '
-                'stroke-width="3.0" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            svg_output.append(
-                f'<path d="{line_path}" fill="none" stroke="{structure_color}" stroke-opacity="0.88" '
-                'stroke-width="1.10" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-
-        for line in spine_lines[:1]:
-            line_path = polyline_to_path(line)
-            if not line_path:
-                continue
-            svg_output.append(
-                f'<path d="{line_path}" fill="none" stroke="{highlight_color}" stroke-opacity="0.42" '
-                'stroke-width="1.80" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            svg_output.append(
-                f'<path d="{line_path}" fill="none" stroke="{structure_color}" stroke-opacity="0.85" '
-                'stroke-width="1.00" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-
-        for line in terminal_lines[:terminal_count]:
-            line_path = polyline_to_path(line)
-            if not line_path:
-                continue
-            svg_output.append(
-                f'<path d="{line_path}" fill="none" stroke="{structure_color}" stroke-opacity="0.90" '
-                'stroke-width="1.20" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-    elif is_mono:
+    if is_mono:
         if is_publication:
             outline_width = 1.8
             detail_width = 1.35 if is_roundish else 1.0
@@ -1373,108 +1226,61 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                     f'stroke-width="{detail_width:.2f}"{detail_dash} stroke-linecap="round" stroke-linejoin="round"/>'
                 )
     else:
-        if legend_mode:
-            # Simple Symbol style: two-tone fill + bold outline + minimal structural linework.
-            fill_color = muted_hex(final_color, keep=0.78)
-            simple_light = lighten_hex(fill_color, 0.16)
-            simple_dark = darken_hex(fill_color, 0.84)
-            simple_glow = lighten_hex(fill_color, 0.26)
-            outline_color = darken_hex(fill_color, 0.56)
-            detail_color = darken_hex(fill_color, 0.70)
-            fill_opacity = 0.90 if is_roundish else 0.94
+        # Simple Symbol: two-tone fill, bold outline, minimal structural
+        # linework. Everything that is not Line or Measured lands here now that
+        # is_legend_style and normalize_style agree - there is no fourth
+        # renderer to fall through to.
+        fill_color = muted_hex(final_color, keep=0.78)
+        simple_light = lighten_hex(fill_color, 0.16)
+        simple_dark = darken_hex(fill_color, 0.84)
+        simple_glow = lighten_hex(fill_color, 0.26)
+        outline_color = darken_hex(fill_color, 0.56)
+        detail_color = darken_hex(fill_color, 0.70)
+        fill_opacity = 0.90 if is_roundish else 0.94
 
-            svg_output.append(
-                "<defs>"
-                f'<linearGradient id="agSimpleBase" x1="20%" y1="12%" x2="82%" y2="92%">'
-                f'<stop offset="0%" stop-color="{simple_light}" stop-opacity="1"/>'
-                f'<stop offset="62%" stop-color="{fill_color}" stop-opacity="1"/>'
-                f'<stop offset="100%" stop-color="{simple_dark}" stop-opacity="1"/>'
-                "</linearGradient>"
-                f'<radialGradient id="agSimpleGlow" cx="28%" cy="22%" r="56%">'
-                f'<stop offset="0%" stop-color="{simple_glow}" stop-opacity="1"/>'
-                f'<stop offset="100%" stop-color="{fill_color}" stop-opacity="0"/>'
-                "</radialGradient>"
-                "</defs>"
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="url(#agSimpleBase)" fill-opacity="{fill_opacity:.2f}" stroke="none" '
-                'stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="url(#agSimpleGlow)" fill-opacity="0.20" stroke="none" '
-                'stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
-                'stroke-width="2.60" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
+        svg_output.append(
+            "<defs>"
+            f'<linearGradient id="agSimpleBase" x1="20%" y1="12%" x2="82%" y2="92%">'
+            f'<stop offset="0%" stop-color="{simple_light}" stop-opacity="1"/>'
+            f'<stop offset="62%" stop-color="{fill_color}" stop-opacity="1"/>'
+            f'<stop offset="100%" stop-color="{simple_dark}" stop-opacity="1"/>'
+            "</linearGradient>"
+            f'<radialGradient id="agSimpleGlow" cx="28%" cy="22%" r="56%">'
+            f'<stop offset="0%" stop-color="{simple_glow}" stop-opacity="1"/>'
+            f'<stop offset="100%" stop-color="{fill_color}" stop-opacity="0"/>'
+            "</radialGradient>"
+            "</defs>"
+        )
+        svg_output.append(
+            f'<path d="{path_data}" fill="url(#agSimpleBase)" fill-opacity="{fill_opacity:.2f}" stroke="none" '
+            'stroke-linecap="round" stroke-linejoin="round"/>'
+        )
+        svg_output.append(
+            f'<path d="{path_data}" fill="url(#agSimpleGlow)" fill-opacity="0.20" stroke="none" '
+            'stroke-linecap="round" stroke-linejoin="round"/>'
+        )
+        svg_output.append(
+            f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
+            'stroke-width="2.60" stroke-linecap="round" stroke-linejoin="round"/>'
+        )
 
-            # Two marks is right for a silhouette that carries its own
-            # meaning, and wrong for one whose meaning is the decoration: a
-            # sixteen-line eight-fold motif came out as two stray slivers.
-            # A folded motif is drawn whole or not at all.
-            if folded_motif_lines:
-                simple_detail_cap = len(folded_motif_lines)
-            elif traced_marks:
-                simple_detail_cap = MAX_INTERIOR_MARKS
-            else:
-                simple_detail_cap = 2
-            for line in internal_lines[:simple_detail_cap]:
-                line_path = polyline_to_path(line)
-                if line_path:
-                    svg_output.append(
-                        f'<path d="{line_path}" fill="none" stroke="{detail_color}" stroke-opacity="0.86" '
-                        'stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>'
-                    )
+        # Two marks is right for a silhouette that carries its own
+        # meaning, and wrong for one whose meaning is the decoration: a
+        # sixteen-line eight-fold motif came out as two stray slivers.
+        # A folded motif is drawn whole or not at all.
+        if folded_motif_lines:
+            simple_detail_cap = len(folded_motif_lines)
+        elif traced_marks:
+            simple_detail_cap = MAX_INTERIOR_MARKS
         else:
-            # Colored style: avoid flat single-color mass; keep subtle layered tones.
-            fill_color = muted_hex(final_color, keep=0.72)
-            outline_color = darken_hex(final_color, 0.58)
-            detail_color = darken_hex(final_color, 0.42)
-            accent_color = lighten_hex(final_color, 0.14)
-            deep_fill_color = darken_hex(fill_color, 0.88)
-            glow_color = lighten_hex(fill_color, 0.22)
-            fill_opacity = 0.62 if is_roundish else 0.72
-            svg_output.append(
-                "<defs>"
-                f'<linearGradient id="agColoredBase" x1="18%" y1="12%" x2="82%" y2="92%">'
-                f'<stop offset="0%" stop-color="{glow_color}" stop-opacity="1"/>'
-                f'<stop offset="62%" stop-color="{fill_color}" stop-opacity="1"/>'
-                f'<stop offset="100%" stop-color="{deep_fill_color}" stop-opacity="1"/>'
-                "</linearGradient>"
-                f'<radialGradient id="agColoredGlow" cx="28%" cy="22%" r="58%">'
-                f'<stop offset="0%" stop-color="{accent_color}" stop-opacity="1"/>'
-                f'<stop offset="100%" stop-color="{fill_color}" stop-opacity="0"/>'
-                "</radialGradient>"
-                "</defs>"
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="url(#agColoredBase)" fill-opacity="{fill_opacity:.2f}" stroke="none" '
-                'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="url(#agColoredGlow)" fill-opacity="0.20" stroke="none" '
-                'stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            svg_output.append(
-                f'<path d="{path_data}" fill="none" stroke="{outline_color}" '
-                'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
-            accent_lines = (round_lines[:1] if is_roundish else profile_lines[:1])
-            for line in accent_lines:
-                line_path = polyline_to_path(line)
-                if line_path:
-                    svg_output.append(
-                        f'<path d="{line_path}" fill="none" stroke="{accent_color}" stroke-opacity="0.36" '
-                        'stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>'
-                    )
-            for line in internal_lines:
-                line_path = polyline_to_path(line)
-                if line_path:
-                    svg_output.append(
-                        f'<path d="{line_path}" fill="none" stroke="{detail_color}" stroke-opacity="0.72" '
-                        'stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>'
-                    )
+            simple_detail_cap = 2
+        for line in internal_lines[:simple_detail_cap]:
+            line_path = polyline_to_path(line)
+            if line_path:
+                svg_output.append(
+                    f'<path d="{line_path}" fill="none" stroke="{detail_color}" stroke-opacity="0.86" '
+                    'stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
 
     if options.type_code:
         svg_output.extend(

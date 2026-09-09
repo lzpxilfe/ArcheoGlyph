@@ -37,7 +37,6 @@ from .svg_sanitize import sanitize_svg
 from .symbol_result import SymbolResult
 from .subject_terms import subject_hint
 from .style_utils import (
-    STYLE_COLORED,
     STYLE_LINE,
     STYLE_MEASURED,
     STYLE_TYPOLOGY,
@@ -81,14 +80,6 @@ class GeminiGenerator:
 
     # Style prompts: only control rendering style, never the shape.
     STYLE_PROMPTS = {
-        STYLE_COLORED: (
-            "RENDERING STYLE: Archaeological catalog symbol icon. "
-            "1. SHAPE RULES: Strictly trace provided silhouette constraints. "
-            "2. OUTLINE: Clean black outline (about 1-2px equivalent). "
-            "3. INTERNAL STRUCTURE: Add 1-3 factual feature lines only (rim/shoulder/base or blade midline). "
-            "4. SHADING: Optional 2-3 flat tone regions only, no painterly texture. "
-            "5. FORBIDDEN: no scenery, no architecture, no decorative motifs."
-        ),
         STYLE_TYPOLOGY: (
             "RENDERING STYLE: Archaeological typology catalog icon. "
             "1. SHAPE RULES: Preserve measured proportions and diagnostic silhouette. "
@@ -223,16 +214,6 @@ class GeminiGenerator:
     def _style_prompt_for_output(self, style_key, output_kind):
         """Return style prompt tuned for SVG or raster output."""
         if output_kind == "image":
-            if style_key == STYLE_COLORED:
-                return (
-                    "RENDERING STYLE: Archaeological catalog symbol icon (NOT painting). "
-                    "1. SHAPE RULES: Strictly trace the provided silhouette constraints. "
-                    "2. OUTLINE: Use a clean black or very dark outline. "
-                    "3. INTERNAL STRUCTURE: Add 1-3 structural feature lines that follow form. "
-                    "4. SHADING: Optional 2-3 flat muted tone regions only. No painterly texture. "
-                    "5. BACKGROUND: transparent or pure white only. "
-                    "6. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background."
-                )
             if style_key == STYLE_TYPOLOGY:
                 return (
                     "RENDERING STYLE: Typological archaeological symbol icon. "
@@ -243,19 +224,8 @@ class GeminiGenerator:
                     "5. Keep visible tone separation; do not collapse to a single flat fill. "
                     "6. Avoid decorative elements and scenic context."
                 )
-            return self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_COLORED])
+            return self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_TYPOLOGY])
 
-        if style_key == STYLE_COLORED:
-            return (
-                "RENDERING STYLE: Archaeological catalog symbol icon (NOT painting). "
-                "1. SHAPE RULES: Strictly trace the provided silhouette constraints. "
-                "2. OUTLINE: Use a clean black outline (about 1-2px equivalent). "
-                "3. INTERNAL STRUCTURE: Add 1-3 structural feature lines that follow form "
-                "(for example rim/shoulder/base or blade midline), and do not invent ornament. "
-                "4. SHADING: Optional 2-3 flat tone regions only. No painterly texture. "
-                "5. FORBIDDEN: No scenery, no landscape, no architecture, no decorative background. "
-                "6. SVG PURITY: Use simple vector paths only; do not use gradients, filters, images, or masks."
-            )
         if style_key == STYLE_TYPOLOGY:
             return (
                 "RENDERING STYLE: Typological archaeological symbol icon. "
@@ -266,7 +236,7 @@ class GeminiGenerator:
                 "5. Do not render as one single flat fill color; keep visible tone separation. "
                 "6. Avoid decorative elements and avoid scenic context."
             )
-        return self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_COLORED])
+        return self.STYLE_PROMPTS.get(style_key, self.STYLE_PROMPTS[STYLE_TYPOLOGY])
 
     def _build_prompt(
         self,
@@ -311,7 +281,7 @@ class GeminiGenerator:
                 "or asymmetrical objects."
             )
 
-        if color and style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
+        if color and style_key == STYLE_TYPOLOGY:
             full_prompt += (
                 f"\n\nCOLOR INSTRUCTIONS:"
                 f"\n1. Detect and use the artifact's observed material color from the photo."
@@ -582,10 +552,10 @@ class GeminiGenerator:
         if not clean:
             return None, "; ".join(problems[:3]) or "unusable SVG"
 
-        limit = 26 if style_key in (STYLE_COLORED, STYLE_TYPOLOGY) else 60
+        limit = 26 if style_key == STYLE_TYPOLOGY else 60
         if stats["geometry"] > limit:
             return None, f"too many shapes for a map symbol ({stats['geometry']})"
-        max_colors = 6 if style_key in (STYLE_COLORED, STYLE_TYPOLOGY) else 3
+        max_colors = 6 if style_key == STYLE_TYPOLOGY else 3
         if stats["colors"] > max_colors:
             return None, f"too many distinct colours ({stats['colors']})"
 
@@ -603,7 +573,6 @@ class GeminiGenerator:
                     ok, reason = matches_reference(
                         reference, painted,
                         stroke_style=stroke_style,
-                        strict=(style_key == STYLE_COLORED),
                     )
                     if not ok:
                         return None, reason
@@ -624,7 +593,7 @@ class GeminiGenerator:
         self,
         image_path,
         prompt="",
-        style=STYLE_COLORED,
+        style=STYLE_TYPOLOGY,
         color="#000000",
         symmetry=False,
         factuality=None,

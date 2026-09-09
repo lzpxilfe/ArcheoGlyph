@@ -3,7 +3,6 @@
 Shared style constants and normalization helpers.
 """
 
-STYLE_COLORED = "Colored"
 STYLE_TYPOLOGY = "Typology"
 STYLE_LEGEND = "Simple Symbol"
 STYLE_LINE = "Line"
@@ -30,28 +29,17 @@ def normalize_style(style):
         return STYLE_MEASURED
     if "line" in low:
         return STYLE_LINE
-    if (
-        "legend" in low
-        or "simple symbol" in low
-        or "typology" in low
-        or "catalog" in low
-        or "symbolic" in low
-        or "colored" in low
-        or "color" in low
-    ):
-        return STYLE_TYPOLOGY
     return STYLE_TYPOLOGY
 
 
 def is_legend_style(style):
-    """Return True when style should use simple-symbol rendering in Auto Trace."""
-    low = str(style or "").strip().lower()
-    return (
-        "legend" in low
-        or "simple symbol" in low
-        or "typology" in low
-        or "catalog" in low
-        or "symbolic" in low
-        or "colored" in low
-        or "color" in low
-    )
+    """
+    Whether Auto Trace should render this style as a simple symbol.
+
+    Anything that is not Line or Measured, including an empty or unrecognised
+    label. It used to be a second keyword list that did not quite match
+    normalize_style's, and the gap between them - "" matched neither - selected
+    a fourth renderer nobody could reach from the UI, which drew a silhouette
+    with no interior lines at all.
+    """
+    return normalize_style(style) == STYLE_TYPOLOGY

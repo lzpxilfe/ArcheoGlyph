@@ -33,7 +33,6 @@ from . import image_ops
 from .symbol_result import SymbolResult
 from .subject_terms import find_subjects
 from .style_utils import (
-    STYLE_COLORED,
     STYLE_LINE,
     STYLE_MEASURED,
     STYLE_TYPOLOGY,
@@ -423,14 +422,6 @@ class HuggingFaceGenerator:
         )
         return self._arrays_to_qimage(out_rgb, out_alpha)
 
-    def _harmonize_colored_output(self, image, base_rgb, flatten=False, preserve_ratio=0.18):
-        """Reduce painterly drift by harmonizing output to reference material color."""
-        rgb, alpha = self._qimage_to_arrays(image)
-        out_rgb, out_alpha = image_ops.harmonize_colored(
-            rgb, alpha, base_rgb, flatten=flatten, preserve_ratio=preserve_ratio
-        )
-        return self._arrays_to_qimage(out_rgb, out_alpha)
-
     def _harmonize_mono_output(self, image, publication=False):
         """Convert output to stable monochrome for line/publication styles."""
         rgb, alpha = self._qimage_to_arrays(image)
@@ -447,17 +438,6 @@ class HuggingFaceGenerator:
         height = min(rgb.shape[0], inside.shape[0])
         width = min(rgb.shape[1], inside.shape[1])
         return image_ops.estimate_texture_noise(rgb[:height, :width], inside[:height, :width])
-
-    def _estimate_luma_variance(self, image, mask_img):
-        """Estimate luminance variance inside the silhouette area."""
-        if image is None or mask_img is None:
-            return 0.0
-        rgb, _alpha = self._qimage_to_arrays(image)
-        mask_rgb, _mask_alpha = self._qimage_to_arrays(mask_img)
-        inside = image_ops.mask_inside(mask_rgb)
-        height = min(rgb.shape[0], inside.shape[0])
-        width = min(rgb.shape[1], inside.shape[1])
-        return image_ops.estimate_luma_variance(rgb[:height, :width], inside[:height, :width])
 
     def _apply_reference_tone_map(self, image, image_path, mask_img, strength=0.5):
         """Apply a coarse three-level tone map taken from the reference photo."""
@@ -539,25 +519,6 @@ class HuggingFaceGenerator:
             if image is None:
                 return None
 
-            style_key = self._normalize_style(style)
-            if style_key != STYLE_COLORED:
-                return image
-
-            silhouette_bytes = self.contour_gen.get_silhouette_bytes(image_path)
-            if not silhouette_bytes:
-                return image
-            mask_img = QImage()
-            if not mask_img.loadFromData(silhouette_bytes):
-                return image
-
-            image = image.scaled(mask_img.width(), mask_img.height(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-            image = self._harmonize_colored_output(
-                image,
-                self._estimate_reference_rgb(image_path, mask_img, forced_hex=color),
-                flatten=False,
-                preserve_ratio=0.24,
-            )
-            image = self._apply_reference_tone_map(image, image_path, mask_img, strength=0.58)
             return image
         except Exception as e:
             log_exception("Rendering the contour SVG failed", e)
@@ -598,7 +559,6 @@ class HuggingFaceGenerator:
             out_rgb, out_alpha = image_ops.apply_silhouette(generated_rgb, inside)
             out = self._arrays_to_qimage(out_rgb, out_alpha)
 
-            texture_noise = self._estimate_texture_noise(generated, mask_img)
 
             if style_key == STYLE_TYPOLOGY:
                 typology_base = self._estimate_reference_rgb(image_path, mask_img, forced_hex=color)
@@ -615,27 +575,8 @@ class HuggingFaceGenerator:
                     preserve_ratio=0.36,
                 )
                 out = self._apply_reference_tone_map(out, image_path, mask_img, strength=0.28)
-            elif style_key == STYLE_COLORED:
-                flatten_threshold = 24.0 + (8.0 * float(prompt_influence))
-                flatten = texture_noise >= flatten_threshold
-                base_ratio = 0.30 + (0.22 * float(prompt_influence))
-                preserve_ratio = max(0.16, min(0.56, base_ratio - (0.08 if flatten else 0.0)))
-                out = self._harmonize_colored_output(
-                    out,
-                    self._estimate_reference_rgb(image_path, mask_img, forced_hex=color),
-                    flatten=flatten,
-                    preserve_ratio=preserve_ratio,
-                )
             else:
                 out = self._harmonize_mono_output(out, publication=(style_key == STYLE_MEASURED))
-
-            # If colored output is too flat, inject measured tone structure from reference image.
-            if style_key == STYLE_COLORED:
-                luma_var = self._estimate_luma_variance(out, mask_img)
-                luma_threshold = 110.0 - (32.0 * float(prompt_influence))
-                if luma_var < luma_threshold:
-                    tone_strength = max(0.24, 0.52 - (0.24 * float(prompt_influence)))
-                    out = self._apply_reference_tone_map(out, image_path, mask_img, strength=tone_strength)
 
             overlay_linework = str(
                 self.settings.value('ArcheoGlyph/hf_overlay_linework', 'false')
@@ -654,18 +595,6 @@ class HuggingFaceGenerator:
             if style_key == STYLE_TYPOLOGY:
                 overlay_linework = True
                 overlay_opacity = max(0.55, 0.72 - (0.15 * float(prompt_influence)))
-            if style_key == STYLE_COLORED:
-                if overlay_linework:
-                    overlay_opacity = max(0.18, 0.52 - (0.30 * float(prompt_influence)))
-                elif used_contour_seed and float(prompt_influence) < 0.42:
-                    overlay_linework = True
-                    overlay_opacity = max(0.18, 0.34 - (0.16 * float(prompt_influence)))
-                elif texture_noise >= (46.0 + (8.0 * float(prompt_influence))):
-                    overlay_linework = True
-                    overlay_opacity = 0.24
-            if style_key == STYLE_COLORED and overlay_linework and texture_noise >= 28.0:
-                overlay_opacity = min(0.50, overlay_opacity + 0.08)
-
             if overlay_linework:
                 # Optional: overlay factual linework if user explicitly enables it.
                 if style_key == STYLE_TYPOLOGY:
@@ -692,10 +621,9 @@ class HuggingFaceGenerator:
                     painter.end()
 
             # If output remains highly noisy, fall back to deterministic factual contour.
-            if style_key in (STYLE_COLORED, STYLE_TYPOLOGY):
+            if style_key == STYLE_TYPOLOGY:
                 final_noise = self._estimate_texture_noise(out, mask_img)
-                base_noise_threshold = 48.0 if style_key == STYLE_COLORED else 44.0
-                fallback_noise_threshold = base_noise_threshold + (14.0 * float(prompt_influence))
+                fallback_noise_threshold = 44.0 + (14.0 * float(prompt_influence))
                 # With strong prompt input, avoid collapsing back to contour too early.
                 if final_noise >= fallback_noise_threshold and float(prompt_influence) < 0.78:
                     fallback = self._generate_evidence_fallback(
