@@ -99,6 +99,66 @@ def rosette_disc(size=400):
     return cv2.GaussianBlur(img, (0, 0), 1.2)
 
 
+def _lit(height_field, mask, azimuth=35.0, face=(150, 150, 155),
+         ground=(238, 238, 240)):
+    """A height field photographed under a low lamp, as a BGR image.
+
+    The control for the relief reading has to be a *photograph* of relief -
+    shading, not ink - because that reading puts the shading back together
+    into a height before it draws anything. Drawn grooves would test a
+    different instrument entirely.
+    """
+    smooth = cv2.GaussianBlur(height_field, (0, 0), sigmaX=height_field.shape[0] * 0.008)
+    gx = cv2.Sobel(smooth, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(smooth, cv2.CV_32F, 0, 1, ksize=3)
+    lamp = np.radians(azimuth)
+    shade = gx * np.cos(lamp) + gy * np.sin(lamp)
+    img = np.empty(height_field.shape + (3,), dtype=np.uint8)
+    img[:] = np.array(ground, dtype=np.uint8)
+    lit = np.clip(np.array(face, dtype=np.float32)[None, None, :]
+                  + (shade * 900.0)[:, :, None], 0, 255).astype(np.uint8)
+    img[mask > 0] = lit[mask > 0]
+    return img
+
+
+def _disc_height(size, motif):
+    """``(height field, silhouette)`` for a disc, with or without ornament."""
+    field = np.zeros((size, size), dtype=np.float32)
+    mask = np.zeros((size, size), dtype=np.uint8)
+    c = (size // 2, size // 2)
+    r = int(size * 0.4)
+    cv2.circle(mask, c, r, 255, -1)
+    if not motif:
+        return field, mask
+    cv2.circle(field, c, r, 1.0, -1)                       # the rim, raised
+    cv2.circle(field, c, int(r * 0.88), 0.0, -1)           # the face, sunk
+    for step in range(8):                                  # the petals
+        angle = 2.0 * np.pi * step / 8.0
+        cv2.ellipse(field, (int(c[0] + r * 0.46 * np.cos(angle)),
+                            int(c[1] + r * 0.46 * np.sin(angle))),
+                    (int(r * 0.26), int(r * 0.15)),
+                    float(np.degrees(angle)), 0, 360, 1.0, -1)
+    cv2.circle(field, c, int(r * 0.14), 1.3, -1)           # the boss
+    return field, mask
+
+
+def lit_relief_disc(size=400, motif=True, azimuth=35.0):
+    """A disc carrying eight petals, a boss and a raised rim, under a lamp.
+
+    Ground truth for the relief reading: ten raised elements, every one of
+    which should come back as its own closed curve. ``motif=False`` is the
+    same disc with a bare face and is the control - a bare face has nothing
+    to read, and a reading that draws something on it is drawing noise.
+    """
+    field, mask = _disc_height(size, motif)
+    return _lit(field, mask, azimuth=azimuth)
+
+
+def lit_plain_disc(size=400, azimuth=35.0):
+    """``lit_relief_disc`` with nothing on its face."""
+    return lit_relief_disc(size=size, motif=False, azimuth=azimuth)
+
+
 def dark_flint_on_white(size=400):
     """Dark grey flint shape on white paper with a soft cast shadow to the lower right."""
     img = blank(size, color=(252, 252, 252))

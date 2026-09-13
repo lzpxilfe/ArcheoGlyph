@@ -527,12 +527,23 @@ def test_a_decorated_disc_does_not_come_out_as_a_plain_one():
 
     # And the control holds in the other direction: a disc with two rings and
     # a boss is not "decorated" in this sense - it is inside the count a drawn
-    # symbol carries, so it keeps the marker's own structural reading.
+    # symbol carries, so it keeps the marker's own structural reading, which
+    # is a smaller thing than the rosette's ornament.
+    #
+    # The margin here used to be measured against the bare disc, and it is
+    # not any more, because the bare disc got much cleaner when the relief
+    # reading stopped thresholding a slope: it drew fourteen paths of read
+    # noise and now draws three. A rings-and-boss mirror is compared against
+    # the rosette instead - the two readings this is meant to tell apart -
+    # and against the bare disc only for the direction of the difference.
     rings = _path_count(_run(synthetic.mirror_with_rings(),
                              style="Simple Symbol"))
-    assert rings < plain + 8, (
+    assert rosette >= rings + 8, (
+        f"a rosette drew {rosette} paths and two rings and a boss {rings}; "
+        "the ornament route is firing on the structural artefact")
+    assert rings > plain, (
         f"two rings and a boss drew {rings} paths against a bare disc's "
-        f"{plain}; that is the ornament route firing on a plain artefact")
+        f"{plain}; the structural reading has stopped saying anything")
 
 
 def test_only_a_vessel_gets_the_rim_and_shoulder_bands():

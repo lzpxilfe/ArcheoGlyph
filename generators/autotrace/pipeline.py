@@ -35,7 +35,6 @@ from .colors import (
 )
 from .enhance import (
     INCISED,
-    MODELLED,
     estimate_masked_edge_density,
     prepare_detail_source,
     relief_ink_sheet,
@@ -57,6 +56,7 @@ from .lines import (
     extract_internal_lines_multisource,
 )
 from .feature_symmetry import centre_disagrees, vote_for_centre
+from .relief_outline import MIN_STEP, raised_outlines, relief_height, step_across
 from .round_motif import (
     FRAME_MIN_SCORE,
     find_rotational_frame,
@@ -213,6 +213,28 @@ def _type_code_paths(code, drawn, mask, bounds, color):
                 f'stroke-width="{stroke:.2f}" stroke-linecap="round" '
                 'stroke-linejoin="round"/>')
     return paths
+
+
+def read_relief_outlines(bgr, mask, contour):
+    """
+    A flat relief face as closed curves, one per raised element.
+
+    The shading is put back together into a height before anything is drawn,
+    and a level set of a height is a closed curve by construction - see
+    relief_outline, which also records the two readings this replaced. On the
+    three photographed discs it gives the lotus tile its petals, boss and bead
+    ring, the dragon tile its body, tail and rim, and the worn bronze mirror
+    its rim alone, which is all a flat face has to offer.
+    """
+    _x, _y, width, height = cv2.boundingRect(contour)
+    radius = max(width, height) / 2.0
+    if radius <= 0:
+        return [], None
+    surface, _azimuth = relief_height(bgr, mask, radius)
+    lines = raised_outlines(bgr, mask, radius, surface=surface)
+    log(f"Relief boundary: {len(lines)} closed curves round the raised "
+        f"elements of this face.")
+    return lines, surface
 
 
 def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
@@ -476,6 +498,11 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                 f"- its rim and shoulder, not its decoration.")
     ink_lines = []
     relief_sheet = None
+    #: The height map of a flat relief face, kept so that every interior mark
+    #: the symbol ends up drawing can be held to the same test the boundary
+    #: curves were: does the surface actually step across it.
+    relief_surface = None
+    read_as_relief = False
     # A flat decorated face is traced whatever the style asked for. Simple
     # Symbol does not draw traced ink, but it still has to know the artefact
     # is decorated: without this a lotus roof tile end and a plain disc came
@@ -495,35 +522,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                         source, mask=ink_mask, min_arc_length=floor)
                 ]
 
-            if is_flat_faced_disc and not is_drawing:
-                # A round artefact's decoration is shallow relief, and reading
-                # it straight off the photograph gave lighting, not ornament -
-                # on a lotus roof tile end, a diagonal stripe across the face
-                # where its lit and shadowed halves met. Turning the relief
-                # into a rubbing first hands this the kind of input it is
-                # already good at.
-                #
-                # Both readings are traced and merged rather than one being
-                # chosen, because the choice cannot be made from the
-                # photograph: incised and modelled decoration have the same
-                # mean mark width (1.79 and 1.70 percent of the artefact on
-                # the two tiles), and five attempts to separate them by
-                # measurement all failed. Merging is better than either alone
-                # on all three discs - the lotus gains its rim and bead rings,
-                # the dragon its coil, the mirror keeps both its rim lines.
-                _rx, _ry, _rw, _rh = cv2.boundingRect(main_contour)
-                face_radius = max(_rw, _rh) / 2.0
-                relief_sheet = relief_ink_sheet(processing_bgr, target_mask,
-                                                face_radius, reading=INCISED)
-                ink_lines = merge_distinct_lines(
-                    _trace(relief_sheet),
-                    _trace(relief_ink_sheet(processing_bgr, target_mask,
-                                            face_radius, reading=MODELLED)),
-                    min_center_sep=max(3.0, max(_rw, _rh) * 0.012),
-                    max_lines=400,
-                    min_arc_len=max(_rw, _rh) * 0.03,
-                )
-            else:
+            def _flattened_ink():
                 ink_source = (processing_bgr if is_drawing else detail_bgr).copy()
                 if not is_drawing:
                     # Flatten the background to the object tone so the
@@ -533,13 +532,66 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                         fill_value = np.median(
                             ink_source[inside].reshape(-1, 3), axis=0).astype(np.uint8)
                         ink_source[~inside] = fill_value
-                ink_lines = _trace(ink_source)
+                return _trace(ink_source)
+
+            if is_flat_faced_disc and not is_drawing:
+                # A raised element's *boundary* is what an illustrator draws,
+                # and a boundary is a closed curve. The ink tracer here is a
+                # centreline tracer built for rubbings, and skeletonising the
+                # ribbon of steep shading that a boundary makes on a
+                # photograph fragments it by construction: 310 curves on the
+                # lotus tile, 7 of them closed, median length 5 percent of the
+                # artefact. See relief_outline, which takes the boundary
+                # itself and never skeletonises.
+                _rx, _ry, _rw, _rh = cv2.boundingRect(main_contour)
+                face_radius = max(_rw, _rh) / 2.0
+                relief_sheet = relief_ink_sheet(processing_bgr, target_mask,
+                                                face_radius, reading=INCISED)
+                ink_lines, relief_surface = read_relief_outlines(
+                    processing_bgr, target_mask, main_contour)
+                read_as_relief = True
+                # No fallback to the ink tracer when the reading comes back
+                # empty, tempting as it is. A face with no relief on it is
+                # usually a face with nothing to draw, and the ink tracer
+                # cannot tell that from a worn surface: turned loose on the
+                # bronze mirror it drew 161 marks of surface grain where the
+                # right answer is a plain disc. A flat-ornamented face is what
+                # Input type -> Drawing / rubbing is for.
+            else:
+                ink_lines = _flattened_ink()
         except Exception as exc:
             # This wraps both relief readings and the whole ink trace. Swallowed
             # silently it produced an undecorated symbol with nothing in the
             # log, which is how a missing import in this block went unnoticed.
             log_exception("Could not read the ink from this image", exc)
             ink_lines = []
+
+    def standing_marks(lines):
+        """
+        The marks a flat relief face actually has a step under.
+
+        Every reading that fills a round symbol - texture, the motif
+        candidates, the backfill whose job is to meet a density target - reads
+        contrast, and on a worn bronze mirror the contrast on offer was the
+        grain of the bronze: 21 blobs drawn inside an otherwise correct plain
+        circle. Holding them to the same step as the boundary curves keeps a
+        disc with two bold rings, whose rings step, and empties the mirror,
+        whose grain does not.
+
+        The structural reading is exempt. Lines built from the silhouette's
+        own geometry are not claims about the surface, and asking them for a
+        step took the marker's cues away from a disc that had every right to
+        them.
+        """
+        if relief_surface is None or not lines:
+            return lines
+        _rx, _ry, _rw, _rh = cv2.boundingRect(main_contour)
+        radius = max(_rw, _rh) / 2.0
+        if not (radius > 0):
+            return lines
+        return [line for line in lines
+                if len(line) >= 3
+                and step_across(line, relief_surface, radius) >= MIN_STEP]
 
     # Where a find has more readable traced marks than the busiest drawn
     # symbol it *is* decorated, whatever the style then chooses to draw. Read
@@ -551,11 +603,20 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
     if ink_lines and not is_drawing:
         readable_ink = keep_marks_that_read(ink_lines, float(max(_tw, _th)),
                                             max_marks=None)
-        if len(readable_ink) > MAX_INTERIOR_MARKS:
+        # The count is how the ink tracer's word is tested, because it reads
+        # contrast and surface grain is contrast: only when it finds more
+        # marks than the busiest drawn symbol carries is the artefact
+        # decorated. The boundary reading needs no such test - it has already
+        # refused the bare control and the worn mirror outright - and holding
+        # it to the count put a photographed lotus tile back to being the same
+        # grey circle as a plain disc, which is the thing this route exists to
+        # stop.
+        if read_as_relief or len(readable_ink) > MAX_INTERIOR_MARKS:
             traced_marks = readable_ink
     skip_round_motifs = is_drawing
 
-    texture_lines = [] if (fast_round_structural or legend_mode or is_drawing) else extract_internal_lines_multisource(
+    texture_lines = [] if (fast_round_structural or legend_mode or is_drawing
+                          ) else extract_internal_lines_multisource(
         detail_bgr=detail_bgr,
         base_bgr=processing_bgr,
         target_mask=target_mask,
@@ -1114,6 +1175,18 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
     # are filled shapes and a traced line drawing legitimately carries less
     # ink, so raising a sparse drawing to meet it would thicken artefacts that
     # already read correctly.
+    if is_mono:
+        # The marker route is left alone: it draws at most a couple of marks
+        # and chooses them from the silhouette's geometry as often as from the
+        # surface. It is the publication routes that fill a round face from
+        # every reading they have, and those are the ones that filled the
+        # mirror with grain.
+        _standing = standing_marks(internal_lines)
+        if len(_standing) != len(internal_lines):
+            log(f"Kept {len(_standing)} of {len(internal_lines)} interior marks "
+                f"on this relief face; the rest have no step under them.")
+        internal_lines = _standing
+
     drawn_length = 0.0
     for line in internal_lines:
         drawn_length += sum(
@@ -1200,6 +1273,13 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                             lighter = middle
                     detail_width = heavier
                 share = _ink_share(detail_width, drawn_length)
+                # Dropping marks is what protects a symbol from three hundred
+                # fragments, and a relief face needs it as much as anything
+                # else: the boundary reading gives a lotus tile seventeen
+                # closed curves, and seventeen curves inside a 64 pixel legend
+                # icon is a tangle whatever each one is worth. Longest first,
+                # so the petal outlines and the rim survive and the chips
+                # between them go.
                 if share > INTERIOR_INK_CEILING:
                     allowed = drawn_length * (INTERIOR_INK_MEDIAN / share)
                     internal_lines, drawn_length = keep_marks_within_ink_budget(

@@ -560,6 +560,112 @@ scales that heaviest one to the house outline weight - half of it is one grid
 unit, which is one legend pixel, which is the floor below which the code could
 not be read at all.
 
+## A raised element's boundary, and the two readings that failed first
+
+The user drew, over photographs of two roof tile ends, what a symbol should
+carry: six or eight **closed curves** - the petal outlines, the bead ring, the
+boss, and on the dragon tile one curve round the whole body. What the pipeline
+drew instead was 310 and 290 short open strokes. The gap was not tuning; it
+was the instrument, and it took two more instruments to find one that holds.
+
+**First: skeletonising the ribbon.** `ink_centerline` is a *centreline*
+tracer - it skeletonises dark strokes and follows their middle - and it is
+exactly right for a rubbing, where the ink is the record. A relief boundary on
+a photograph is not a stroke: it is a ribbon of steep shading, and a ribbon
+that loops back on itself has a junction and a spur at every turn, so
+skeletonising it fragments **by construction**.
+
+| | curves | closed | median length, as a share of the width |
+| --- | --- | --- | --- |
+| lotus tile | 310 | 7 | 0.046 |
+| dragon tile | 290 | 3 | 0.055 |
+| what the user drew | 6-8 | all | 0.3-1.0 |
+
+Closing the ribbon's gaps before skeletonising looked obvious and is **worse**:
+the lotus tile's longest curve fell from 0.82 of its width to 0.24, because a
+thicker ribbon has a messier medial axis.
+
+**Second: the ribbon's own boundary, plus a polar trace of the rings.** Closed,
+and on the full-resolution frame it looked right - 4 concentric curves and 8
+raised outlines on the lotus tile. In the pipeline the same code returned 5
+curves. The reading was not wrong at one size and right at another; it was
+**unstable**, because a quantile of the slope is a knife-edge and every
+nuisance parameter moved it:
+
+| lotus tile | region outlines | concentric rings |
+| --- | --- | --- |
+| full frame | 4 | 3 |
+| pipeline frame | 5 | 0 |
+| read at a common scale (400 / 560 / 720) | 3 / 1 / 7 | 1 / 2 / 2 |
+
+Normalising the reading scale - the obvious repair - did not fix it, which is
+what settled that the ribbon threshold itself was the problem.
+
+**What works: put the shading back together into a height first.** Under a low
+lamp the shading of shallow relief is, to first order, the height's derivative
+along the lamp. Integrating along that direction turns edges back into
+*regions*, and a level set of a region is a closed curve by construction. The
+lamp's axis comes from the structure tensor of the shading; which end of that
+axis the lamp is on is settled by the skew of the result, because relief
+protrudes - a few high elements over a broad low field. The integral is
+band-limited (a decaying memory in both directions) so it cannot drift.
+
+Two refusals keep it honest. The ground is flattened to the artefact's own
+tone before anything is read, because the step from object to background is
+larger than any relief on it and the integral turns it into a cliff just
+inside the silhouette - which came back as a crescent drawn on the bare face
+of the plain control. And a curve is drawn only where the surface really
+**steps** across it, measured in units of the height map's own spread:
+
+| | step across the curve |
+| --- | --- |
+| lotus tile, petals and boss | 0.52 - 1.06 |
+| dragon tile, body and rim | 0.41 - 0.87 |
+| worn bronze mirror, its flat face | 0.17 - 0.28 |
+
+At 0.40 the mirror is left almost bare, which is the right answer for a plain
+face. The same numbers come back at both working resolutions, which neither
+earlier reading managed.
+
+The controls that fix the constants are synthetic *photographs* of relief -
+`tests/synthetic.lit_relief_disc`, a height field this project writes and then
+shades from a known lamp - not drawn grooves, which would test a different
+instrument. Its bare twin `lit_plain_disc` must yield nothing at all.
+
+**One rule for every mark on the face, not just for the curves.** With the
+reading in place the bronze mirror came back bare and the symbol still filled
+up: 161 marks from the ink tracer, then 21 from the round face's motif
+candidates, then 19 more from a backfill whose job is to *meet a density
+target*. Each is a contrast reading, and the contrast the mirror had to offer
+was the grain of the bronze.
+
+Silencing those readings on a face the height reading called bare was the
+obvious repair and it is wrong: measured, it also emptied a disc carrying two
+bold concentric rings, which is real structure that belongs in the symbol.
+"No relief" is not "nothing there". What separates the two is not where a mark
+came from but whether the surface steps across it - which is already measured
+- so in the two publication styles every interior mark on a flat relief face
+is held to the same step as the boundary curves. The rings step and stay; the
+mirror's grain does not and goes, leaving one path, its outline. The marker
+style is left alone: it draws a couple of marks and takes them from the
+silhouette's geometry as often as from the surface.
+
+The ink tracer gets no fallback turn on such a face at all. A flat-ornamented
+face is what Input type -> Drawing / rubbing is for.
+
+The other side of the same decision: when the boundary reading *does* find
+curves on a flat face, that is the verdict, and the marks are not put through
+the count that decides whether the ink tracer has found decoration. The count
+exists because the ink tracer reads contrast and surface grain is contrast.
+The boundary reading has already refused the bare control and the mirror, and
+holding it to the count as well put a photographed lotus tile back to being
+the same grey circle as a plain disc.
+
+What this still cannot do is see a boundary where the surface turns *along*
+the lamp rather than across it: one photograph does not carry that, and the
+reading stops there rather than inventing it. That is the same limit the
+light-stack section above records, and the same answer applies.
+
 ## What to feed it instead
 
 The reading works, and works exactly, when the repeat is clean. A **rubbing
@@ -580,9 +686,11 @@ are catalogued in the manifest as a warning to the next reader).
 | pottery vessels | outline plus rim and shoulder; the surface pattern is not read | pattern read |
 | mirrors, roof tile ends | relief read as a rubbing: the ornament, not the motif | motif read and replayed |
 
-The last row is the one that moved. A flat-faced disc's relief is now turned
-into a rubbing and traced, so a lotus roof tile end comes out with its rim,
-bead ring, petal ring and boss instead of a plain circle. What is still
+The last row is the one that moved. A flat-faced disc's relief is now read as
+a height and cut into closed curves, so a lotus roof tile end comes out with
+its petals and boss and a dragon tile with its body, tail and rim, instead of
+a plain circle. A worn bronze mirror comes out as a plain circle, because that
+is what its face has to offer a photograph. What is still
 declined on these photographs is the **rotational motif** — counting the folds
 and replaying one sector — which needs a repeat the frame can find, and none
 of the three passes its gate.
