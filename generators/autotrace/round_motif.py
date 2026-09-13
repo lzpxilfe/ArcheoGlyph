@@ -2223,7 +2223,7 @@ def survey_folds(gray, cx, cy, radius):
     return folds, len(agreed) / float(len(cast)), float(score), scale, ratio, angle
 
 
-def find_rotational_frame(gray_img, mask):
+def find_rotational_frame(gray_img, mask, centre=None):
     """
     Find the decorated face and its fold count together.
 
@@ -2231,6 +2231,19 @@ def find_rotational_frame(gray_img, mask):
     with the cast shadow trimmed away, then recentred by nulling the one-cycle
     wave the decoration makes - and only then are folds counted, by asking
     every plausible frame and keeping what they agree on.
+
+    ``centre`` overrides the recentring when a caller has a better opinion,
+    and on a photograph it usually does. Measured on the lotus roof tile end:
+    the one-cycle wave walks the centre 0.10 of the face radius off a basin
+    only 0.03 wide, and from there the eight-fold repeat scores *negative*
+    while a ten-fold wins at 0.012. At the silhouette circle the eight-fold
+    scores 0.070, seven times its runner-up. But the recentring cannot simply
+    go: on the shadow-skirt control the silhouette circle lands 39 pixels off
+    a 170 pixel face and the recentring brings it to within one. The centre
+    that gets both right is the feature vote (feature_symmetry.vote_for_centre)
+    - 5.7 pixels off on the control, in the basin on the tile - so callers
+    pass that when it has an opinion and let the recentring stand when it
+    does not.
 
     The order matters. Searching centres by fold score solves a geometry
     problem with a noisy objective: the best score is the maximum of a noisy
@@ -2266,7 +2279,10 @@ def find_rotational_frame(gray_img, mask):
         if not (24.0 <= radius <= span) or not math.isfinite(cx + cy):
             return None
         gray = gray_img.astype(np.float32)
-        cx, cy = recentre_on_decoration(gray, cx, cy, radius)
+        if centre is not None and all(math.isfinite(float(c)) for c in centre):
+            cx, cy = float(centre[0]), float(centre[1])
+        else:
+            cx, cy = recentre_on_decoration(gray, cx, cy, radius)
         folds, _agreement, score, scale, ratio, angle = survey_folds(gray, cx, cy, radius)
         if folds <= 0:
             return None
@@ -2335,13 +2351,21 @@ def reading_is_stable(gray_img, frame):
         return False
 
 
-def fold_rotational_motif(gray_img, frame, n_theta=720, n_rad=96):
+def fold_rotational_motif(gray_img, frame, n_theta=720, n_rad=96,
+                          max_shapes=MAX_WEDGE_SHAPES):
     """
     Overlay the frame's sectors and keep what they agree on.
 
     The median across sectors, not the mean: a lighting streak or a chipped
     edge lives in one sector only, and the median drops it while the mean
     would smear it around the whole ring.
+
+    ``max_shapes`` is how many of the wedge's shapes are kept, largest first.
+    Three suits a rubbing, whose wedge is clean. A photograph's wedge is the
+    median of eight noisy sectors and comes apart into a petal and its lobes;
+    stamped three per sector round a 64 pixel marker that is a texture, and
+    one per sector is a rosette - which is also what this project's own
+    drawn 수막새 settles for, six petals and a boss.
 
     Returns contours in wedge coordinates (theta bin, radius bin), or [].
     """
@@ -2370,7 +2394,7 @@ def fold_rotational_motif(gray_img, frame, n_theta=720, n_rad=96):
         # falls at a sector boundary and leaves the motif stamped around a
         # third of the face with the rest bare.
         kept.sort(key=cv2.contourArea, reverse=True)
-        return kept[:MAX_WEDGE_SHAPES]
+        return kept[:max(1, int(max_shapes))]
     except Exception as exc:
         log_exception("fold_rotational_motif", exc)
         return []

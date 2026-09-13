@@ -521,7 +521,14 @@ def test_a_decorated_disc_does_not_come_out_as_a_plain_one():
     plain = _path_count(_run(synthetic.plain_disc(), style="Simple Symbol"))
     rosette = _path_count(_run(synthetic.rosette_disc(), style="Simple Symbol"))
 
-    assert rosette >= plain + 8, (
+    # Six, because six petals is the drawn register: this project's own
+    # 수막새 symbol is a circle, six petals and a boss, and a rosette read
+    # from a photograph comes out as one shape per fold - eight here. The
+    # margin used to be eight, set when a bare disc drew fourteen paths of
+    # read noise and a rosette twenty-seven; with the noise gone a bare disc
+    # draws three and the rosette its petals, and eight would fail a
+    # correctly read six-petal tile.
+    assert rosette >= plain + 6, (
         f"a rosette drew {rosette} paths and a bare disc of the same size "
         f"{plain}; at marker size the two artefacts read as the same object")
 
@@ -538,7 +545,7 @@ def test_a_decorated_disc_does_not_come_out_as_a_plain_one():
     # and against the bare disc only for the direction of the difference.
     rings = _path_count(_run(synthetic.mirror_with_rings(),
                              style="Simple Symbol"))
-    assert rosette >= rings + 8, (
+    assert rosette >= rings + 6, (
         f"a rosette drew {rosette} paths and two rings and a boss {rings}; "
         "the ornament route is firing on the structural artefact")
     assert rings > plain, (

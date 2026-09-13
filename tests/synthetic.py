@@ -121,6 +121,26 @@ def _lit(height_field, mask, azimuth=35.0, face=(150, 150, 155),
     return img
 
 
+def _diffuse(height_field, mask, face=(150, 150, 155), ground=(238, 238, 240)):
+    """A height field photographed under a softbox, as a BGR image.
+
+    Museum photographs are mostly lit this way, and it is a different
+    picture from the lamp in ``_lit``: with light arriving from every side a
+    groove is dark from every side and a dome is bright on top, so brightness
+    follows *concavity* rather than the slope along one direction. A reading
+    built for a lamp integrates this along a direction that does not exist.
+    """
+    smooth = cv2.GaussianBlur(height_field, (0, 0), sigmaX=height_field.shape[0] * 0.008)
+    wide = cv2.GaussianBlur(smooth, (0, 0), sigmaX=height_field.shape[0] * 0.03)
+    openness = smooth - wide
+    img = np.empty(height_field.shape + (3,), dtype=np.uint8)
+    img[:] = np.array(ground, dtype=np.uint8)
+    lit = np.clip(np.array(face, dtype=np.float32)[None, None, :]
+                  + (openness * 140.0)[:, :, None], 0, 255).astype(np.uint8)
+    img[mask > 0] = lit[mask > 0]
+    return img
+
+
 def _disc_height(size, motif, folds=8):
     """``(height field, silhouette)`` for a disc, with or without ornament."""
     field = np.zeros((size, size), dtype=np.float32)
@@ -169,6 +189,37 @@ def lit_relief_disc(size=400, motif=True, azimuth=35.0, folds=8):
 def lit_plain_disc(size=400, azimuth=35.0):
     """``lit_relief_disc`` with nothing on its face."""
     return lit_relief_disc(size=size, motif=False, azimuth=azimuth)
+
+
+def diffuse_relief_disc(size=400, motif=True, folds=8):
+    """``lit_relief_disc``'s disc under a softbox instead of a lamp."""
+    field, mask = _disc_height(size, motif, folds=folds)
+    return _diffuse(field, mask)
+
+
+def diffuse_plain_disc(size=400):
+    """``diffuse_relief_disc`` with nothing on its face."""
+    return diffuse_relief_disc(size=size, motif=False)
+
+
+def knobbed_disc(size=400, knobs=2, azimuth=35.0):
+    """A bare disc carrying ``knobs`` small raised loops at one radius.
+
+    The multi-knobbed bronze mirror (다뉴세문경) is named for these: its face
+    is fine hatching no symbol can carry, and its knobs come as a pair, or
+    three, set at the same distance from the centre. One knob alone is the
+    control - a lone raised spot on a bare face is a corrosion blister as
+    often as a knob, and the reading must refuse it.
+    """
+    field, mask = _disc_height(size, False)
+    c = size / 2.0
+    r = size * 0.4
+    for step in range(int(knobs)):
+        angle = -np.pi / 2.0 + (step - (knobs - 1) / 2.0) * 0.85
+        cv2.ellipse(field, (int(c + r * 0.36 * np.cos(angle)),
+                            int(c + r * 0.36 * np.sin(angle))),
+                    (int(r * 0.07), int(r * 0.05)), 0, 0, 360, 1.2, -1)
+    return _lit(field, mask, azimuth=azimuth)
 
 
 def dark_flint_on_white(size=400):

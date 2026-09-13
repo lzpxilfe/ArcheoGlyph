@@ -56,9 +56,12 @@ from .lines import (
     extract_internal_lines_multisource,
 )
 from .feature_symmetry import centre_disagrees, vote_for_centre
-from .relief_outline import MIN_STEP, raised_outlines, relief_height, step_across
+from .relief_outline import (
+    MIN_STEP, paired_knobs, raised_outlines, relief_height, smooth_closed,
+    step_across)
 from .round_motif import (
     FRAME_MIN_SCORE,
+    trimmed_face_circle,
     find_rotational_frame,
     reading_is_stable,
     fold_rotational_motif,
@@ -503,6 +506,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
     #: curves were: does the surface actually step across it.
     relief_surface = None
     read_as_relief = False
+    knob_lines = []
     # A flat decorated face is traced whatever the style asked for. Simple
     # Symbol does not draw traced ink, but it still has to know the artefact
     # is decorated: without this a lotus roof tile end and a plain disc came
@@ -550,6 +554,17 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                 ink_lines, relief_surface = read_relief_outlines(
                     processing_bgr, target_mask, main_contour)
                 read_as_relief = True
+                if not ink_lines and relief_surface is not None:
+                    # A face left bare may still carry the few things a
+                    # symbol needs: a multi-knobbed mirror's knobs. Only on a
+                    # bare face - a lotus tile's bead ring is forty compact
+                    # bumps at one radius and is not knobs.
+                    knob_lines = paired_knobs(processing_bgr, target_mask,
+                                              face_radius, surface=relief_surface)
+                    if knob_lines:
+                        log(f"Bare relief face, but {len(knob_lines)} knobs "
+                            "at one radius vouch for each other; drawing them.")
+                        ink_lines = list(knob_lines)
                 # No fallback to the ink tracer when the reading comes back
                 # empty, tempting as it is. A face with no relief on it is
                 # usually a face with nothing to draw, and the ink tracer
@@ -589,9 +604,12 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
         radius = max(_rw, _rh) / 2.0
         if not (radius > 0):
             return lines
+        # The knobs passed a stricter gate than this one - a partner at their
+        # own radius - and one of the mirror's two steps 0.34 against 0.40.
         return [line for line in lines
-                if len(line) >= 3
-                and step_across(line, relief_surface, radius) >= MIN_STEP]
+                if line in knob_lines
+                or (len(line) >= 3
+                    and step_across(line, relief_surface, radius) >= MIN_STEP)]
 
     # Where a find has more readable traced marks than the busiest drawn
     # symbol it *is* decorated, whatever the style then chooses to draw. Read
@@ -706,9 +724,31 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
             motif_source = cv2.resize(motif_source,
                                       (target_mask.shape[1], target_mask.shape[0]),
                                       interpolation=cv2.INTER_AREA)
+        motif_gray = cv2.cvtColor(processing_bgr, cv2.COLOR_BGR2GRAY)
+        if motif_source is None and relief_surface is not None:
+            # One photograph, and a flat relief face: fold the height the
+            # boundary reading built rather than the grey. The repeat is no
+            # louder there - the lotus tile scores 0.033 against 0.049 on
+            # grey - but the controls are much quieter, because a mirror's
+            # fine hatching and a jar's comb marks are albedo, not height:
+            # the loudest round control falls from 0.018 to 0.005, and the
+            # separation between the tile and it goes from three times to
+            # nearly eight. It also draws better - the folded wedge stamps a
+            # closed ring of petal groups where the grey's stamps a scatter.
+            motif_source = relief_surface
         if motif_source is None:
-            motif_source = cv2.cvtColor(processing_bgr, cv2.COLOR_BGR2GRAY)
-        frame = find_rotational_frame(motif_source, target_mask)
+            motif_source = motif_gray
+        # The centre first, from matched feature pairs on the grey. The
+        # one-cycle-wave recentring inside find_rotational_frame walks the
+        # lotus tile 0.10 of a radius off a basin 0.03 wide and reads a
+        # ten-fold at 0.012 from there; the vote lands in the basin and reads
+        # the eight-fold at 0.049. On the shadow-skirt control the vote is 5.7
+        # pixels off where the silhouette alone is 39, so it is not trading
+        # one artefact for another. Silence from it is not an opinion - a
+        # plain disc has nothing to match - and then the recentring stands.
+        _vx, _vy, voted_radius = trimmed_face_circle(main_contour)
+        voted = vote_for_centre(motif_gray, target_mask, voted_radius)
+        frame = find_rotational_frame(motif_source, target_mask, centre=voted)
         if frame is not None and frame.score >= FRAME_MIN_SCORE \
                 and not reading_is_stable(motif_source, frame):
             # A score above the gate is not enough. Push the frame as far as
@@ -725,16 +765,33 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
             # method that finds the centre a completely different way whether
             # it agrees. Silence from it is not disagreement - a plain disc
             # has nothing to match - so only an actual conflict refuses.
-            voted = vote_for_centre(motif_source, target_mask,
-                                    max(frame.a, frame.b))
+            # When the vote placed the frame there is no second method left
+            # to disagree; the six nudges above were the check.
+            if voted is None:
+                voted = vote_for_centre(motif_gray, target_mask,
+                                        max(frame.a, frame.b))
             if centre_disagrees(frame, voted, max(frame.a, frame.b)):
                 log("Two methods put this artefact's decorated face in "
                     f"different places - fitted ({frame.cx:.0f},{frame.cy:.0f}), "
                     f"feature vote ({voted[0]:.0f},{voted[1]:.0f}) - so the "
                     f"{frame.folds}-fold reading is not trusted; drawing it plain.")
             else:
-                folded_motif_lines = replay_rotational_motif(
-                    fold_rotational_motif(motif_source, frame), frame)
+                if motif_source is relief_surface:
+                    # A photograph: one shape per sector, smoothed. The
+                    # median wedge of eight noisy sectors comes apart into a
+                    # petal and its lobes, and its Otsu edge is ragged;
+                    # three ragged shapes per sector read as texture at 64
+                    # pixels and one smooth shape reads as a petal.
+                    wedge = fold_rotational_motif(motif_source, frame, max_shapes=1)
+                    folded_motif_lines = [
+                        smooth_closed(line, float(frame.radius), smoothing=0.03)
+                        for line in replay_rotational_motif(wedge, frame)]
+                else:
+                    folded_motif_lines = replay_rotational_motif(
+                        fold_rotational_motif(motif_source, frame), frame)
+                log(f"Repeating motif on this round artefact: {frame.folds}-fold "
+                    f"at {frame.score:.3f}, stable under every nudge; folding "
+                    f"the sectors and replaying {len(folded_motif_lines)} shapes.")
         elif frame is not None:
             # Saying nothing here would be the ONNX fallback trap again: the
             # symbol comes out a plain disc and nothing says why.
@@ -1088,7 +1145,17 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
             if factuality_v >= 0.7 and symbolic_v <= 0.4 and texture_count > 0:
                 internal_lines += remove_near_horizontal_lines(texture_lines)[:2]
 
-    if is_drawing and not (legend_mode and folded_motif_lines):
+    if folded_motif_lines and is_roundish and not is_drawing:
+        # A confirmed repeat is the face read whole: the sectors folded onto
+        # each other and their median stamped back round, once per fold. On
+        # a photograph that beats the traced relief curves in every style,
+        # not only on the marker - the trace is six fragments that stop
+        # wherever the lamp stopped showing a boundary, and a documentation
+        # plate that draws a lotus tile as six fragments documents the
+        # lighting, not the tile. A drawing keeps its own strokes on the
+        # plate, below: there the ink is the record.
+        internal_lines = list(folded_motif_lines)
+    elif is_drawing and not (legend_mode and folded_motif_lines):
         # Drawings: the ink strokes *are* the content; keep them (longest first).
         # The exception is a repeating motif at legend size. Eighty ink strokes
         # are right for a plate and grey mush on a 64px marker, and a rubbing
@@ -1097,7 +1164,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
         # the gate where a photograph of the same object scores a fifth of it.
         drawing_limit = 80 if is_mono else max(3, line_detail_count + 2)
         internal_lines = [list(pl) for pl in ink_lines[:drawing_limit]]
-    elif is_mono and is_roundish and ink_lines and not (legend_mode and folded_motif_lines):
+    elif is_mono and is_roundish and ink_lines and not folded_motif_lines:
         if relief_sheet is not None:
             # The ink was traced from a rubbing of this artefact's own relief,
             # so it is the content, exactly as it is for a real rubbing above -
@@ -1141,7 +1208,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
     if internal_lines:
         _mx, _my, _mw, _mh = cv2.boundingRect(main_contour)
         artefact_extent = float(max(_mw, _mh))
-        if legend_mode and folded_motif_lines:
+        if folded_motif_lines and is_roundish and not is_drawing:
             pass
         else:
             # The count is exempt wherever the strokes are the content rather
@@ -1175,12 +1242,16 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
     # are filled shapes and a traced line drawing legitimately carries less
     # ink, so raising a sparse drawing to meet it would thicken artefacts that
     # already read correctly.
-    if is_mono:
+    if is_mono and not (folded_motif_lines and is_roundish and not is_drawing):
         # The marker route is left alone: it draws at most a couple of marks
         # and chooses them from the silhouette's geometry as often as from the
         # surface. It is the publication routes that fill a round face from
         # every reading they have, and those are the ones that filled the
-        # mirror with grain.
+        # mirror with grain. A folded motif is exempt as well: each stamp is
+        # the median of every sector, so asking one stamp for a step under
+        # itself re-imposes the one-lamp blind spot the fold exists to
+        # escape - measured, it kept ten of twenty-four petal shapes and
+        # scattered them.
         _standing = standing_marks(internal_lines)
         if len(_standing) != len(internal_lines):
             log(f"Kept {len(_standing)} of {len(internal_lines)} interior marks "
@@ -1280,7 +1351,13 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                 # icon is a tangle whatever each one is worth. Longest first,
                 # so the petal outlines and the rim survive and the chips
                 # between them go.
-                if share > INTERIOR_INK_CEILING:
+                # A folded motif is exempt from the cut, not from the weight:
+                # every stamp is emitted or none is (replay_rotational_motif),
+                # because a rosette drawn round a third of the face reads as
+                # damage. Cutting it longest-first took a lotus tile's
+                # twenty-four petal shapes down to four and scattered them.
+                if share > INTERIOR_INK_CEILING and not (
+                        folded_motif_lines and is_roundish and not is_drawing):
                     allowed = drawn_length * (INTERIOR_INK_MEDIAN / share)
                     internal_lines, drawn_length = keep_marks_within_ink_budget(
                         internal_lines, allowed)

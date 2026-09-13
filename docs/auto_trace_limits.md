@@ -666,6 +666,96 @@ the lamp rather than across it: one photograph does not carry that, and the
 reading stops there rather than inventing it. That is the same limit the
 light-stack section above records, and the same answer applies.
 
+## The lotus tile, and why it was not a rosette
+
+The user's question, put plainly: the dragon tile reads and the lotus tile
+"cannot get a grip at all" - why? Six measurements were run, each with an
+adversary re-running its numbers, and the answer is not the one the
+previous section would predict.
+
+**What the drawing path loses: nothing.** Every stage between the boundary
+reading and the SVG passes the lotus tile's curves through untouched - six in,
+six out at `keep_marks_that_read`, the step filter, the ink budget, the mark
+cap. Whatever the symbol lacks was already missing when the reading handed
+over.
+
+**What the boundary reading finds on this photograph: not petals.** Its
+height map carries no petal-versus-groove step at all - measured per petal,
+the mean is −0.07 in units of the map's spread, the wrong sign, four petals
+with their groove higher than their core. The six curves it keeps are ribbon
+fragments with a best overlap of 0.28 against any petal. And this is not the
+lamp direction, the camera angle, the reach of the integral or the level of
+the cut: all were swept, and rectifying the face to a circle returns the same
+six curves at IoU 0.93 or better.
+
+**Nor is it the integration method.** A regularised two-dimensional Fourier
+inverse of the lamp derivative - the textbook replacement for a row-by-row
+integral - gives the same angular spectrum and the same four-of-eight petals
+on the synthetic control. The one-dimensional integral was never the fault.
+
+**It is the lighting regime, and the reading assumed the wrong one.** The
+dragon tile was photographed under a lamp: its shading has a direction
+(tensor coherence 0.30, the synthetic lamp controls 0.25), and shading is the
+height's derivative along it. The lotus tile was photographed under a
+softbox: no direction (coherence 0.085; a synthetic softbox control reads
+0.000, a bare disc 0.15). Under a softbox brightness follows *concavity*,
+and a reading that integrates it along a direction integrates noise. The
+tile is not hard to read; it was read with the wrong instrument.
+
+**And the eight-fold repeat was there all along, at the wrong centre.** The
+plugin already folds a round face and replays what the sectors agree on -
+`round_motif.find_rotational_frame` - and on this tile it reported a ten-fold
+at 0.012, under the gate. The frame is centred by nulling the one-cycle wave
+the decoration makes, and on this photograph that walk lands 0.10 of a radius
+off a basin only 0.03 wide, where the eight-fold scores *negative*. At the
+silhouette circle the eight-fold scores 0.070, seven times its runner-up.
+The recentring cannot simply go - on the shadow-skirt control the silhouette
+circle lands 39 pixels off a 170 pixel face and the recentring brings it to
+one - so the frame now takes the centre the feature vote gives
+(`feature_symmetry.vote_for_centre`, already the pipeline's cross-check),
+which lands in the basin on the tile and 5.7 pixels off on the control, and
+lets the recentring stand only when the vote has no opinion. Folded on the
+height map rather than the grey, the loudest round control falls from 0.018
+to 0.005 and the tile reads eight-fold at 0.033, stable under every nudge.
+
+Two things follow from a confirmed repeat. It is drawn in every style, not
+only on the marker: a documentation plate that draws a lotus tile as six
+fragments documents the lighting. And it is drawn as one smooth shape per
+sector: the median wedge of eight noisy sectors comes apart into a petal and
+its lobes, and three ragged shapes per sector stamped round a 64 pixel marker
+is a texture, where one is a rosette - which is also what this project's own
+drawn 수막새 settles for. The step filter and the ink budget both leave a
+folded motif alone, because each stamp is the median of every sector and
+every stamp is emitted or none is.
+
+The tile's inner ring is nine petals, not eight - nine grooves at a 40
+degree pitch, measured on the photograph - and the outer ring is sixteen.
+The fold reads eight because the outer band dominates the annulus and
+sixteen is twice eight. At 64 pixels that is a rosette either way; the
+petal count belongs in the typology code.
+
+**Refuted along the way, for the record:** the structure tensor degenerating
+on a rosette (it finds the lamp on a nine-fold synthetic to within a degree);
+the camera tilt (7 to 11 degrees off square-on, and rectifying changes
+nothing); the rim occluding the face (none measurable - the bead ring reads
+in 34 of 36 windows, the other two are chips); the level-set cut and the step
+reach as the primary fault (they merge and reject petals on a *correct*
+height map, but this photograph's height map has no petals to lose).
+
+## The mirror's knobs
+
+The user's decision for the multi-knobbed mirror: its fine hatching is not
+drawable at legend size, so draw the circle and the two knobs. The reading
+finds both knobs - compact, small, step 0.34 to 0.44, at one radius - and
+three spots of corrosion on the same face that match every one of those
+numbers. No threshold separates them, and one tuned to would be tuned to a
+photograph. What separates them is the thing the mirror is named for: 다뉴,
+knobs as a pair at one radius. The spots sit at three different radii. So on
+a face the boundary reading left bare, a knob is drawn only with a partner
+at its own radius, two to four of them; a lone raised spot is refused, and a
+ring of eight petals is refused by the count. The control is a bare disc
+with two, three or one knob planted on it.
+
 ## What to feed it instead
 
 The reading works, and works exactly, when the repeat is clean. A **rubbing
@@ -684,7 +774,7 @@ are catalogued in the manifest as a warning to the next reader).
 | --- | --- | --- |
 | blades, stone tools | works | works |
 | pottery vessels | outline plus rim and shoulder; the surface pattern is not read | pattern read |
-| mirrors, roof tile ends | relief read as a rubbing: the ornament, not the motif | motif read and replayed |
+| mirrors, roof tile ends | a repeat, where there is one, folded and replayed; a knobbed mirror its knobs | motif read and replayed |
 
 The last row is the one that moved. A flat-faced disc's relief is now read as
 a height and cut into closed curves, so a lotus roof tile end comes out with

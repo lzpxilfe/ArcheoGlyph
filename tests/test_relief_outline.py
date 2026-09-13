@@ -110,3 +110,37 @@ def test_nothing_to_read_is_not_an_error():
     assert ro.raised_outlines(blank, mask, 60.0) == []
     assert ro.raised_outlines(blank, mask, 0.0) == []
     assert ro.relief_height(blank, mask, 60.0) == (None, 0.0)
+
+
+def test_a_pair_of_knobs_on_a_bare_face_is_drawn():
+    """The multi-knobbed mirror's knobs, on a face that has nothing else."""
+    for count in (2, 3):
+        image = synthetic.knobbed_disc(size=600, knobs=count)
+        curves, mask, radius = _read(image)
+        knobs = ro.paired_knobs(image, mask, radius)
+        assert len(knobs) == count, (
+            f"{count} knobs at one radius came back as {len(knobs)}")
+        for knob in knobs:
+            assert knob[0] == knob[-1]
+
+
+def test_a_lone_spot_on_a_bare_face_is_refused():
+    """One raised spot is a corrosion blister as often as a knob."""
+    image = synthetic.knobbed_disc(size=600, knobs=1)
+    _curves, mask, radius = _read(image)
+    assert ro.paired_knobs(image, mask, radius) == []
+
+
+def test_the_knob_reading_draws_nothing_on_the_controls():
+    for image in (synthetic.lit_plain_disc(size=600),
+                  synthetic.diffuse_plain_disc(size=600),
+                  synthetic.plain_disc(size=600)):
+        _curves, mask, radius = _read(image)
+        assert ro.paired_knobs(image, mask, radius) == []
+
+
+def test_a_ring_of_petals_is_not_knobs():
+    """Eight compact bumps at one radius are a rosette; the count refuses them."""
+    image = synthetic.lit_relief_disc(size=600)
+    _curves, mask, radius = _read(image)
+    assert ro.paired_knobs(image, mask, radius) == []

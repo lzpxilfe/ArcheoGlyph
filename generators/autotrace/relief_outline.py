@@ -94,6 +94,25 @@ OUTLINE_EPSILON = 0.005
 #: way round, which is what tells the two apart.
 MAX_FRAME_SHARE = 0.15
 
+#: The knobs of a multi-knobbed mirror, and the four numbers that find them
+#: on a face that has nothing else to draw. Measured on the bronze mirror at
+#: both working resolutions, its two knobs are compact (0.45 and 0.74 by
+#: 4*pi*area/perimeter^2), small (0.003 and 0.005 of the face), step 0.34 to
+#: 0.44, and sit at one radius (0.35 and 0.37). Three spots of corrosion on
+#: the same face match every one of those numbers - compact 0.62 to 0.71,
+#: step 0.27 to 0.39 - and no threshold separates them. What does is the
+#: thing the mirror is named for: 다뉴, many knobs, set as a pair at one
+#: radius. The spots sit at 0.63, 0.72 and 0.84. So a knob is drawn only
+#: with a partner at its own radius, and a lone raised spot on a bare face
+#: is refused - a corrosion blister as often as a knob.
+KNOB_LEVEL = 0.90
+KNOB_MIN_AREA, KNOB_MAX_AREA = 0.001, 0.012
+KNOB_MIN_COMPACT = 0.40
+KNOB_MIN_STEP = 0.25
+KNOB_SAME_RADIUS = 0.06
+KNOB_AREA_RATIO = 2.5
+KNOB_MIN_COUNT, KNOB_MAX_COUNT = 2, 4
+
 #: How much a curve is smoothed before it is drawn, as a share of its own
 #: perimeter. A level set of a photographed surface is ragged at the pixel
 #: scale and an illustrator's outline is not; simplifying instead of smoothing
@@ -236,7 +255,7 @@ def _is_the_frame(points, frame_distance, radius, centre):
                                 (float(centre[0]), float(centre[1])), False) < 0
 
 
-def _smooth_closed(points, radius, smoothing=OUTLINE_SMOOTH):
+def smooth_closed(points, radius, smoothing=OUTLINE_SMOOTH):
     """``points`` resampled evenly and smoothed round the loop."""
     line = _resample(points, max(1.0, float(radius) * 0.01))[:-1]
     count = len(line)
@@ -335,11 +354,86 @@ def raised_outlines(bgr_img, mask, radius, level=HEIGHT_LEVEL,
             # smoothed curve sits a little off the steepest line, so testing
             # the ragged one and drawing the smooth one meant the same curve
             # could pass here and fail the identical test downstream.
-            points = _smooth_closed(points, radius)
+            points = smooth_closed(points, radius)
             if step_across(points, surface, radius) < float(min_step):
                 continue
             outlines.append(points)
         return outlines
     except Exception as exc:
         log_exception("raised_outlines", exc)
+        return []
+
+
+def paired_knobs(bgr_img, mask, radius, surface=None):
+    """
+    The knobs on an otherwise bare face, as closed polylines.
+
+    A last reading, for a face the boundary reading left bare: the fine
+    hatching of a multi-knobbed bronze mirror is refused, rightly, and what
+    remains to draw is its knobs. They are small, compact, and come as a
+    pair or a trio at one radius - and that last fact is the gate, because
+    nothing about a single knob's size, shape or step tells it from a spot
+    of corrosion on the same face (see KNOB_LEVEL and its neighbours).
+    Returns [] unless between KNOB_MIN_COUNT and KNOB_MAX_COUNT elements
+    vouch for each other this way; a ring of eight petals is not knobs.
+    """
+    if cv2 is None or bgr_img is None or mask is None or not (radius > 0):
+        return []
+    try:
+        if surface is None:
+            surface, _azimuth = relief_height(bgr_img, mask, radius)
+        if surface is None:
+            return []
+        inset = max(3, int(round(float(radius) * FACE_INSET))) | 1
+        face = cv2.erode(mask, np.ones((inset, inset), np.uint8))
+        if not (face > 0).any():
+            return []
+        cut = float(np.quantile(surface[face > 0], KNOB_LEVEL))
+        band = cv2.bitwise_and(((surface >= cut) * 255).astype(np.uint8), face)
+        band = cv2.morphologyEx(band, cv2.MORPH_OPEN, cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (max(3, int(radius * 0.012)) | 1,) * 2))
+        contours, _hierarchy = cv2.findContours(band, cv2.RETR_EXTERNAL,
+                                                cv2.CHAIN_APPROX_SIMPLE)
+        total = float(np.count_nonzero(mask))
+        moments = cv2.moments(face, binaryImage=True)
+        centre = (moments["m10"] / moments["m00"], moments["m01"] / moments["m00"])
+        found = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            perimeter = cv2.arcLength(contour, True)
+            share = area / total
+            if not (KNOB_MIN_AREA <= share <= KNOB_MAX_AREA) or perimeter <= 0:
+                continue
+            if 4.0 * np.pi * area / (perimeter * perimeter) < KNOB_MIN_COMPACT:
+                continue
+            simple = cv2.approxPolyDP(contour, OUTLINE_EPSILON * perimeter, True)
+            points = [[int(p[0][0]), int(p[0][1])] for p in simple]
+            if len(points) < 3:
+                continue
+            points.append(list(points[0]))
+            points = smooth_closed(points, radius)
+            if step_across(points, surface, radius) < KNOB_MIN_STEP:
+                continue
+            blob = cv2.moments(np.asarray(points, np.int32))
+            if blob["m00"] == 0:
+                continue
+            at = np.hypot(blob["m10"] / blob["m00"] - centre[0],
+                          blob["m01"] / blob["m00"] - centre[1]) / float(radius)
+            found.append((points, share, at))
+        paired = set()
+        for i in range(len(found)):
+            for j in range(i + 1, len(found)):
+                _pi, area_i, at_i = found[i]
+                _pj, area_j, at_j = found[j]
+                if abs(at_i - at_j) > KNOB_SAME_RADIUS:
+                    continue
+                if max(area_i, area_j) / max(1e-9, min(area_i, area_j)) > KNOB_AREA_RATIO:
+                    continue
+                paired.update((i, j))
+        knobs = [found[i][0] for i in sorted(paired)]
+        if not (KNOB_MIN_COUNT <= len(knobs) <= KNOB_MAX_COUNT):
+            return []
+        return knobs
+    except Exception as exc:
+        log_exception("paired_knobs", exc)
         return []
