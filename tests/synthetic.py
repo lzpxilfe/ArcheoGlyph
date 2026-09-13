@@ -121,7 +121,7 @@ def _lit(height_field, mask, azimuth=35.0, face=(150, 150, 155),
     return img
 
 
-def _disc_height(size, motif):
+def _disc_height(size, motif, folds=8):
     """``(height field, silhouette)`` for a disc, with or without ornament."""
     field = np.zeros((size, size), dtype=np.float32)
     mask = np.zeros((size, size), dtype=np.uint8)
@@ -132,8 +132,8 @@ def _disc_height(size, motif):
         return field, mask
     cv2.circle(field, c, r, 1.0, -1)                       # the rim, raised
     cv2.circle(field, c, int(r * 0.88), 0.0, -1)           # the face, sunk
-    for step in range(8):                                  # the petals
-        angle = 2.0 * np.pi * step / 8.0
+    for step in range(int(folds)):                         # the petals
+        angle = 2.0 * np.pi * step / float(folds)
         cv2.ellipse(field, (int(c[0] + r * 0.46 * np.cos(angle)),
                             int(c[1] + r * 0.46 * np.sin(angle))),
                     (int(r * 0.26), int(r * 0.15)),
@@ -142,15 +142,27 @@ def _disc_height(size, motif):
     return field, mask
 
 
-def lit_relief_disc(size=400, motif=True, azimuth=35.0):
-    """A disc carrying eight petals, a boss and a raised rim, under a lamp.
+def petal_centres(size=400, folds=8):
+    """Where ``lit_relief_disc``'s petals are, for a test to check against."""
+    c = size // 2
+    r = size * 0.4
+    return [(c + r * 0.46 * np.cos(2.0 * np.pi * step / float(folds)),
+             c + r * 0.46 * np.sin(2.0 * np.pi * step / float(folds)))
+            for step in range(int(folds))]
 
-    Ground truth for the relief reading: ten raised elements, every one of
-    which should come back as its own closed curve. ``motif=False`` is the
-    same disc with a bare face and is the control - a bare face has nothing
-    to read, and a reading that draws something on it is drawing noise.
+
+def lit_relief_disc(size=400, motif=True, azimuth=35.0, folds=8):
+    """A disc carrying a ring of petals, a boss and a raised rim, under a lamp.
+
+    Ground truth for the relief reading: ``folds`` petals plus a boss and a
+    rim, every one of which should come back as its own closed curve, and the
+    repeat is known by construction - which is what lets a test ask whether
+    the fold count was read correctly rather than whether the picture looks
+    right. ``motif=False`` is the same disc with a bare face and is the
+    control: a bare face has nothing to read, and a reading that draws
+    something on it is drawing noise.
     """
-    field, mask = _disc_height(size, motif)
+    field, mask = _disc_height(size, motif, folds=folds)
     return _lit(field, mask, azimuth=azimuth)
 
 
