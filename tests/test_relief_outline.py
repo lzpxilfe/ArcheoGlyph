@@ -240,36 +240,47 @@ def test_the_repeat_is_drawn_the_same_way_under_either_lamp():
             f"overlap {agreement:.2f}")
 
 
-def test_a_boss_is_drawn_only_where_there_is_one():
+def test_the_central_ring_is_a_convention_and_not_a_reading():
     """
-    The central ring is a reading, not decoration, so it has to abstain.
+    One ring, at the stated radius, whatever the lamp and whatever is there.
 
-    The bar it has to clear is 1.3 times the petal band's own level, and that
-    level is taken as a magnitude on purpose. This wedge is a height and the
-    integral behind it sums to zero, so the band's mean is as often negative
-    as positive - -0.051 on the eight-fold control - and multiplying a
-    negative baseline by 1.3 moves the bar DOWN instead of up. A ridge worth
-    four parts in a thousand of the map's scale cleared it that way, and drew
-    a boss on a disc that has none.
+    Reading the boss off the face was tried three times and refused three
+    times - see fold_repeat_elements. The last version was the closest and
+    still split the same disc in two: under a lamp it drew a ring, under a
+    softbox the argmax escaped onto the petals at 0.325 and the ring was
+    correctly thrown out, so one artefact came back as two symbols. Across
+    the six lit controls a knop planted at 0.140 was read at 0.087, 0.175,
+    0.175, 0.188, 0.188 and 0.325.
 
-    The ridge also has to be a ring rather than the petals seen end-on, since
-    the search reaches inside them - so it must stand higher than it varies
-    around the turn. The nine-fold control is the exception that shows the
-    rule is about geometry rather than about bosses: at the radius in question
-    its petals are 21 degrees wide in a 20 degree half sector, so they really
-    do run together into a closed annulus, and a ring there is a correct
-    reading of the height field whether or not a knop was planted.
+    So it is drawn by convention, and this is what pins that: the ring does
+    not move with the lighting, and it does not move with whether a knop was
+    planted at all. What the artefact actually has in its centre is the
+    typology code's to carry.
     """
-    for folds, without in ((6, 0), (8, 0), (9, 1)):
-        for boss, expected in ((True, 1), (False, without)):
-            image = synthetic.lit_relief_disc(size=600, folds=folds, lobes=3,
-                                              boss=boss)
-            elements, rings, _mask, _radius, _frame = _repeat_of(image, folds)
-            assert len(elements) == folds
-            assert len(rings) == expected, (
-                f"a {folds}-fold disc "
-                f"{'with' if boss else 'without'} a boss drew {len(rings)} "
-                f"central rings")
+    from archeoglyph.generators.autotrace import round_motif as rm
+
+    seen = []
+    for folds in (6, 8, 9):
+        for boss in (True, False):
+            for maker in (synthetic.lit_relief_disc,
+                          synthetic.diffuse_relief_disc):
+                image = maker(size=600, folds=folds, lobes=3, boss=boss)
+                # The count is not asserted here - a boss-free six-fold disc
+                # under a softbox reads as sixteen, which is the repeat
+                # reading's business and not the ring's. What the ring claims
+                # holds whatever count came back.
+                elements, rings, _mask, _radius, frame = _repeat_of(image)
+                assert len(elements) == frame.folds
+                assert len(rings) == 1, (
+                    f"a {folds}-fold disc {'with' if boss else 'without'} a "
+                    f"boss under {maker.__name__} drew {len(rings)} rings")
+                at = np.asarray(rings[0], dtype=np.float32)
+                radii = np.hypot(at[:, 0] - frame.cx, at[:, 1] - frame.cy)
+                seen.append(float(radii.mean()) / frame.radius)
+
+    assert np.allclose(seen, rm.BOSS_RADIUS, atol=0.01), (
+        f"the ring wandered off its stated radius: "
+        f"{np.round(sorted(set(np.round(seen, 3))), 3)}")
 
 
 def test_the_repeat_is_registered_by_convention_not_by_the_photograph():

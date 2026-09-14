@@ -244,7 +244,7 @@ are the content rather than an inference about it; its specks still go.
 
 ### The blobs, fixed by changing what is read rather than what is kept
 
-Ten attempts to sort the marks out *after* extraction have now failed on the
+Eleven attempts to sort the marks out *after* extraction have now failed on the
 same nine photographs - three to tell decoration from lighting, a fourth
 measured and rejected, a fifth to tell one kind of decoration from another,
 and two more to find where a vessel's decoration sits. Two later entries come
@@ -264,6 +264,7 @@ asking it about an artefact whose answer is already known:
 | the petal's own outline, cut from the folded line map | asked twice a quarter-turn apart in smoothing, the tile's cell agrees with itself 0.033, and 0.062 even allowed to rotate freely |
 | the repeat's angular phase, from the fold-order harmonic | half a sector out under a softbox (0.529 against a truth of 0.000); the sign that would fix it has no signal there, skew −0.001 |
 | which end of a blade is its point, from the taper | over the outer quarter the bipa dagger is 88 wide at the tip and 116 at the butt, but its tang narrows to a 39-wide stem against a 79-wide tip, so the rule stands that dagger on its point |
+| the central boss's radius, from the folded height profile | a knop planted at 0.140 read back at 0.087, 0.175, 0.175, 0.188, 0.188 and 0.325 across six lit controls; at six folds under a softbox the peak escapes onto the petals entirely |
 
 The information needed is not in the extracted marks, because decoration and
 lighting arrive there in the same shapes. What was wrong was **what was being
@@ -815,6 +816,9 @@ drawn catalogue calibrated its 0.95 bar on:
 | eight against nine fold | 0.324 | 0.338 |
 | a rosette against a plain disc | 0.348 | 0.329 |
 
+(The lighting pair later reached 0.667, when the boss ring stopped being read
+off the face as well — see below.)
+
 Before the fix the structure was inverted: two photographs of one tile were
 *less* alike than two different tiles. The three defects were separable and
 they multiplied - fixing the phase alone moved the pair to 0.349, fixing the
@@ -824,11 +828,29 @@ disagreed reproduces each term: identical 1.000, band centre 0.744, boss
 radius 0.797, band width 0.324, phase half a sector 0.150, all three at once
 0.257 against the 0.256 that was observed.
 
-The boss was the third of those. Its radius came from the argmax of the
-radial profile inside a search band, and under a lamp that argmax sat on the
-band's own first bin at every fold count tried - a boundary, not a peak. It
-is now required to be an interior maximum, and the search band widened so a
-real boss can be one.
+**The boss went the same way, and it took three repairs to see it.** Its
+radius came from the tallest ridge inside a search band, and each fix exposed
+the next fault. The bar was 1.3 times the petal band's mean line level, but
+this wedge is a height and the integral behind it sums to zero, so that level
+is as often negative as positive (−0.051 on the eight-fold control) and
+scaling a negative baseline moves the bar *down*: a ridge worth four parts in
+a thousand cleared it and drew a boss on a disc that has none. Taking the
+level as a magnitude fixed that and exposed the second fault — the search band
+reaches inside the petals, so on a boss-free disc the tallest thing in it is
+the petals' own inner ends, rippling 0.42 to 0.69 around the turn against a
+height of 0.18. Requiring the ridge to stand higher than it varies rejected
+those correctly, and exposed the third: under a softbox at six folds the peak
+never reaches the knop at all, landing at 0.325 out on the petals, where that
+same test throws it out — so one disc came back with a ring under one lamp and
+none under the other.
+
+Across the six lit controls a knop planted at 0.140 was read at 0.087, 0.175,
+0.175, 0.188, 0.188 and 0.325. That is not a measurement. So the ring is now
+drawn at a stated radius whenever a repeat is confirmed, and it claims only
+what the rest of the motif claims: this is a round artefact whose decoration
+repeats. Whether the artefact has a knop, and how wide, is the typology code's
+to carry. Doing that lifted one disc's agreement with itself across two lamps
+from 0.612 to 0.667.
 
 The tile's inner ring is nine petals, not eight - nine grooves at a 40
 degree pitch, measured on the photograph - and the outer ring is sixteen.

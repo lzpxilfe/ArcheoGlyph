@@ -2477,14 +2477,13 @@ CELL_THETA, CELL_RAD = 720, 160
 #: band over the whole face instead let the bead ring, bright all the way
 #: round, decide the phase.
 CELL_PETAL_BAND = (0.30, 0.86)
-#: Where the boss's edge may be, and how far its ridge must stand above the
-#: petal band's mean line level to be drawn. The floor is well below any real
-#: boss on purpose: the peak has to be found *inside* the band to count, and
-#: with the floor at 0.12 a lamp put it at 0.119 - the band's own first bin -
-#: on every fold count that was tried, which is an argmax pressed against its
-#: search boundary rather than a peak that was located.
-BOSS_BAND = (0.06, 0.38)
-BOSS_CLEARANCE = 1.3
+#: Where the central ring is drawn, as a share of the face radius. A stated
+#: convention like the petal's width and phase, and for the same reason: see
+#: the note in fold_repeat_elements for the three readings that were tried and
+#: refused. It sits inside CELL_PETAL_BAND's floor so it can never touch the
+#: repeat, and at the radius the reading did put the control's knop on the two
+#: fold counts where it found it at all (0.175 and 0.188).
+BOSS_RADIUS = 0.18
 #: The least band width worth drawing in, as a share of the face radius.
 BAND_MIN_WIDTH = 0.10
 #: How much of its sector one petal is drawn across, and how much longer it is
@@ -2610,45 +2609,41 @@ def fold_repeat_elements(surface, frame, n_theta=CELL_THETA, n_rad=CELL_RAD):
         from .relief_outline import smooth_closed
         middle, half_band = (near + far) / 2.0, (far - near) / 2.0
         out = []
-        profile = wedge.mean(axis=0)
-        # The boss, if one was found rather than merely pointed at. An argmax
-        # that lands on the first or last bin of its search band is the band's
-        # edge talking, not a ridge: under a lamp it sat on the floor bin at
-        # every fold count tried, and drew the ring 0.06 of a radius in from
-        # where a softbox drew it on the same disc.
+        # The central ring, drawn at a stated radius rather than read off the
+        # face - the fourth thing about this motif that a photograph turned
+        # out not to carry, and the one it took three tries to admit.
         #
-        # The bar is taken from the band's *magnitude*. This wedge is a
-        # height, and the integral kernel behind it sums to zero, so the
-        # petal band's mean line level is as often negative as positive -
-        # measured -0.051 on the eight-fold control. Scaling a negative
-        # baseline by 1.3 moves the bar DOWN, and a ridge worth four parts in
-        # a thousand of the map's own scale was clearing it and drawing a
-        # boss ring on an artefact that has none.
+        # Reading it meant taking the tallest ridge inside a search band, and
+        # each repair exposed the next fault. The bar it had to clear was 1.3
+        # times the petal band's mean line level, but this wedge is a height
+        # and the integral behind it sums to zero, so that level is as often
+        # negative as positive (-0.051 on the eight-fold control) and scaling
+        # a negative baseline moves the bar DOWN: a ridge worth four parts in
+        # a thousand cleared it. Taking the level as a magnitude fixed that
+        # and exposed the second fault - the search band reaches inside the
+        # petals, so on a boss-free disc the tallest thing in it is the
+        # petals' own inner ends, rippling 0.42 to 0.69 around the turn
+        # against a height of 0.18. Requiring the ridge to stand higher than
+        # it varies rejected those correctly, and exposed the third: under a
+        # softbox at six folds the argmax never reaches the knop at all. It
+        # lands at 0.325, out on the petals, where that same test throws it
+        # out - so the same disc came back with a ring under one lamp and
+        # none under the other. Bounding the search by where the repeat's own
+        # ripple begins did not rescue it either.
         #
-        # And it has to be a ring rather than the repeat seen end-on. The
-        # search reaches inside the petals, so on a boss-free disc the tallest
-        # thing in it is the petals' own inner ends: at six and eight folds
-        # that candidate ripples 0.42 to 0.69 around the turn against a height
-        # of 0.18, which is a row of petals, not a ring. So the ridge must
-        # stand higher than it varies - no constant needed, and nothing to
-        # tune. Where petals really do run together into a closed annulus the
-        # ripple falls away and the ring is drawn, which is right: at nine
-        # folds the control's petals are 21 degrees wide in a 20 degree half
-        # sector at that radius, so there genuinely is a ring there.
-        b0, b1 = int(n_rad * BOSS_BAND[0]), int(n_rad * BOSS_BAND[1])
-        at = int(np.argmax(profile[b0:b1]))
-        boss_bin = b0 + at
-        level = abs(float(profile[p0:p1].mean()))
-        ripple = 2.0 * float(np.abs(spectrum[1])[boss_bin]) / float(per)
-        if 0 < at < (b1 - b0 - 1) \
-                and profile[boss_bin] > BOSS_CLEARANCE * level \
-                and profile[boss_bin] > ripple:
-            boss_r = boss_bin / float(n_rad) * float(frame.radius)
-            ring = [[int(round(frame.cx + boss_r * math.cos(t))),
-                     int(round(frame.cy + boss_r * math.sin(t)))]
-                    for t in np.linspace(0.0, 2.0 * math.pi, 72, endpoint=False)]
-            ring.append(list(ring[0]))
-            out.append(ring)
+        # Across the six lit controls the reading put a knop planted at 0.140
+        # at 0.087, 0.175, 0.175, 0.188, 0.188 and 0.325. That is not a
+        # measurement of anything. So the ring is a convention, drawn
+        # whenever a repeat is confirmed, and it says only what the rest of
+        # this motif says: a round artefact whose decoration repeats is drawn
+        # this way. Whether the artefact has a knop, and how wide it is, is
+        # the typology code's to carry.
+        boss_r = BOSS_RADIUS * float(frame.radius)
+        ring = [[int(round(frame.cx + boss_r * math.cos(t))),
+                 int(round(frame.cy + boss_r * math.sin(t)))]
+                for t in np.linspace(0.0, 2.0 * math.pi, 72, endpoint=False)]
+        ring.append(list(ring[0]))
+        out.append(ring)
 
         steps = np.linspace(-1.0, 1.0, 48)
         for index in range(folds):
