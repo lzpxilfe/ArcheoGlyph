@@ -718,15 +718,45 @@ lets the recentring stand only when the vote has no opinion. Folded on the
 height map rather than the grey, the loudest round control falls from 0.018
 to 0.005 and the tile reads eight-fold at 0.033, stable under every nudge.
 
-Two things follow from a confirmed repeat. It is drawn in every style, not
-only on the marker: a documentation plate that draws a lotus tile as six
-fragments documents the lighting. And it is drawn as one smooth shape per
-sector: the median wedge of eight noisy sectors comes apart into a petal and
-its lobes, and three ragged shapes per sector stamped round a 64 pixel marker
-is a texture, where one is a rosette - which is also what this project's own
-drawn 수막새 settles for. The step filter and the ink budget both leave a
-folded motif alone, because each stamp is the median of every sector and
-every stamp is emitted or none is.
+A confirmed repeat is drawn in every style, not only on the marker: a
+documentation plate that draws a lotus tile as six fragments documents the
+lighting. The step filter and the ink budget both leave a folded motif alone,
+because each stamp is the median of every sector and every stamp is emitted
+or none is.
+
+**The count and the shape come from different pictures.** Folding the height
+map found the eight, and it had to: a mirror's fine hatching and a jar's comb
+marks are albedo rather than height, so folding the height is what drops the
+loudest round control from 0.018 to 0.005 and buys the gate its margin. But
+this photograph's height map has no petals in it, so its wedge - the median
+of eight noisy blobs, cut by Otsu - stamped a rosette of the right count with
+petals like torn leaves. Symmetry without shape.
+
+The shape is in the *line map*: under a softbox a groove is dark from every
+side and a rim bright from every side, so the absolute high-pass of
+brightness is the network of lines an illustrator would trace. Fold that
+network at the count the height map established, and the other seven sectors
+fill each other's gaps: what is left is a clean border round one petal. The
+petal is the closed **cell** of that network, and it is cut by watershed from
+a seed in the sector's middle band out to markers on the sector edges, the
+boss and the rim - because a watershed boundary is closed by construction,
+where a thresholded network never is. The sector edge is first turned onto
+the ridge *between* petals, or the cell straddles it.
+
+Three details each cost a measurement. The phase and the seed are taken in
+the petal band alone (0.40 to 0.75 of the face): over the whole face the bead
+ring, bright all the way round, decided the sector edge, the edge fell
+through a petal, and the seed landed in the trefoil pocket inside it, cutting
+a cell a tenth of the petal. The seed is the deepest point of the *largest*
+piece of low ground, not the deepest point anywhere, for the same reason. And
+the cell maps back at the frame's radius, which is what the wedge was
+unwrapped to - scaling it by the survey's sampling ring a and b, as the
+height wedge's replay does, shrank every petal to 0.72 of itself. The boss is
+drawn separately, as the concentric ridge that stands 1.3 times clear of the
+petal band's own line level.
+
+On the tile: eight cells at 0.033 of the face each, agreeing to ±0.0002, plus
+the boss - 19 paths where the height wedge gave 17 torn leaves.
 
 The tile's inner ring is nine petals, not eight - nine grooves at a 40
 degree pitch, measured on the photograph - and the outer ring is sixteen.

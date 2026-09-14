@@ -57,13 +57,14 @@ from .lines import (
 )
 from .feature_symmetry import centre_disagrees, vote_for_centre
 from .relief_outline import (
-    MIN_STEP, paired_knobs, raised_outlines, relief_height, smooth_closed,
-    step_across)
+    MIN_STEP, line_map, paired_knobs, raised_outlines, relief_height,
+    smooth_closed, step_across)
 from .round_motif import (
     FRAME_MIN_SCORE,
     trimmed_face_circle,
     find_rotational_frame,
     reading_is_stable,
+    fold_line_cells,
     fold_rotational_motif,
     replay_rotational_motif,
     augment_round_rotational_symmetry,
@@ -777,15 +778,20 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                     f"{frame.folds}-fold reading is not trusted; drawing it plain.")
             else:
                 if motif_source is relief_surface:
-                    # A photograph: one shape per sector, smoothed. The
-                    # median wedge of eight noisy sectors comes apart into a
-                    # petal and its lobes, and its Otsu edge is ragged;
-                    # three ragged shapes per sector read as texture at 64
-                    # pixels and one smooth shape reads as a petal.
-                    wedge = fold_rotational_motif(motif_source, frame, max_shapes=1)
-                    folded_motif_lines = [
-                        smooth_closed(line, float(frame.radius), smoothing=0.03)
-                        for line in replay_rotational_motif(wedge, frame)]
+                    # A photograph. The height map established that there is
+                    # a repeat; its wedge is the median of eight noisy blobs
+                    # and draws petals like torn leaves. The shape comes from
+                    # the line map - the grooves and rims that bound one
+                    # petal, gaps filled by the other sectors - and the petal
+                    # is the closed cell of that network. Failing that, one
+                    # smooth shape from the height wedge.
+                    folded_motif_lines = fold_line_cells(
+                        line_map(processing_bgr, target_mask, face_radius), frame)
+                    if not folded_motif_lines:
+                        wedge = fold_rotational_motif(motif_source, frame, max_shapes=1)
+                        folded_motif_lines = [
+                            smooth_closed(line, float(frame.radius), smoothing=0.03)
+                            for line in replay_rotational_motif(wedge, frame)]
                 else:
                     folded_motif_lines = replay_rotational_motif(
                         fold_rotational_motif(motif_source, frame), frame)

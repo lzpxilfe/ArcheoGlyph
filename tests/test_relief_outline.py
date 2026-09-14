@@ -144,3 +144,50 @@ def test_a_ring_of_petals_is_not_knobs():
     image = synthetic.lit_relief_disc(size=600)
     _curves, mask, radius = _read(image)
     assert ro.paired_knobs(image, mask, radius) == []
+
+
+def test_the_folded_cell_is_the_petal():
+    """One closed cell per fold, each sitting on a planted petal."""
+    from archeoglyph.generators.autotrace import round_motif as rm
+    for maker in (synthetic.lit_relief_disc, synthetic.diffuse_relief_disc):
+        image = maker(size=600, folds=8)
+        _curves, mask, radius = _read(image)
+        lines = ro.line_map(image, mask, radius)
+        # The frame is centred the way the pipeline centres it: by the
+        # feature vote, with the one-cycle recentring only as the fallback.
+        from archeoglyph.generators.autotrace.feature_symmetry import vote_for_centre
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        contours, _h = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        _sx, _sy, face = rm.trimmed_face_circle(max(contours, key=cv2.contourArea))
+        # ... and the fold is counted on the height map, as the pipeline does.
+        surface, _azimuth = ro.relief_height(image, mask, radius)
+        frame = rm.find_rotational_frame(surface, mask,
+                                         centre=vote_for_centre(gray, mask, face))
+        assert frame is not None and frame.folds == 8, (
+            f"the eight-fold control read as {frame and frame.folds}")
+        cells = rm.fold_line_cells(lines, frame)
+        petals = synthetic.petal_centres(600, 8)
+        centre = (300.0, 300.0)
+        # The boss's ring comes back too, as a circle round the centre; the
+        # rest must be exactly the eight petals.
+        rings = [c for c in cells
+                 if np.hypot(*(np.asarray(c, dtype=np.float32).mean(axis=0) - centre)) < radius * 0.05]
+        cells = [c for c in cells if c not in rings]
+        assert len(rings) <= 1, f"{len(rings)} rings round the centre for one boss"
+        assert len(cells) == 8, f"{len(cells)} cells for eight petals"
+        for cell in cells:
+            assert cell[0] == cell[-1]
+            pts = np.asarray(cell, dtype=np.float32)
+            cx, cy = float(pts[:, 0].mean()), float(pts[:, 1].mean())
+            assert any(np.hypot(cx - px, cy - py) < radius * 0.08 for px, py in petals), (
+                f"a cell centred at ({cx:.0f},{cy:.0f}) sits on no petal")
+            # ... and contains the petal's centre. The planted petal covers
+            # 0.039 of the disc and the cell comes back at 0.009 to 0.015,
+            # because the synthetic dome is slope all over and its line ring
+            # is thick, so the cut sits well inside the rim; on the tile the
+            # rims are thin and the cell is the petal (0.033 of the face). What
+            # a cell must never be is a pocket beside the centre.
+            share = abs(cv2.contourArea(pts.astype(np.int32))) / float(np.count_nonzero(mask))
+            assert 0.005 <= share <= 0.08, f"a cell of {share:.3f} of the face for a petal of 0.039"
+            assert any(cv2.pointPolygonTest(pts.astype(np.int32), (float(px), float(py)), False) >= 0
+                       for px, py in petals), "a cell that does not contain its petal's centre"

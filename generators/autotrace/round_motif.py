@@ -2223,6 +2223,26 @@ def survey_folds(gray, cx, cy, radius):
     return folds, len(agreed) / float(len(cast)), float(score), scale, ratio, angle
 
 
+#: How far a caller's centre may sit from the silhouette circle before it is
+#: disbelieved, as a share of the radius. On a face whose petals are all
+#: alike the feature vote can pair one petal with another and put the centre
+#: anywhere - an eight-fold synthetic disc voted 0.28 of a radius off - and
+#: on the lotus tile it sits 0.02 off. The silhouette is the check.
+VOTE_REACH = 0.12
+
+#: How far the mask's area may stray from the fitted circle's, as a share,
+#: before the silhouette is judged not to be the face and the centre is
+#: found on the decoration instead. A clean disc fits to 1.00 (the lotus
+#: tile 1.004, the synthetic discs 1.005); the shadow-skirt control, a disc
+#: with its shadow in the mask, fits a circle too large for it and comes out
+#: at 0.93. Inside this the silhouette's own centre stands, because the
+#: recentring walk that fixes a skirt is fooled by a lamp: a lamp is a
+#: one-cycle wave too, and nulling it moved a perfect synthetic disc's
+#: centre 0.2 of a radius and the lotus tile's 0.10, off a basin 0.03 wide,
+#: where the eight-fold repeat scores negative.
+CIRCLE_FIT_TOL = 0.05
+
+
 def find_rotational_frame(gray_img, mask, centre=None):
     """
     Find the decorated face and its fold count together.
@@ -2279,9 +2299,12 @@ def find_rotational_frame(gray_img, mask, centre=None):
         if not (24.0 <= radius <= span) or not math.isfinite(cx + cy):
             return None
         gray = gray_img.astype(np.float32)
-        if centre is not None and all(math.isfinite(float(c)) for c in centre):
+        if centre is not None and all(math.isfinite(float(c)) for c in centre) \
+                and math.hypot(float(centre[0]) - cx, float(centre[1]) - cy) <= VOTE_REACH * radius:
             cx, cy = float(centre[0]), float(centre[1])
-        else:
+        elif abs(float(np.count_nonzero(mask)) / (math.pi * radius * radius) - 1.0) > CIRCLE_FIT_TOL:
+            # The silhouette is not the face - a shadow skirt, a broken edge -
+            # so the circle's centre is a guess and the decoration decides.
             cx, cy = recentre_on_decoration(gray, cx, cy, radius)
         folds, _agreement, score, scale, ratio, angle = survey_folds(gray, cx, cy, radius)
         if folds <= 0:
@@ -2441,4 +2464,150 @@ def replay_rotational_motif(wedge_contours, frame, n_theta=720, n_rad=96):
         return lines
     except Exception as exc:
         log_exception("replay_rotational_motif", exc)
+        return []
+
+
+#: The folded line map, and the petal cut from it. The sector is unwrapped
+#: at this resolution, the seed for the cell is looked for in this radial
+#: band, the cell is closed with a kernel this share of the sector, and it
+#: is refused if it is less or more of the sector than this. Measured on the
+#: lotus tile: the inner petal is 0.21-0.23 of its sector; a leak across a
+#: gap in the ridge network fills 0.6 or more, and a spurious cell between
+#: two grooves is under 0.03.
+CELL_THETA, CELL_RAD = 720, 160
+#: Where the petal lives, and where the cut may not go. The phase and the
+#: seed are taken in the petal band - taking them over the whole face let
+#: the bead ring, bright all the way round, decide the sector edge, and the
+#: edge then fell through a petal and the seed in the trefoil pocket inside
+#: it, cutting a cell a tenth of the petal's size.
+CELL_PETAL_BAND = (0.40, 0.75)
+CELL_SEED_BAND = (0.30, 0.86)
+#: Where the boss's edge may be, and how far its ridge must stand above the
+#: petal band's mean line level to be drawn.
+BOSS_BAND = (0.12, 0.38)
+BOSS_CLEARANCE = 1.3
+CELL_CLOSE = 0.30
+CELL_MIN_SHARE, CELL_MAX_SHARE = 0.05, 0.55
+CELL_SMOOTH = 0.03
+
+
+def fold_line_cells(lines, frame, n_theta=CELL_THETA, n_rad=CELL_RAD):
+    """
+    The repeated element's *shape*, as one closed polyline per sector.
+
+    ``fold_rotational_motif`` folds a height map and thresholds the wedge,
+    and on a photograph that gives the median of eight noisy blobs - a
+    rosette of the right count with petals like torn leaves. The shape is
+    in the line map instead: fold that, and the median wedge is a clean
+    network of the grooves and rims that bound one petal, its gaps filled
+    by the other seven sectors. The cell of that network is the petal.
+
+    The cell is cut by watershed from a seed in the sector's middle band to
+    markers on the sector's edges, the boss and the rim: a watershed boundary
+    is closed by construction, which a thresholded network never is. The
+    sector edge is first turned onto the ridge *between* petals, so the cell
+    does not straddle it.
+
+    Returns polylines in image pixels, closed, one per fold, or [] when no
+    cell of a petal's size comes out - the caller then keeps whatever it had.
+    """
+    try:
+        folds = int(frame.folds)
+        if lines is None or folds < FRAME_MIN_FOLD:
+            return []
+        per = int(n_theta // folds)
+        if per < 12:
+            return []
+        polar = cv2.warpPolar(lines, (int(n_rad), per * folds),
+                              (float(frame.cx), float(frame.cy)), float(frame.radius),
+                              cv2.WARP_POLAR_LINEAR)
+        wedge = np.median(polar.reshape(folds, per, n_rad), axis=0).astype(np.float32)
+        wedge = cv2.GaussianBlur(wedge, (0, 0), 1.2)
+        peak = float(wedge.max())
+        if peak <= 0:
+            return []
+        wedge /= peak
+        # Phase: the sector edge onto the ridge between petals.
+        r0, r1 = int(n_rad * CELL_SEED_BAND[0]), int(n_rad * CELL_SEED_BAND[1])
+        p0, p1 = int(n_rad * CELL_PETAL_BAND[0]), int(n_rad * CELL_PETAL_BAND[1])
+        shift = int(np.argmax(wedge[:, p0:p1].mean(axis=1)))
+        wedge = np.roll(wedge, -shift, axis=0)
+        tiled = np.concatenate([wedge, wedge, wedge], axis=0)
+
+        # Seed: the deepest point of the LARGEST piece of low ground in the
+        # middle copy. The petal's interior is the biggest low region in the
+        # band; the deepest point anywhere can be a pocket between two
+        # grooves, and seeding there cut a cell a twentieth of the petal.
+        low = ((tiled < float(np.median(tiled))) * 255).astype(np.uint8)
+        low[:, :p0] = 0
+        low[:, p1:] = 0
+        low[:per, :] = 0
+        low[2 * per:, :] = 0
+        count, labels, stats, _centroids = cv2.connectedComponentsWithStats(low, connectivity=4)
+        if count < 2:
+            return []
+        biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        depth = cv2.distanceTransform(((labels == biggest) * 255).astype(np.uint8),
+                                      cv2.DIST_L2, 5)
+        seed = np.unravel_index(int(np.argmax(depth)), depth.shape)
+        if depth[seed] <= 1.0:
+            return []
+
+        markers = np.zeros(tiled.shape, np.int32)
+        markers[:, :r0] = 2
+        markers[:, r1:] = 2
+        for k in range(4):
+            markers[max(0, k * per - 1):k * per + 2, :] = 2
+        cv2.circle(markers, (int(seed[1]), int(seed[0])), 3, 1, -1)
+        field = cv2.cvtColor((tiled * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+        cv2.watershed(field, markers)
+        blob = ((markers == 1) * 255).astype(np.uint8)
+        kernel = max(3, int(per * CELL_CLOSE)) | 1
+        blob = cv2.morphologyEx(blob, cv2.MORPH_CLOSE, cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (kernel, kernel)))
+        contours, _ = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return []
+        cell = max(contours, key=cv2.contourArea)
+        share = cv2.contourArea(cell) / float(per * n_rad)
+        if not (CELL_MIN_SHARE <= share <= CELL_MAX_SHARE):
+            return []
+        points = cell.reshape(-1, 2).astype(np.float32)    # x = radius bin, y = row
+
+        from .relief_outline import smooth_closed
+        cos_a, sin_a = math.cos(frame.angle), math.sin(frame.angle)
+        out = []
+        # The boss: the strongest concentric ridge inside the petals, read
+        # off the wedge's mean over theta, where a ring is a peak and a petal
+        # is not. Drawn as the circle it is when it stands clear of the
+        # petal band's own level.
+        profile = wedge.mean(axis=0)
+        b0, b1 = int(n_rad * BOSS_BAND[0]), int(n_rad * BOSS_BAND[1])
+        boss_bin = b0 + int(np.argmax(profile[b0:b1]))
+        if profile[boss_bin] > BOSS_CLEARANCE * float(profile[p0:p1].mean()):
+            boss_r = boss_bin / float(n_rad) * float(frame.radius)
+            ring = [[int(round(frame.cx + boss_r * math.cos(t))),
+                     int(round(frame.cy + boss_r * math.sin(t)))]
+                    for t in np.linspace(0.0, 2.0 * math.pi, 72, endpoint=False)]
+            ring.append(list(ring[0]))
+            out.append(ring)
+        for index in range(folds):
+            theta = ((points[:, 1] - per + shift) / per) * (2.0 * math.pi / folds) \
+                + 2.0 * math.pi * index / folds
+            # The wedge was unwrapped to frame.radius, so it maps back at
+            # frame.radius; a and b are the survey's sampling ring, not the
+            # face, and scaling by them shrank every petal to 0.72 of itself.
+            # Only the ring's ellipticity is kept.
+            rad = points[:, 0] / float(n_rad) * float(frame.radius)
+            u = rad * np.cos(theta)
+            v = rad * np.sin(theta) * (frame.b / frame.a if frame.a > 0 else 1.0)
+            xs = frame.cx + u * cos_a - v * sin_a
+            ys = frame.cy + u * sin_a + v * cos_a
+            poly = [[int(round(x)), int(round(y))] for x, y in zip(xs, ys)]
+            if len(poly) >= 3:
+                poly.append(list(poly[0]))
+                out.append(smooth_closed(poly, float(frame.radius), smoothing=CELL_SMOOTH))
+        return out
+    except Exception as exc:
+        log_exception("fold_line_cells", exc)
         return []

@@ -94,6 +94,10 @@ OUTLINE_EPSILON = 0.005
 #: way round, which is what tells the two apart.
 MAX_FRAME_SHARE = 0.15
 
+#: How much the line map is smoothed, as a share of the radius: enough to
+#: join a groove's two edges into one line, not enough to join two grooves.
+LINE_SMOOTH = 0.006
+
 #: The knobs of a multi-knobbed mirror, and the four numbers that find them
 #: on a face that has nothing else to draw. Measured on the bronze mirror at
 #: both working resolutions, its two knobs are compact (0.45 and 0.74 by
@@ -437,3 +441,34 @@ def paired_knobs(bgr_img, mask, radius, surface=None):
     except Exception as exc:
         log_exception("paired_knobs", exc)
         return []
+
+
+def line_map(bgr_img, mask, radius, smooth=LINE_SMOOTH):
+    """
+    Where the surface carries a line - a groove or a rim - whichever way it
+    faces, as a map in 0..1.
+
+    Under a softbox a groove is dark from every side and a rim bright from
+    every side, so the *absolute* high-pass of brightness is the network of
+    lines an illustrator would trace. It is not a height and is never
+    integrated; the rotational fold uses it for the shape of a repeat once
+    the height map has established that there is one.
+    """
+    if cv2 is None or bgr_img is None or mask is None or not (radius > 0):
+        return None
+    try:
+        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        inside = mask > 0
+        if not inside.any():
+            return None
+        gray[~inside] = float(np.median(gray[inside]))
+        high = gray - cv2.GaussianBlur(gray, (0, 0),
+                                       sigmaX=max(9.0, float(radius) * LAMP_SCALE))
+        lines = np.abs(cv2.GaussianBlur(high, (0, 0),
+                                        sigmaX=max(0.8, float(radius) * float(smooth))))
+        lines[~inside] = 0.0
+        top = float(np.percentile(lines[inside], 99.5))
+        return np.clip(lines / top, 0.0, 1.0).astype(np.float32) if top > 0 else lines
+    except Exception as exc:
+        log_exception("line_map", exc)
+        return None
