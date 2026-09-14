@@ -244,10 +244,12 @@ are the content rather than an inference about it; its specks still go.
 
 ### The blobs, fixed by changing what is read rather than what is kept
 
-Seven attempts to sort the marks out *after* extraction have now failed on the
+Nine attempts to sort the marks out *after* extraction have now failed on the
 same nine photographs - three to tell decoration from lighting, a fourth
 measured and rejected, a fifth to tell one kind of decoration from another,
-and two more to find where a vessel's decoration sits:
+and two more to find where a vessel's decoration sits. Two later entries come
+from the rosette reading rather than from mark sorting, and are kept here
+because they were refuted the same way - by asking the reading twice:
 
 | rule tried | what killed it |
 | --- | --- |
@@ -258,6 +260,8 @@ and two more to find where a vessel's decoration sits:
 | mean mark width, to tell cut from raised | the lotus tile 1.79 percent of the artefact, the dragon 1.70 - indistinguishable |
 | row-mean brightness, to find a pot's decorated zone | reads the pot's own shading, not its ornament: one band on a comb pot, two on a dagger |
 | row-mean local contrast, same | a comb pot and a stone dagger give the same profile shape |
+| the petal's own outline, cut from the folded line map | asked twice a quarter-turn apart in smoothing, the tile's cell agrees with itself 0.033, and 0.062 even allowed to rotate freely |
+| the repeat's angular phase, from the fold-order harmonic | half a sector out under a softbox (0.529 against a truth of 0.000); the sign that would fix it has no signal there, skew −0.001 |
 
 The information needed is not in the extracted marks, because decoration and
 lighting arrive there in the same shapes. What was wrong was **what was being
@@ -550,10 +554,21 @@ three-by-five cell has no room for real ascenders.
 Placement is measured rather than fixed. The code is set inside the artefact
 where it fits, walking up from the foot of the silhouette until a sample grid
 lands wholly inside the mask. Where fitting it across the artefact would shrink
-it below about five legend pixels of cap height it goes **underneath** the
-drawing instead, at full size - which is what an archaeological plate does
-anyway. A slender bronze dagger is exactly that case: five characters across
-its blade came out as a squint.
+it past the floor it goes **underneath** the drawing instead - which is what an
+archaeological plate does anyway. A slender bronze dagger is exactly that case:
+five characters across its blade came out as a squint.
+
+Both the floor and the size underneath were wrong, and are now derived rather
+than chosen. The floor was "about five legend pixels of cap height", which over
+a four-row glyph is 1.44 pixels a row against a stroke a whole pixel wide - the
+bars of an E touching. It is now two detail units a row, so a cap height of
+8/64, taken from the grid rather than from taste. And the caption underneath
+was sized as a share of the *artefact* when what matters is its share of the
+*symbol*: the drawing and its caption are squared up together, so the tile
+grows by the caption's own height and the code comes out smaller than the share
+it was given. Solving for the tile it makes lifted a blade's five-character
+code from 1.89 pixels a glyph row to 2.29. Every subject and code length tried
+now clears two.
 
 Its stroke is half the heaviest already in the file, because `svg_builder`
 scales that heaviest one to the house outline weight - half of it is one grid
@@ -724,39 +739,94 @@ lighting. The step filter and the ink budget both leave a folded motif alone,
 because each stamp is the median of every sector and every stamp is emitted
 or none is.
 
-**The count and the shape come from different pictures.** Folding the height
-map found the eight, and it had to: a mirror's fine hatching and a jar's comb
-marks are albedo rather than height, so folding the height is what drops the
-loudest round control from 0.018 to 0.005 and buys the gate its margin. But
-this photograph's height map has no petals in it, so its wedge - the median
-of eight noisy blobs, cut by Otsu - stamped a rosette of the right count with
-petals like torn leaves. Symmetry without shape.
+**The count is measured; the shape is not, and that was measured too.**
+Folding the height map found the eight, and it had to: a mirror's fine
+hatching and a jar's comb marks are albedo rather than height, so folding the
+height is what drops the loudest round control from 0.018 to 0.005 and buys
+the gate its margin. But this photograph's height map has no petals in it, so
+its wedge - the median of eight noisy blobs, cut by Otsu - stamped a rosette
+of the right count with petals like torn leaves. Symmetry without shape.
 
-The shape is in the *line map*: under a softbox a groove is dark from every
-side and a rim bright from every side, so the absolute high-pass of
-brightness is the network of lines an illustrator would trace. Fold that
-network at the count the height map established, and the other seven sectors
-fill each other's gaps: what is left is a clean border round one petal. The
-petal is the closed **cell** of that network, and it is cut by watershed from
-a seed in the sector's middle band out to markers on the sector edges, the
-boss and the rim - because a watershed boundary is closed by construction,
-where a thresholded network never is. The sector edge is first turned onto
-the ridge *between* petals, or the cell straddles it.
+Recovering the shape from the *line map* was tried at length and **refused
+itself**. Under a softbox a groove is dark from every side, so the absolute
+high-pass of brightness is the network of lines an illustrator would trace;
+folding that network at the established count and cutting the petal out as
+the closed **cell** of the network, by watershed, gave a petal-shaped petal -
+the closest thing to a real 연판 this reading ever produced. It still had to
+be thrown away, because it does not survive being asked twice:
 
-Three details each cost a measurement. The phase and the seed are taken in
-the petal band alone (0.40 to 0.75 of the face): over the whole face the bead
-ring, bright all the way round, decided the sector edge, the edge fell
-through a petal, and the seed landed in the trefoil pocket inside it, cutting
-a cell a tenth of the petal. The seed is the deepest point of the *largest*
-piece of low ground, not the deepest point anywhere, for the same reason. And
-the cell maps back at the frame's radius, which is what the wedge was
-unwrapped to - scaling it by the survey's sampling ring a and b, as the
-height wedge's replay does, shrank every petal to 0.72 of itself. The boss is
-drawn separately, as the concentric ridge that stands 1.3 times clear of the
-petal band's own line level.
+| asked twice, with the line smoothing changed by a quarter | agreement |
+| --- | --- |
+| the real lotus tile's cell | **0.033** |
+| the same, allowed to rotate freely to its best fit | **0.062** |
+| the synthetic softbox control, at an identical phase | 0.283 |
 
-On the tile: eight cells at 0.033 of the face each, agreeing to ±0.0002, plus
-the boss - 19 paths where the height wedge gave 17 torn leaves.
+So it is the shape that is unstable, not merely its placement. The cause is
+that the watershed is **bistable**: the cell's share of its sector flips
+between 0.19 - the petal - and 0.045, a pocket inside the petal, and which
+one it lands in is decided by noise. A sweep of the smoothing constant
+confirmed it is noise rather than a plateau, the softbox control collapsing
+to zero cells at 0.028 and 0.044 while working at 0.032, 0.036, 0.040 and
+0.050. A petal drawn from that would say something about the tile that
+another photograph of the same tile would contradict.
+
+**What survived the same interrogation.** The count did - eight-fold at 0.033
+against 0.002 to 0.006 for every control, stable under all six frame nudges.
+And the band's **centre of mass** did: across a lamp and a softbox on one
+disc the half-height crossings ran 0.30-0.69 and 0.30-0.85, while the centres
+of mass sat at 0.550 and 0.554, and on the real tile at 0.541. The crossing
+moves with the peak's shape; the moment does not.
+
+So the repeat is now drawn as one conventional lens per fold, centred on the
+measured band, at the measured count - and everything else about it is a
+stated convention rather than a reading. The petal's own outline is left to
+the typology code, which can carry it exactly where a photograph cannot.
+
+**The phase went the same way, and this is the measurement that caught it.**
+Registering the ring by the fold-order harmonic of the turn looked right
+under a lamp and was half a sector wrong under a softbox:
+
+| | drawn phase, in sectors | truth |
+| --- | --- | --- |
+| lamp, 8 / 9 / 6 fold | 0.999 / 0.998 / 0.000 | 0.000 |
+| softbox, 8 / 9 fold | **0.529 / 0.505** | 0.000 |
+
+Half a sector is exactly what a sign flip costs `angle / folds`, and the sign
+is what cannot be settled under diffuse light: the height surface's skew,
+which is what fixes it, reads −0.315 under a lamp and **−0.001** under a
+softbox. Diffuse brightness follows concavity rather than slope, so the
+surface's periodic content lands on the grooves *between* the petals - and
+the lenses were being stamped into the gaps. Underneath that is a simpler
+objection that would stand even if the reading were perfect: which way an
+artefact was turned on the copy stand is not a property of the artefact. The
+first element now points up, always.
+
+**What this cost and bought, on the catalogue's own instrument** - rasterise
+at the 64 px a legend draws, Jaccard over intensities, the same scale the
+drawn catalogue calibrated its 0.95 bar on:
+
+| | before | after |
+| --- | --- | --- |
+| one disc under two lamps (**should be alike**) | 0.256 | **0.612** |
+| the same at nine fold | 0.267 | **0.573** |
+| six against eight fold | 0.392 | 0.342 |
+| eight against nine fold | 0.324 | 0.338 |
+| a rosette against a plain disc | 0.348 | 0.329 |
+
+Before the fix the structure was inverted: two photographs of one tile were
+*less* alike than two different tiles. The three defects were separable and
+they multiplied - fixing the phase alone moved the pair to 0.349, fixing the
+band alone to 0.262, and only both together reached 0.612. Rebuilding one
+symbol with a single quantity perturbed by the amount the two lamps actually
+disagreed reproduces each term: identical 1.000, band centre 0.744, boss
+radius 0.797, band width 0.324, phase half a sector 0.150, all three at once
+0.257 against the 0.256 that was observed.
+
+The boss was the third of those. Its radius came from the argmax of the
+radial profile inside a search band, and under a lamp that argmax sat on the
+band's own first bin at every fold count tried - a boundary, not a peak. It
+is now required to be an interior maximum, and the search band widened so a
+real boss can be one.
 
 The tile's inner ring is nine petals, not eight - nine grooves at a 40
 degree pitch, measured on the photograph - and the outer ring is sixteen.

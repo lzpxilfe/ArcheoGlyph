@@ -631,6 +631,47 @@ def test_a_typology_code_is_drawn_where_it_can_be_read():
             f"the legend floor is {floor:.2f}")
 
 
+def test_a_typology_code_is_set_tall_enough_to_read():
+    """
+    Measured where the code is actually drawn, not where it was requested.
+
+    The stroke width had a floor and the height had none, so a code could be
+    shrunk to fit inside a narrow artefact and still pass: at the old floor of
+    0.09 the cap height came to 5.8 legend pixels over a four-row glyph, which
+    is 1.44 pixels a row against a stroke a whole pixel wide - an E with its
+    bars touching. The floor is now the grid's own, two detail units a row.
+    """
+    from archeoglyph.generators import icon_grid
+    from archeoglyph.generators.autotrace import pipeline as pl
+    from archeoglyph.generators.autotrace import svg_builder as sb
+    from archeoglyph.generators.autotrace.stroke_font import CELL_H
+    from tests.svg_appearance import LEGEND_PX
+
+    for name in ("ellipse_blade", "open_vessel", "plain_disc"):
+        img = getattr(synthetic, name)()
+        bare = set(re.findall(r'<path[^>]*/>', _run(img, style="Measured")))
+        for code in ("II", "IIa2b", "IIIabcd"):
+            coded = _run(img, style="Measured", type_code=code)
+            added = [p for p in re.findall(r'<path[^>]*/>', coded)
+                     if p not in bare]
+            assert added, f"{name} drew no code for {code}"
+
+            numbers = [float(v) for path in added
+                       for d in re.findall(r'\sd="([^"]*)"', path)
+                       for v in re.findall(r'-?\d+(?:\.\d+)?', d)]
+            assert numbers, f"{name}'s {code} paths carried no coordinates"
+            ys = numbers[1::2]
+            _out, info = sb.finalize_svg(coded)
+            side = float(info["viewbox"][2])
+            cap = (max(ys) - min(ys)) / side * LEGEND_PX
+            rows = cap / CELL_H
+            assert rows >= 2.0 * icon_grid.DETAIL * 0.999, (
+                f"{name} set {code} {cap:.1f} legend pixels tall, which is "
+                f"{rows:.2f} pixels a glyph row against a "
+                f"{icon_grid.DETAIL:.0f} pixel stroke - the rows close up")
+            assert cap >= pl.TYPE_CODE_MIN_HEIGHT * LEGEND_PX * 0.999
+
+
 def test_a_typology_code_is_trimmed_and_bounded():
     from archeoglyph.generators.autotrace.options import (
         MAX_TYPE_CODE, AutoTraceOptions)
@@ -859,3 +900,101 @@ def test_the_ink_budget_comes_from_the_drawn_catalogue():
     assert pl.INTERIOR_INK_MEDIAN < pl.INTERIOR_INK_CEILING, (
         "the target has to sit below the trigger or the scaling would fight "
         "itself")
+
+
+# ------------------------------------------------- telling symbols apart
+
+#: The subjects the discrimination test compares, all synthetic: the real
+#: photographs are not committed, and a control can be made twice under two
+#: lamps, which is the comparison that matters most here.
+def _discrimination_subjects():
+    return {
+        "plain disc": synthetic.lit_plain_disc(600),
+        "mirror rings": synthetic.mirror_with_rings(600),
+        "knobbed disc": synthetic.knobbed_disc(600, knobs=2),
+        "vessel": synthetic.open_vessel(600),
+        "blade": synthetic.ellipse_blade(600),
+        "rosette 6": synthetic.lit_relief_disc(600, folds=6),
+        "rosette 8": synthetic.lit_relief_disc(600, folds=8),
+        "rosette 9": synthetic.lit_relief_disc(600, folds=9),
+        "rosette 8 softbox": synthetic.diffuse_relief_disc(600, folds=8),
+        "rosette 9 softbox": synthetic.diffuse_relief_disc(600, folds=9),
+    }
+
+
+#: Tracing ten subjects is not free, so the maps are built once and kept -
+#: the same bargain test_template_drawing strikes for its 188 painted ones.
+_TRACED_CACHE = {}
+
+
+def _traced_appearances(style="Measured"):
+    from archeoglyph.generators.autotrace.segment import get_mask_opencv
+    from tests.svg_appearance import appearance
+
+    if style not in _TRACED_CACHE:
+        maps = {}
+        for name, image in _discrimination_subjects().items():
+            result = run_autotrace(image, AutoTraceOptions(style=style),
+                                   get_mask_opencv)
+            maps[name] = appearance(result if isinstance(result, str)
+                                    else result.svg)
+        _TRACED_CACHE[style] = maps
+    return _TRACED_CACHE[style]
+
+
+def test_no_traced_symbol_is_another_at_legend_size():
+    """
+    The catalogue's own bar, applied to the tracer.
+
+    test_template_drawing holds the 188 drawn symbols to this: rasterise at
+    the size a legend draws them and fail when two are the same picture. The
+    traced symbols were never held to anything, and a symbol nobody can tell
+    from the next one is not worth the photograph it came from.
+    """
+    from tests.svg_appearance import LEGEND_PX, MAX_OVERLAP, overlap
+
+    maps = _traced_appearances()
+    names = sorted(maps)
+    for index, first in enumerate(names):
+        for second in names[index + 1:]:
+            likeness = overlap(maps[first], maps[second])
+            assert likeness < MAX_OVERLAP, (
+                f"{first} and {second} are the same picture at "
+                f"{LEGEND_PX}px ({likeness:.3f}); a legend cannot tell them "
+                f"apart, so the reading is drawing nothing that separates "
+                f"them")
+
+
+def test_one_artefact_under_two_lamps_is_one_symbol():
+    """
+    The other half of the bar, and the half that caught the real defect.
+
+    Two symbols being different is only worth something if two photographs of
+    ONE artefact come out the same; otherwise the reading is drawing the
+    lighting. It was: a disc lit by a lamp and the same disc under a softbox
+    overlapped 0.256, which is less than a rosette overlaps a plain disc, and
+    less than two different fold counts overlap each other. The phase, the
+    element's length and the boss radius were all being read off a signal
+    that changes with the lamp. Now they are conventions keyed to the
+    measured count, and the pair scores 0.612.
+
+    So the floor is not a tuned number - it is the claim that a change of
+    lamp matters LESS than a change of artefact, which is what "the symbol is
+    the artefact's" means.
+    """
+    from tests.svg_appearance import overlap
+
+    maps = _traced_appearances()
+    types = max(overlap(maps[f"rosette {a}"], maps[f"rosette {b}"])
+                for a, b in ((6, 8), (8, 9), (6, 9)))
+    for folds in (8, 9):
+        lamps = overlap(maps[f"rosette {folds}"],
+                        maps[f"rosette {folds} softbox"])
+        assert lamps > types, (
+            f"a {folds}-fold rosette photographed under two lamps agrees "
+            f"{lamps:.3f} with itself, but two different fold counts agree "
+            f"{types:.3f} - the symbol is recording the lighting rather than "
+            f"the artefact")
+        assert lamps >= 0.50, (
+            f"a {folds}-fold rosette under two lamps agrees only "
+            f"{lamps:.3f} with itself")

@@ -141,8 +141,14 @@ def _diffuse(height_field, mask, face=(150, 150, 155), ground=(238, 238, 240)):
     return img
 
 
-def _disc_height(size, motif, folds=8):
-    """``(height field, silhouette)`` for a disc, with or without ornament."""
+def _disc_height(size, motif, folds=8, lobes=1):
+    """``(height field, silhouette)`` for a disc, with or without ornament.
+
+    ``lobes`` is how many bumps each petal carries at its outer end. One is a
+    plain ellipse; three is the trefoil a Korean lotus tile's petal actually
+    has, and it is the feature that tells one lotus type from another - so it
+    is what a reading has to keep, and what a control has to plant.
+    """
     field = np.zeros((size, size), dtype=np.float32)
     mask = np.zeros((size, size), dtype=np.uint8)
     c = (size // 2, size // 2)
@@ -158,6 +164,16 @@ def _disc_height(size, motif, folds=8):
                             int(c[1] + r * 0.46 * np.sin(angle))),
                     (int(r * 0.26), int(r * 0.15)),
                     float(np.degrees(angle)), 0, 360, 1.0, -1)
+        for lobe in range(int(lobes) if int(lobes) > 1 else 0):
+            # The bumps sit across the petal's outer end, spread by the
+            # petal's own half-width so they read as its tip and not as
+            # three more petals.
+            across = (lobe - (int(lobes) - 1) / 2.0) * (r * 0.13)
+            cv2.circle(field, (int(c[0] + r * 0.64 * np.cos(angle)
+                                   - across * np.sin(angle)),
+                               int(c[1] + r * 0.64 * np.sin(angle)
+                                   + across * np.cos(angle))),
+                       int(r * 0.075), 1.0, -1)
     cv2.circle(field, c, int(r * 0.14), 1.3, -1)           # the boss
     return field, mask
 
@@ -171,7 +187,7 @@ def petal_centres(size=400, folds=8):
             for step in range(int(folds))]
 
 
-def lit_relief_disc(size=400, motif=True, azimuth=35.0, folds=8):
+def lit_relief_disc(size=400, motif=True, azimuth=35.0, folds=8, lobes=1):
     """A disc carrying a ring of petals, a boss and a raised rim, under a lamp.
 
     Ground truth for the relief reading: ``folds`` petals plus a boss and a
@@ -182,7 +198,7 @@ def lit_relief_disc(size=400, motif=True, azimuth=35.0, folds=8):
     control: a bare face has nothing to read, and a reading that draws
     something on it is drawing noise.
     """
-    field, mask = _disc_height(size, motif, folds=folds)
+    field, mask = _disc_height(size, motif, folds=folds, lobes=lobes)
     return _lit(field, mask, azimuth=azimuth)
 
 
@@ -191,9 +207,9 @@ def lit_plain_disc(size=400, azimuth=35.0):
     return lit_relief_disc(size=size, motif=False, azimuth=azimuth)
 
 
-def diffuse_relief_disc(size=400, motif=True, folds=8):
+def diffuse_relief_disc(size=400, motif=True, folds=8, lobes=1):
     """``lit_relief_disc``'s disc under a softbox instead of a lamp."""
-    field, mask = _disc_height(size, motif, folds=folds)
+    field, mask = _disc_height(size, motif, folds=folds, lobes=lobes)
     return _diffuse(field, mask)
 
 

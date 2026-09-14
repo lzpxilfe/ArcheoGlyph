@@ -13,7 +13,7 @@ import numpy as np
 
 from ...log import log, log_exception
 from ..ink_centerline import extract_ink_polylines, looks_like_drawing, simplify_polyline
-from .stroke_font import text_extent, text_polylines
+from .stroke_font import CELL_H, text_extent, text_polylines
 from .svg_builder import HOUSE_DETAIL_RATIO, HOUSE_OUTLINE_RATIO, smooth_closed_path
 from ..style_control_utils import (
     STYLE_CONTROL_EXAGGERATION,
@@ -57,14 +57,14 @@ from .lines import (
 )
 from .feature_symmetry import centre_disagrees, vote_for_centre
 from .relief_outline import (
-    MIN_STEP, line_map, paired_knobs, raised_outlines, relief_height,
-    smooth_closed, step_across)
+    MIN_STEP, paired_knobs, raised_outlines, relief_height, smooth_closed,
+    step_across)
 from .round_motif import (
     FRAME_MIN_SCORE,
     trimmed_face_circle,
     find_rotational_frame,
     reading_is_stable,
-    fold_line_cells,
+    fold_repeat_elements,
     fold_rotational_motif,
     replay_rotational_motif,
     augment_round_rotational_symmetry,
@@ -130,11 +130,21 @@ TYPE_CODE_WIDTH = 0.80
 TYPE_CODE_GAP = 0.05
 
 #: The smallest a code may be set, as a share of the artefact's longer side.
-#: A three-by-five glyph needs about five legend pixels of cap height to read,
-#: and a symbol is shown at 64 of them. Below this the code goes under the
-#: artefact at full size instead of inside it as a squint: a slender dagger is
-#: narrow enough that fitting five characters across it produced exactly that.
-TYPE_CODE_MIN_HEIGHT = 0.09
+#: Below this the code goes under the artefact at full size instead of inside
+#: it as a squint: a slender dagger is narrow enough that fitting five
+#: characters across it produced exactly that.
+#:
+#: The floor is the grid's, not a taste: a glyph's cap height spans CELL_H
+#: rows, and two strokes one detail unit wide need two units between their
+#: centres to leave any gap at all. At the old floor of 0.09 a cap height was
+#: 5.8 legend pixels and a row 1.44 of them, so the strokes of an E closed up
+#: into a block. Small capitals are SMALL_CAPS of this and tighter still,
+#: which is why this is a floor and TYPE_CODE_HEIGHT is the size actually
+#: aimed at.
+#:
+#: HOUSE_DETAIL_RATIO is icon_grid's DETAIL over its UNITS, taken from
+#: svg_builder because icon_grid pulls in Qt and this module is QGIS-free.
+TYPE_CODE_MIN_HEIGHT = 2.0 * HOUSE_DETAIL_RATIO * CELL_H
 
 _STROKE_WIDTH_RE = re.compile(r'stroke-width="([\d.]+)"')
 
@@ -196,8 +206,20 @@ def _type_code_paths(code, drawn, mask, bounds, color):
     if top is None:
         # Underneath it, then, which is what a plate does anyway. Here the
         # code may span the whole symbol rather than the artefact's own width.
-        if width > side:
-            height *= side / width
+        #
+        # And here it is set against the symbol the reader will see rather
+        # than against the artefact, because those are no longer the same
+        # thing: the drawing and its caption get squared up together, so the
+        # tile grows by the caption's own height and a code cut to a share of
+        # the artefact ends up a smaller share of the symbol. A blade's
+        # five-character code came out at 1.89 legend pixels a glyph row
+        # where the grid needs two. Solving height = TYPE_CODE_HEIGHT x tile
+        # for a tile of (artefact + gap + height) is what the division does.
+        grown = side * (1.0 + TYPE_CODE_GAP)
+        height = TYPE_CODE_HEIGHT * grown / (1.0 - TYPE_CODE_HEIGHT)
+        width, _ = text_extent(code, height)
+        if width > grown + height:
+            height *= (grown + height) / width
             width, _ = text_extent(code, height)
         left = bx + (bw - width) / 2.0
         top = by + bh + (side * TYPE_CODE_GAP)
@@ -785,8 +807,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                     # petal, gaps filled by the other sectors - and the petal
                     # is the closed cell of that network. Failing that, one
                     # smooth shape from the height wedge.
-                    folded_motif_lines = fold_line_cells(
-                        line_map(processing_bgr, target_mask, face_radius), frame)
+                    folded_motif_lines = fold_repeat_elements(relief_surface, frame)
                     if not folded_motif_lines:
                         wedge = fold_rotational_motif(motif_source, frame, max_shapes=1)
                         folded_motif_lines = [

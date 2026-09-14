@@ -2467,147 +2467,184 @@ def replay_rotational_motif(wedge_contours, frame, n_theta=720, n_rad=96):
         return []
 
 
-#: The folded line map, and the petal cut from it. The sector is unwrapped
-#: at this resolution, the seed for the cell is looked for in this radial
-#: band, the cell is closed with a kernel this share of the sector, and it
-#: is refused if it is less or more of the sector than this. Measured on the
-#: lotus tile: the inner petal is 0.21-0.23 of its sector; a leak across a
-#: gap in the ridge network fills 0.6 or more, and a spurious cell between
-#: two grooves is under 0.03.
+#: The resolution the sector is unwrapped at before it is folded. Fine enough
+#: in theta that the narrowest fold count still gets a dozen columns to itself
+#: (see the refusal below), and fine enough in radius that the band's centre
+#: of mass is a moment over a hundred-odd samples rather than a few.
 CELL_THETA, CELL_RAD = 720, 160
-#: Where the petal lives, and where the cut may not go. The phase and the
-#: seed are taken in the petal band - taking them over the whole face let
-#: the bead ring, bright all the way round, decide the sector edge, and the
-#: edge then fell through a petal and the seed in the trefoil pocket inside
-#: it, cutting a cell a tenth of the petal's size.
-CELL_PETAL_BAND = (0.40, 0.75)
-CELL_SEED_BAND = (0.30, 0.86)
+#: Where a repeated element may live, as shares of the face radius. Inside
+#: this is the boss and outside it the rim, and neither repeats. Taking the
+#: band over the whole face instead let the bead ring, bright all the way
+#: round, decide the phase.
+CELL_PETAL_BAND = (0.30, 0.86)
 #: Where the boss's edge may be, and how far its ridge must stand above the
-#: petal band's mean line level to be drawn.
-BOSS_BAND = (0.12, 0.38)
+#: petal band's mean line level to be drawn. The floor is well below any real
+#: boss on purpose: the peak has to be found *inside* the band to count, and
+#: with the floor at 0.12 a lamp put it at 0.119 - the band's own first bin -
+#: on every fold count that was tried, which is an argmax pressed against its
+#: search boundary rather than a peak that was located.
+BOSS_BAND = (0.06, 0.38)
 BOSS_CLEARANCE = 1.3
-CELL_CLOSE = 0.30
-CELL_MIN_SHARE, CELL_MAX_SHARE = 0.05, 0.55
+#: The least band width worth drawing in, as a share of the face radius.
+BAND_MIN_WIDTH = 0.10
+#: How much of its sector one petal is drawn across, and how much longer it is
+#: drawn than it is wide. Both conventions, and said to be ones: the count is
+#: measured and the form is not. The aspect is the control petal's own ratio
+#: of half-axes, 0.26 to 0.15.
+PETAL_SECTOR_SHARE = 0.62
+PETAL_ASPECT = 1.7
+#: How hard the drawn element's corners are rounded off.
 CELL_SMOOTH = 0.03
+#: Where the first element is drawn. A convention too - see the phase note in
+#: fold_repeat_elements - and pointing up, which is where a plate sets one.
+FIRST_ELEMENT_AT = -math.pi / 2.0
 
 
-def fold_line_cells(lines, frame, n_theta=CELL_THETA, n_rad=CELL_RAD):
+def fold_repeat_elements(surface, frame, n_theta=CELL_THETA, n_rad=CELL_RAD):
     """
-    The repeated element's *shape*, as one closed polyline per sector.
+    The repeated element, drawn as a conventional petal at the measured count.
 
-    ``fold_rotational_motif`` folds a height map and thresholds the wedge,
-    and on a photograph that gives the median of eight noisy blobs - a
-    rosette of the right count with petals like torn leaves. The shape is
-    in the line map instead: fold that, and the median wedge is a clean
-    network of the grooves and rims that bound one petal, its gaps filled
-    by the other seven sectors. The cell of that network is the petal.
+    The count is observed and the form is a convention, and the split is not a
+    compromise - it is what the measurements allow. Folding the line map and
+    cutting the petal's own outline out of the folded wedge was tried, and it
+    does not survive its own repeat test: asked twice with the line smoothing
+    changed by a quarter, the lotus tile's cut came back with an overlap of
+    0.03, and 0.06 even when allowed to rotate freely to its best fit. The
+    softbox control managed 0.28 at an identical phase. That is not the
+    artefact's shape, it is the reading's, and drawing it would say something
+    about the tile that another photograph of the same tile would contradict.
 
-    The cell is cut by watershed from a seed in the sector's middle band to
-    markers on the sector's edges, the boss and the rim: a watershed boundary
-    is closed by construction, which a thresholded network never is. The
-    sector edge is first turned onto the ridge *between* petals, so the cell
-    does not straddle it.
+    What does hold is the *count* - eight-fold at 0.033 on the tile against
+    0.002 to 0.006 for every control, stable under all six frame nudges - and
+    the *centre* of the band the repeat lives in, which is a moment over the
+    whole wedge rather than a cut through one of them. Those two are read; the
+    element's length, its width across the sector and its phase are all
+    conventions keyed to the count, because each was measured and each moved
+    when the lamp did. So: one lens per fold, centred on the measured band, at
+    the measured count, the first one pointing up. A six-petal tile, an eight
+    and a nine come out as different symbols, which is the job; the petal's
+    own outline is left to the typology code, which can carry it exactly where
+    a photograph cannot.
 
-    Returns polylines in image pixels, closed, one per fold, or [] when no
-    cell of a petal's size comes out - the caller then keeps whatever it had.
+    Holding the conventions still is what makes the symbol the artefact's
+    rather than the photograph's. Two lightings of one disc used to overlap
+    0.256 - less than a rosette overlaps a plain disc - and now overlap 0.612,
+    while six, eight and nine fold stay near 0.33 of each other.
+
+    Returns polylines in image pixels, closed, one per fold plus the boss,
+    or [] when there is no band to draw in.
     """
     try:
         folds = int(frame.folds)
-        if lines is None or folds < FRAME_MIN_FOLD:
+        if surface is None or folds < FRAME_MIN_FOLD:
             return []
         per = int(n_theta // folds)
         if per < 12:
             return []
-        polar = cv2.warpPolar(lines, (int(n_rad), per * folds),
+        polar = cv2.warpPolar(surface.astype(np.float32), (int(n_rad), per * folds),
                               (float(frame.cx), float(frame.cy)), float(frame.radius),
                               cv2.WARP_POLAR_LINEAR)
         wedge = np.median(polar.reshape(folds, per, n_rad), axis=0).astype(np.float32)
         wedge = cv2.GaussianBlur(wedge, (0, 0), 1.2)
-        peak = float(wedge.max())
+        peak = float(np.abs(wedge).max())
         if peak <= 0:
             return []
         wedge /= peak
-        # Phase: the sector edge onto the ridge between petals.
-        r0, r1 = int(n_rad * CELL_SEED_BAND[0]), int(n_rad * CELL_SEED_BAND[1])
+
+        # The band: where the repeat's own periodic content sits. Not the raw
+        # variance of the wedge - a lamp splits every groove into a bright
+        # edge and a dark one, so the variance band comes out wider under a
+        # lamp than under a softbox and the element lands at a different
+        # radius in the two. The first harmonic of each radius's theta
+        # profile is the part that actually repeats, and it puts the band in
+        # the same place under either.
         p0, p1 = int(n_rad * CELL_PETAL_BAND[0]), int(n_rad * CELL_PETAL_BAND[1])
-        shift = int(np.argmax(wedge[:, p0:p1].mean(axis=1)))
-        wedge = np.roll(wedge, -shift, axis=0)
-        tiled = np.concatenate([wedge, wedge, wedge], axis=0)
+        spectrum = np.fft.rfft(wedge - wedge.mean(axis=0, keepdims=True), axis=0)
+        periodic = np.abs(spectrum[1])[p0:p1]
+        if not periodic.size or float(periodic.sum()) <= 0:
+            return []
+        # Where the band is, as the periodic content's own centre of mass - a
+        # moment over the whole profile, not a crossing of it. Measured across
+        # a lamp and a softbox on the same disc, the half-height crossings ran
+        # 0.30-0.69 and 0.30-0.85 while the centres of mass sat at 0.550 and
+        # 0.554, and on the real tile at 0.541. The crossing moves with the
+        # peak's shape; the moment does not. It is the one thing this reading
+        # takes from the artefact's own radial profile.
+        weight = periodic / float(periodic.sum())
+        radii = (np.arange(p0, p1) + 0.5) / float(n_rad)
+        centre_r = float((radii * weight).sum())
 
-        # Seed: the deepest point of the LARGEST piece of low ground in the
-        # middle copy. The petal's interior is the biggest low region in the
-        # band; the deepest point anywhere can be a pocket between two
-        # grooves, and seeding there cut a cell a twentieth of the petal.
-        low = ((tiled < float(np.median(tiled))) * 255).astype(np.uint8)
-        low[:, :p0] = 0
-        low[:, p1:] = 0
-        low[:per, :] = 0
-        low[2 * per:, :] = 0
-        count, labels, stats, _centroids = cv2.connectedComponentsWithStats(low, connectivity=4)
-        if count < 2:
-            return []
-        biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        depth = cv2.distanceTransform(((labels == biggest) * 255).astype(np.uint8),
-                                      cv2.DIST_L2, 5)
-        seed = np.unravel_index(int(np.argmax(depth)), depth.shape)
-        if depth[seed] <= 1.0:
+        # How long the element is drawn: from the sector it has to fit in, not
+        # from the band's own spread. The centre of mass is steady across a
+        # change of lamp - 0.573 against 0.581 at eight folds, 0.623 against
+        # 0.612 at nine - but the spread is not, running 39 and 58 per cent
+        # wider under a softbox, and an element drawn that much longer is a
+        # different symbol: redrawing one rosette with only that reach
+        # changed scores 0.324 against itself, where the catalogue calls
+        # 0.95 the same picture. So the reach is a convention keyed to the
+        # count, and only the band's centre is read off the artefact.
+        span = (2.0 * math.pi / folds) * PETAL_SECTOR_SHARE
+        reach = PETAL_ASPECT * (centre_r * span / 2.0)
+        near = max(CELL_PETAL_BAND[0], centre_r - reach)
+        far = min(CELL_PETAL_BAND[1], centre_r + reach)
+        if far - near < BAND_MIN_WIDTH:
             return []
 
-        markers = np.zeros(tiled.shape, np.int32)
-        markers[:, :r0] = 2
-        markers[:, r1:] = 2
-        for k in range(4):
-            markers[max(0, k * per - 1):k * per + 2, :] = 2
-        cv2.circle(markers, (int(seed[1]), int(seed[0])), 3, 1, -1)
-        field = cv2.cvtColor((tiled * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
-        cv2.watershed(field, markers)
-        blob = ((markers == 1) * 255).astype(np.uint8)
-        kernel = max(3, int(per * CELL_CLOSE)) | 1
-        blob = cv2.morphologyEx(blob, cv2.MORPH_CLOSE, cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (kernel, kernel)))
-        contours, _ = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            return []
-        cell = max(contours, key=cv2.contourArea)
-        share = cv2.contourArea(cell) / float(per * n_rad)
-        if not (CELL_MIN_SHARE <= share <= CELL_MAX_SHARE):
-            return []
-        points = cell.reshape(-1, 2).astype(np.float32)    # x = radius bin, y = row
+        # The phase is a convention as well, and this one is not a retreat
+        # from a measurement that nearly worked - it is a refusal to draw the
+        # photograph. Which way an artefact was turned on the copy stand is
+        # not a property of the artefact, so registering the first element to
+        # it would make two photographs of one tile two different symbols.
+        # They did: reading the phase from the fold-order harmonic put the
+        # first element at 0.999 of a sector under a lamp and 0.529 under a
+        # softbox, dead against a planted truth of 0.000. Half a sector is
+        # what a sign flip does to angle/folds, and the sign is exactly what
+        # cannot be settled under a softbox - the height surface's skew, which
+        # is what fixes it, reads -0.315 under a lamp and -0.001 there,
+        # because diffuse brightness follows concavity rather than slope and
+        # the periodic content lands on the grooves between the petals
+        # instead of on the petals. Drawn at the measured phase the lenses
+        # stamp into the gaps. So: the first element points up, always.
+        first_at = FIRST_ELEMENT_AT
 
         from .relief_outline import smooth_closed
-        cos_a, sin_a = math.cos(frame.angle), math.sin(frame.angle)
+        middle, half_band = (near + far) / 2.0, (far - near) / 2.0
         out = []
-        # The boss: the strongest concentric ridge inside the petals, read
-        # off the wedge's mean over theta, where a ring is a peak and a petal
-        # is not. Drawn as the circle it is when it stands clear of the
-        # petal band's own level.
         profile = wedge.mean(axis=0)
+        # The boss, if one was found rather than merely pointed at. An argmax
+        # that lands on the first or last bin of its search band is the band's
+        # edge talking, not a ridge: under a lamp it sat on the floor bin at
+        # every fold count tried, and drew the ring 0.06 of a radius in from
+        # where a softbox drew it on the same disc.
         b0, b1 = int(n_rad * BOSS_BAND[0]), int(n_rad * BOSS_BAND[1])
-        boss_bin = b0 + int(np.argmax(profile[b0:b1]))
-        if profile[boss_bin] > BOSS_CLEARANCE * float(profile[p0:p1].mean()):
+        at = int(np.argmax(profile[b0:b1]))
+        boss_bin = b0 + at
+        if 0 < at < (b1 - b0 - 1) \
+                and profile[boss_bin] > BOSS_CLEARANCE * float(profile[p0:p1].mean()):
             boss_r = boss_bin / float(n_rad) * float(frame.radius)
             ring = [[int(round(frame.cx + boss_r * math.cos(t))),
                      int(round(frame.cy + boss_r * math.sin(t)))]
                     for t in np.linspace(0.0, 2.0 * math.pi, 72, endpoint=False)]
             ring.append(list(ring[0]))
             out.append(ring)
+
+        steps = np.linspace(-1.0, 1.0, 48)
         for index in range(folds):
-            theta = ((points[:, 1] - per + shift) / per) * (2.0 * math.pi / folds) \
-                + 2.0 * math.pi * index / folds
-            # The wedge was unwrapped to frame.radius, so it maps back at
-            # frame.radius; a and b are the survey's sampling ring, not the
-            # face, and scaling by them shrank every petal to 0.72 of itself.
-            # Only the ring's ellipticity is kept.
-            rad = points[:, 0] / float(n_rad) * float(frame.radius)
-            u = rad * np.cos(theta)
-            v = rad * np.sin(theta) * (frame.b / frame.a if frame.a > 0 else 1.0)
-            xs = frame.cx + u * cos_a - v * sin_a
-            ys = frame.cy + u * sin_a + v * cos_a
-            poly = [[int(round(x)), int(round(y))] for x, y in zip(xs, ys)]
-            if len(poly) >= 3:
-                poly.append(list(poly[0]))
-                out.append(smooth_closed(poly, float(frame.radius), smoothing=CELL_SMOOTH))
+            base = first_at + 2.0 * math.pi * index / folds
+            poly = []
+            for side in (1.0, -1.0):
+                for t in steps:
+                    # A lens: widest across the middle of the band, closing to
+                    # a point at each end of it.
+                    rad = (middle + t * half_band) * float(frame.radius)
+                    wide = side * (span / 2.0) * math.cos(t * math.pi / 2.0)
+                    theta = base + wide
+                    poly.append([int(round(frame.cx + rad * math.cos(theta))),
+                                 int(round(frame.cy + rad * math.sin(theta)))])
+                steps = steps[::-1]
+            poly.append(list(poly[0]))
+            out.append(smooth_closed(poly, float(frame.radius), smoothing=CELL_SMOOTH))
         return out
     except Exception as exc:
-        log_exception("fold_line_cells", exc)
+        log_exception("fold_repeat_elements", exc)
         return []

@@ -146,48 +146,149 @@ def test_a_ring_of_petals_is_not_knobs():
     assert ro.paired_knobs(image, mask, radius) == []
 
 
-def test_the_folded_cell_is_the_petal():
-    """One closed cell per fold, each sitting on a planted petal."""
+def _repeat_of(image, folds_expected=None):
+    """``(elements, boss rings, mask, radius, frame)`` for a synthetic disc."""
     from archeoglyph.generators.autotrace import round_motif as rm
+    from archeoglyph.generators.autotrace.feature_symmetry import vote_for_centre
+
+    _curves, mask, radius = _read(image)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    contours, _h = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    _sx, _sy, face = rm.trimmed_face_circle(max(contours, key=cv2.contourArea))
+    surface, _azimuth = ro.relief_height(image, mask, radius)
+    frame = rm.find_rotational_frame(surface, mask,
+                                     centre=vote_for_centre(gray, mask, face))
+    if folds_expected is not None:
+        assert frame is not None and frame.folds == folds_expected, (
+            f"the {folds_expected}-fold control read as {frame and frame.folds}")
+    drawn = rm.fold_repeat_elements(surface, frame)
+    centre = np.asarray([image.shape[1] / 2.0, image.shape[0] / 2.0])
+    rings = [c for c in drawn
+             if np.hypot(*(np.asarray(c, dtype=np.float32).mean(axis=0) - centre))
+             < radius * 0.05]
+    return [c for c in drawn if c not in rings], rings, mask, radius, frame
+
+
+def test_the_repeat_is_drawn_at_the_measured_count():
+    """
+    One element per fold, evenly spaced, inside the band the reading measured.
+
+    What is asserted is what the reading claims, and no more. The *count* is
+    observed and gated, and the band's centre is read off the artefact; the
+    element's form and its angular registration are conventions, pinned
+    separately below.
+
+    Cutting each petal's own outline out of the folded wedge was tried
+    instead, and refused itself - see fold_repeat_elements - so a test that
+    pinned an outline would be pinning noise.
+    """
     for maker in (synthetic.lit_relief_disc, synthetic.diffuse_relief_disc):
-        image = maker(size=600, folds=8)
-        _curves, mask, radius = _read(image)
-        lines = ro.line_map(image, mask, radius)
-        # The frame is centred the way the pipeline centres it: by the
-        # feature vote, with the one-cycle recentring only as the fallback.
-        from archeoglyph.generators.autotrace.feature_symmetry import vote_for_centre
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        contours, _h = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        _sx, _sy, face = rm.trimmed_face_circle(max(contours, key=cv2.contourArea))
-        # ... and the fold is counted on the height map, as the pipeline does.
-        surface, _azimuth = ro.relief_height(image, mask, radius)
-        frame = rm.find_rotational_frame(surface, mask,
-                                         centre=vote_for_centre(gray, mask, face))
-        assert frame is not None and frame.folds == 8, (
-            f"the eight-fold control read as {frame and frame.folds}")
-        cells = rm.fold_line_cells(lines, frame)
-        petals = synthetic.petal_centres(600, 8)
-        centre = (300.0, 300.0)
-        # The boss's ring comes back too, as a circle round the centre; the
-        # rest must be exactly the eight petals.
-        rings = [c for c in cells
-                 if np.hypot(*(np.asarray(c, dtype=np.float32).mean(axis=0) - centre)) < radius * 0.05]
-        cells = [c for c in cells if c not in rings]
-        assert len(rings) <= 1, f"{len(rings)} rings round the centre for one boss"
-        assert len(cells) == 8, f"{len(cells)} cells for eight petals"
-        for cell in cells:
-            assert cell[0] == cell[-1]
-            pts = np.asarray(cell, dtype=np.float32)
-            cx, cy = float(pts[:, 0].mean()), float(pts[:, 1].mean())
-            assert any(np.hypot(cx - px, cy - py) < radius * 0.08 for px, py in petals), (
-                f"a cell centred at ({cx:.0f},{cy:.0f}) sits on no petal")
-            # ... and contains the petal's centre. The planted petal covers
-            # 0.039 of the disc and the cell comes back at 0.009 to 0.015,
-            # because the synthetic dome is slope all over and its line ring
-            # is thick, so the cut sits well inside the rim; on the tile the
-            # rims are thin and the cell is the petal (0.033 of the face). What
-            # a cell must never be is a pocket beside the centre.
-            share = abs(cv2.contourArea(pts.astype(np.int32))) / float(np.count_nonzero(mask))
-            assert 0.005 <= share <= 0.08, f"a cell of {share:.3f} of the face for a petal of 0.039"
-            assert any(cv2.pointPolygonTest(pts.astype(np.int32), (float(px), float(py)), False) >= 0
-                       for px, py in petals), "a cell that does not contain its petal's centre"
+        for folds in (6, 8):
+            image = maker(size=600, folds=folds, lobes=3)
+            elements, rings, _mask, radius, frame = _repeat_of(image, folds)
+            assert len(rings) <= 1, f"{len(rings)} rings round the centre for one boss"
+            assert len(elements) == folds, (
+                f"{len(elements)} elements for a {folds}-fold repeat "
+                f"({maker.__name__})")
+
+            angles, radii = [], []
+            for element in elements:
+                assert element[0] == element[-1], "an element that does not close"
+                at = np.asarray(element, dtype=np.float32).mean(axis=0)
+                angles.append(np.degrees(np.arctan2(at[1] - frame.cy,
+                                                    at[0] - frame.cx)) % 360.0)
+                radii.append(np.hypot(at[0] - frame.cx, at[1] - frame.cy) / radius)
+
+            gaps = np.diff(sorted(angles) + [min(angles) + 360.0])
+            assert np.allclose(gaps, 360.0 / folds, atol=3.0), (
+                f"the ring is not evenly spaced: gaps {np.round(gaps, 1)}")
+            assert max(radii) - min(radii) < 0.02, (
+                f"the ring is not one radius: {np.round(radii, 3)}")
+            assert 0.25 < float(np.mean(radii)) < 0.85, (
+                f"the ring sits at r/R {np.mean(radii):.2f}, outside the face's band")
+
+
+def test_the_repeat_is_drawn_the_same_way_under_either_lamp():
+    """
+    The same artefact photographed two ways must come out one symbol.
+
+    This is the measurement that condemned the traced outline: asked under a
+    lamp and under a softbox, the cut petals overlapped 0.28 at an identical
+    phase, and the real tile's 0.03 - 0.06 even when allowed to rotate freely
+    to its best fit. A convention at a measured count does not have that
+    failure mode, and this is what pins that it does not.
+
+    Six, eight and nine fold currently score 0.65, 0.82 and 0.82. What is
+    left between them is the band's centre, which is the one thing here still
+    read off the artefact, so the floor sits below all three rather than
+    against the best of them.
+    """
+    for folds in (6, 8, 9):
+        drawn = []
+        for maker in (synthetic.lit_relief_disc, synthetic.diffuse_relief_disc):
+            image = maker(size=600, folds=folds, lobes=3)
+            elements, rings, mask, _radius, _frame = _repeat_of(image, folds)
+            canvas = np.zeros(mask.shape, np.uint8)
+            for element in elements + rings:
+                cv2.fillPoly(canvas, [np.asarray(element, np.int32)], 255)
+            drawn.append(canvas > 0)
+
+        union = float((drawn[0] | drawn[1]).sum())
+        agreement = float((drawn[0] & drawn[1]).sum()) / union if union else 0.0
+        assert agreement >= 0.60, (
+            f"a lamp and a softbox drew the same {folds}-fold tile two ways: "
+            f"overlap {agreement:.2f}")
+
+
+def test_the_repeat_is_registered_by_convention_not_by_the_photograph():
+    """
+    Every element lands on the same angle whatever the lighting.
+
+    Which way an artefact was turned on the copy stand is not a property of
+    the artefact, and reading the phase off the picture made it one: the
+    fold-order harmonic put the first element at 0.999 of a sector under a
+    lamp and 0.529 under a softbox, against a planted truth of 0.000, because
+    the sign of a height integrated from diffuse light cannot be settled and
+    half a sector is exactly what a sign flip costs. The lenses were being
+    stamped into the gaps between the petals.
+
+    So the registration is now fixed, and this is the assertion that it is -
+    stronger than any overlap number, because it admits no drift at all.
+    """
+    from archeoglyph.generators.autotrace import round_motif as rm
+
+    for folds in (6, 8, 9):
+        seen = []
+        for maker in (synthetic.lit_relief_disc, synthetic.diffuse_relief_disc):
+            elements, _rings, _mask, _radius, frame = _repeat_of(
+                maker(size=600, folds=folds, lobes=3), folds)
+            seen.append(sorted(
+                np.degrees(np.arctan2(at[1] - frame.cy, at[0] - frame.cx)) % 360.0
+                for at in (np.asarray(e, dtype=np.float32).mean(axis=0)
+                           for e in elements)))
+
+        assert np.allclose(seen[0], seen[1], atol=1.0), (
+            f"a {folds}-fold rosette was registered differently under two "
+            f"lamps: {np.round(seen[0], 1)} against {np.round(seen[1], 1)}")
+        expected = np.degrees(rm.FIRST_ELEMENT_AT) % 360.0
+        assert min(abs((a - expected + 180.0) % 360.0 - 180.0)
+                   for a in seen[0]) < 1.0, (
+            f"no element sits at the convention's angle {expected:.0f} deg: "
+            f"{np.round(seen[0], 1)}")
+
+
+def test_a_six_fold_and_an_eight_fold_are_different_symbols():
+    """The count is what the reading is for, so it has to show in the drawing."""
+    rings = {}
+    for folds in (6, 8, 9):
+        image = synthetic.lit_relief_disc(size=600, folds=folds, lobes=3)
+        elements, boss, mask, _radius, _frame = _repeat_of(image, folds)
+        canvas = np.zeros(mask.shape, np.uint8)
+        for element in elements + boss:
+            cv2.fillPoly(canvas, [np.asarray(element, np.int32)], 255)
+        rings[folds] = canvas > 0
+    for left, right in ((6, 8), (8, 9), (6, 9)):
+        union = float((rings[left] | rings[right]).sum())
+        overlap = float((rings[left] & rings[right]).sum()) / union if union else 0.0
+        assert overlap < 0.75, (
+            f"a {left}-fold and a {right}-fold drew the same picture: {overlap:.2f}")
