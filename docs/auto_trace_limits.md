@@ -275,10 +275,20 @@ as shading. But the shading is local: subtract a wide blur and the lamp goes,
 because a lamp is broad and a groove is not. What remains is **a rubbing of
 the object** — and a rubbing is an input this tracer already reads well.
 
-So for a round photograph, `enhance.relief_ink_sheet` renders the relief as
-ink on paper and the existing ink-centreline tracer works on that. The
-silhouette still comes from the photograph; only the ink comes from the
-relief. On the lotus roof tile end this yields the petal ring, the boss with
+> **Superseded.** What follows is the reading this line of thought produced,
+> kept because the reasoning still holds and the next section is an argument
+> against it. The code itself (`enhance.relief_ink_sheet`, with its `INCISED`
+> and `MODELLED` readings) is gone: rendering the relief as ink and running a
+> *centreline* tracer over it fragments a boundary by construction, which is
+> what "A raised element's boundary" below establishes and what
+> `generators/autotrace/relief_outline.py` replaced it with. Its last caller
+> disappeared when a flag it was only ever being consulted for turned out to
+> duplicate one two lines away.
+
+So for a round photograph, `enhance.relief_ink_sheet` rendered the relief as
+ink on paper and the existing ink-centreline tracer worked on that. The
+silhouette still came from the photograph; only the ink came from the
+relief. On the lotus roof tile end this yielded the petal ring, the boss with
 its ring of beads and the outer bead ring — the drawing an archaeologist would
 make — where reading the photograph directly gave a diagonal band across three
 quarters of the face.

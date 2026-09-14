@@ -458,55 +458,6 @@ def test_a_round_artefact_keeps_its_interior_lines_at_legend_weight():
             f"{style} drew a {min(widths):.2f} stroke on a {side:.0f} symbol; "
             f"the legend floor is {floor:.2f}. The budget has to be paid in "
             f"marks once the weight reaches the floor, not in more thinning")
-
-
-def test_the_two_relief_readings_are_different_pictures():
-    """
-    Decoration is either cut into the surface or raised out of it, and the two
-    want different ink. INCISED inks the dark side - the shadow in a groove -
-    which is the drawing on a lotus roof tile end. MODELLED inks where the
-    relief changes fastest, which is the drawing on a dragon tile, whose body
-    is raised: the groove reading finds only the shadowed flank of each coil
-    and returns squiggles where this returns the coil.
-
-    Which one an artefact wants cannot be told from the photograph - the mean
-    mark width is 1.79 percent of the artefact on the lotus tile and 1.70 on
-    the dragon - so both are traced and merged. This is what makes that worth
-    doing: they are not the same picture.
-    """
-    cv2 = pytest.importorskip("cv2")
-    from archeoglyph.generators.autotrace.enhance import (
-        INCISED, MODELLED, relief_ink_sheet)
-
-    size, radius = 400, 150
-    centre = (size // 2, size // 2)
-    face = np.zeros((size, size), dtype=np.uint8)
-    cv2.circle(face, centre, radius, 255, -1)
-
-    plate = np.full((size, size), 150, dtype=np.uint8)
-    cv2.circle(plate, (centre[0] - 60, centre[1]), 34, 96, -1)   # a cut hollow
-    cv2.circle(plate, (centre[0] + 60, centre[1]), 34, 205, -1)  # a raised boss
-    bgr = cv2.cvtColor(cv2.GaussianBlur(plate, (0, 0), 3.0), cv2.COLOR_GRAY2BGR)
-
-    def _ink(reading):
-        sheet = relief_ink_sheet(bgr, face, radius, reading=reading)
-        return cv2.cvtColor(sheet, cv2.COLOR_BGR2GRAY) < 128
-
-    groove, relief = _ink(INCISED), _ink(MODELLED)
-    assert groove.any() and relief.any(), "a reading returned no ink at all"
-
-    overlap = float((groove & relief).sum()) / float((groove | relief).sum())
-    assert overlap < 0.75, (
-        f"the two readings agree on {overlap:.0%} of their ink; if they were "
-        f"the same picture there would be nothing to gain by merging them")
-
-    # The groove reading is the default, so a caller that does not name one
-    # still gets what it got before the split.
-    default = cv2.cvtColor(relief_ink_sheet(bgr, face, radius),
-                           cv2.COLOR_BGR2GRAY) < 128
-    assert (default == groove).all()
-
-
 def test_a_decorated_disc_does_not_come_out_as_a_plain_one():
     """
     The marker style draws two interior marks, which is right for a silhouette
@@ -793,77 +744,6 @@ def test_a_traced_symbol_is_no_busier_than_the_busiest_drawn_one():
     spans = [max(p[0] for p in line) - min(p[0] for p in line) for line in kept]
     assert spans == sorted(spans, reverse=True), (
         "the cap kept an arbitrary eleven; it has to keep the largest eleven")
-
-
-def test_bold_interior_structure_survives_the_filter():
-    """
-    The filter must not be a way of drawing nothing. A mirror with two bold
-    concentric rings has interior structure that belongs in the symbol.
-    """
-    img = synthetic.mirror_with_rings()
-    for style in ("Line", "Measured"):
-        svg = _run(img, style=style)
-        assert _path_count(svg) >= 2, (
-            f"{style} kept only the silhouette of a disc with two bold rings")
-
-
-def test_relief_becomes_ink_and_the_lighting_does_not():
-    """
-    The decoration on a roof tile end is height, and a photograph carries
-    height only as shading - which is why reading marks straight off the
-    photograph produced lighting artefacts, including a band across three
-    quarters of a lotus tile's face where its lit and shadowed halves met.
-
-    Subtracting a wide blur removes the lamp, which is broad, and keeps the
-    grooves, which are not. What is left is a rubbing of the object.
-    """
-    cv2 = pytest.importorskip("cv2")
-    from archeoglyph.generators.autotrace.enhance import relief_ink_sheet
-
-    size, radius = 400, 150
-    centre = (size // 2, size // 2)
-    face = np.zeros((size, size), dtype=np.uint8)
-    cv2.circle(face, centre, radius, 255, -1)
-
-    plate = np.full((size, size), 150, dtype=np.uint8)
-    for step in range(8):                       # eight grooves, the decoration
-        angle = 2.0 * np.pi * step / 8.0
-        cv2.line(plate, centre,
-                 (int(centre[0] + radius * 0.85 * np.cos(angle)),
-                  int(centre[1] + radius * 0.85 * np.sin(angle))), 96, 5)
-    lamp = np.linspace(-46, 46, size, dtype=np.float32)[None, :]
-    lit = np.clip(plate.astype(np.float32) + lamp, 0, 255).astype(np.uint8)
-
-    sheet = relief_ink_sheet(cv2.cvtColor(lit, cv2.COLOR_GRAY2BGR), face, radius)
-    ink = cv2.cvtColor(sheet, cv2.COLOR_BGR2GRAY) < 128
-
-    left = int(ink[:, :size // 2].sum())
-    right = int(ink[:, size // 2:].sum())
-    assert left > 0 and right > 0, "the grooves did not survive at all"
-    assert min(left, right) > 0.45 * max(left, right), (
-        f"the ink is lopsided - {left} on the lit side against {right} on the "
-        f"shadowed one - so the lamp came through as decoration")
-
-
-def test_a_flat_lit_disc_yields_almost_no_ink():
-    """A plain disc under the same lamp has nothing to draw."""
-    cv2 = pytest.importorskip("cv2")
-    from archeoglyph.generators.autotrace.enhance import relief_ink_sheet
-
-    size, radius = 400, 150
-    face = np.zeros((size, size), dtype=np.uint8)
-    cv2.circle(face, (size // 2, size // 2), radius, 255, -1)
-    lamp = np.linspace(-46, 46, size, dtype=np.float32)[None, :]
-    flat = np.clip(np.full((size, size), 150, dtype=np.float32) + lamp,
-                   0, 255).astype(np.uint8)
-
-    sheet = relief_ink_sheet(cv2.cvtColor(flat, cv2.COLOR_GRAY2BGR), face, radius)
-    ink = int((cv2.cvtColor(sheet, cv2.COLOR_BGR2GRAY) < 128).sum())
-    assert ink < 0.02 * int((face > 0).sum()), (
-        f"a plain disc under a lamp produced {ink} pixels of ink; the lamp is "
-        f"being drawn as decoration")
-
-
 def _interior_ink_share(svg):
     """Arc length times stroke width, over the symbol's own box."""
     import re as _re
@@ -928,6 +808,17 @@ def test_the_ink_budget_comes_from_the_drawn_catalogue():
         "the target has to sit below the trigger or the scaling would fight "
         "itself")
 
+
+def test_bold_interior_structure_survives_the_filter():
+    """
+    The filter must not be a way of drawing nothing. A mirror with two bold
+    concentric rings has interior structure that belongs in the symbol.
+    """
+    img = synthetic.mirror_with_rings()
+    for style in ("Line", "Measured"):
+        svg = _run(img, style=style)
+        assert _path_count(svg) >= 2, (
+            f"{style} kept only the silhouette of a disc with two bold rings")
 
 # ------------------------------------------------- telling symbols apart
 
