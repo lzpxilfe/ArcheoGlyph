@@ -683,37 +683,64 @@ def test_a_typology_code_is_trimmed_and_bounded():
     assert AutoTraceOptions().normalized().type_code == ""
 
 
-def test_a_vessel_band_is_read_once():
+def test_a_vessel_band_is_drawn_once():
     """
     The rim and shoulder come from estimate_profile_bands, and so do the
     schematic structure lines the user can switch on. The vessel reading was
     added outside the block that clears the schematic ones, so with that switch
-    on the estimator ran twice and its first band was drawn twice - the
-    identical polyline, laid down four times once each is haloed. Measured on a
-    photographed comb pot: 15 paths became 19, one of them repeated four times.
+    on its first band was drawn twice - the identical polyline, laid down four
+    times once each is haloed. Measured on a photographed comb pot: 15 paths
+    became 19, one of them repeated four times.
+
+    Asserted on the drawing rather than on how many times the estimator was
+    asked. The count was a stand-in for this, and only a good one while both
+    readings came off a single call: what actually keeps them apart is that
+    the vessel bands are read at all only when the schematic list came out
+    empty, so the two are never both drawn however many calls it takes.
+
+    Neither form of this test reproduces the original fault on this control -
+    deleting the guard leaves the open-vessel output byte for byte the same,
+    because the ink budget trims back to the same marks. It is kept as a
+    statement of the property, not as a demonstration of the bug, and that is
+    worth saying rather than leaving the next reader to assume it has teeth
+    it does not have.
     """
-    from archeoglyph.generators.autotrace import pipeline as pl
-
-    calls = []
-    original = pl.estimate_profile_bands
-
-    def counting(mask, max_lines=3):
-        out = original(mask, max_lines=max_lines)
-        calls.append(len(out))
-        return out
+    from collections import Counter
 
     img = synthetic.open_vessel()
-    pl.estimate_profile_bands = counting
-    try:
-        for synthetic_structure in (False, True):
-            calls.clear()
-            _run(img, style="Measured", synthetic_structure=synthetic_structure)
-            assert len(calls) <= 1, (
-                f"synthetic_structure={synthetic_structure}: the profile "
-                f"estimator ran {len(calls)} times on one artefact, so the same "
-                f"bands are in internal_lines twice")
-    finally:
-        pl.estimate_profile_bands = original
+    for synthetic_structure in (False, True):
+        svg = _run(img, style="Measured",
+                   synthetic_structure=synthetic_structure)
+        repeats = Counter(re.findall(r'\sd="([^"]*)"', svg))
+        worst, count = repeats.most_common(1)[0]
+        # Twice is this style's halo - every interior line is laid down at two
+        # stroke widths. Four times is one band drawn from both readings.
+        assert count <= 2, (
+            f"synthetic_structure={synthetic_structure}: one geometry was "
+            f"drawn {count} times, so the same band is in internal_lines "
+            f"twice ({worst[:60]}...)")
+
+
+def test_a_shorter_band_list_is_not_a_prefix_of_a_longer_one():
+    """
+    Which is why the pipeline asks for the count it means to spend.
+
+    estimate_profile_bands picks its candidates by curvature strength and then
+    sorts what it kept by position, so the first of two is not the one it
+    would have chosen if asked for one. Reading two and slicing to one - which
+    the pipeline did, to save a call - therefore drew a band the reading never
+    selected: on this control, one band is the shoulder at y=234 and two are
+    [191, 234], so the slice handed back y=191.
+    """
+    from archeoglyph.generators.autotrace.structure import estimate_profile_bands
+
+    mask = segment.get_mask_opencv(synthetic.open_vessel(400))
+    one, two = estimate_profile_bands(mask, 1), estimate_profile_bands(mask, 2)
+    assert one and len(two) == 2
+    assert two[:1] != one, (
+        "the first of two bands now equals the one band, so the prefix trick "
+        "would be safe again - but the ordering that made it unsafe is the "
+        "estimator's own, and this test is what would notice it changing")
 
 
 def test_a_straight_sided_silhouette_is_not_a_vessel_by_default():

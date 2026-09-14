@@ -141,13 +141,17 @@ def _diffuse(height_field, mask, face=(150, 150, 155), ground=(238, 238, 240)):
     return img
 
 
-def _disc_height(size, motif, folds=8, lobes=1):
+def _disc_height(size, motif, folds=8, lobes=1, boss=True):
     """``(height field, silhouette)`` for a disc, with or without ornament.
 
     ``lobes`` is how many bumps each petal carries at its outer end. One is a
     plain ellipse; three is the trefoil a Korean lotus tile's petal actually
     has, and it is the feature that tells one lotus type from another - so it
     is what a reading has to keep, and what a control has to plant.
+
+    ``boss=False`` plants the petals without the central knop, which is the
+    control for the boss reading: plenty of roof tile ends have an open
+    centre, and a ring drawn there is invention.
     """
     field = np.zeros((size, size), dtype=np.float32)
     mask = np.zeros((size, size), dtype=np.uint8)
@@ -174,7 +178,8 @@ def _disc_height(size, motif, folds=8, lobes=1):
                                int(c[1] + r * 0.64 * np.sin(angle)
                                    + across * np.cos(angle))),
                        int(r * 0.075), 1.0, -1)
-    cv2.circle(field, c, int(r * 0.14), 1.3, -1)           # the boss
+    if boss:
+        cv2.circle(field, c, int(r * 0.14), 1.3, -1)       # the boss
     return field, mask
 
 
@@ -187,7 +192,8 @@ def petal_centres(size=400, folds=8):
             for step in range(int(folds))]
 
 
-def lit_relief_disc(size=400, motif=True, azimuth=35.0, folds=8, lobes=1):
+def lit_relief_disc(size=400, motif=True, azimuth=35.0, folds=8, lobes=1,
+                    boss=True):
     """A disc carrying a ring of petals, a boss and a raised rim, under a lamp.
 
     Ground truth for the relief reading: ``folds`` petals plus a boss and a
@@ -198,7 +204,8 @@ def lit_relief_disc(size=400, motif=True, azimuth=35.0, folds=8, lobes=1):
     control: a bare face has nothing to read, and a reading that draws
     something on it is drawing noise.
     """
-    field, mask = _disc_height(size, motif, folds=folds, lobes=lobes)
+    field, mask = _disc_height(size, motif, folds=folds, lobes=lobes,
+                               boss=boss)
     return _lit(field, mask, azimuth=azimuth)
 
 
@@ -207,9 +214,10 @@ def lit_plain_disc(size=400, azimuth=35.0):
     return lit_relief_disc(size=size, motif=False, azimuth=azimuth)
 
 
-def diffuse_relief_disc(size=400, motif=True, folds=8, lobes=1):
+def diffuse_relief_disc(size=400, motif=True, folds=8, lobes=1, boss=True):
     """``lit_relief_disc``'s disc under a softbox instead of a lamp."""
-    field, mask = _disc_height(size, motif, folds=folds, lobes=lobes)
+    field, mask = _disc_height(size, motif, folds=folds, lobes=lobes,
+                               boss=boss)
     return _diffuse(field, mask)
 
 

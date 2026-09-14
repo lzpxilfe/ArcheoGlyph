@@ -2616,11 +2616,33 @@ def fold_repeat_elements(surface, frame, n_theta=CELL_THETA, n_rad=CELL_RAD):
         # edge talking, not a ridge: under a lamp it sat on the floor bin at
         # every fold count tried, and drew the ring 0.06 of a radius in from
         # where a softbox drew it on the same disc.
+        #
+        # The bar is taken from the band's *magnitude*. This wedge is a
+        # height, and the integral kernel behind it sums to zero, so the
+        # petal band's mean line level is as often negative as positive -
+        # measured -0.051 on the eight-fold control. Scaling a negative
+        # baseline by 1.3 moves the bar DOWN, and a ridge worth four parts in
+        # a thousand of the map's own scale was clearing it and drawing a
+        # boss ring on an artefact that has none.
+        #
+        # And it has to be a ring rather than the repeat seen end-on. The
+        # search reaches inside the petals, so on a boss-free disc the tallest
+        # thing in it is the petals' own inner ends: at six and eight folds
+        # that candidate ripples 0.42 to 0.69 around the turn against a height
+        # of 0.18, which is a row of petals, not a ring. So the ridge must
+        # stand higher than it varies - no constant needed, and nothing to
+        # tune. Where petals really do run together into a closed annulus the
+        # ripple falls away and the ring is drawn, which is right: at nine
+        # folds the control's petals are 21 degrees wide in a 20 degree half
+        # sector at that radius, so there genuinely is a ring there.
         b0, b1 = int(n_rad * BOSS_BAND[0]), int(n_rad * BOSS_BAND[1])
         at = int(np.argmax(profile[b0:b1]))
         boss_bin = b0 + at
+        level = abs(float(profile[p0:p1].mean()))
+        ripple = 2.0 * float(np.abs(spectrum[1])[boss_bin]) / float(per)
         if 0 < at < (b1 - b0 - 1) \
-                and profile[boss_bin] > BOSS_CLEARANCE * float(profile[p0:p1].mean()):
+                and profile[boss_bin] > BOSS_CLEARANCE * level \
+                and profile[boss_bin] > ripple:
             boss_r = boss_bin / float(n_rad) * float(frame.radius)
             ring = [[int(round(frame.cx + boss_r * math.cos(t))),
                      int(round(frame.cy + boss_r * math.sin(t)))]

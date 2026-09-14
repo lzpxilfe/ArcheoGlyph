@@ -244,12 +244,13 @@ are the content rather than an inference about it; its specks still go.
 
 ### The blobs, fixed by changing what is read rather than what is kept
 
-Nine attempts to sort the marks out *after* extraction have now failed on the
+Ten attempts to sort the marks out *after* extraction have now failed on the
 same nine photographs - three to tell decoration from lighting, a fourth
 measured and rejected, a fifth to tell one kind of decoration from another,
 and two more to find where a vessel's decoration sits. Two later entries come
 from the rosette reading rather than from mark sorting, and are kept here
-because they were refuted the same way - by asking the reading twice:
+because they were refuted the same way - by asking the reading twice, or by
+asking it about an artefact whose answer is already known:
 
 | rule tried | what killed it |
 | --- | --- |
@@ -262,6 +263,7 @@ because they were refuted the same way - by asking the reading twice:
 | row-mean local contrast, same | a comb pot and a stone dagger give the same profile shape |
 | the petal's own outline, cut from the folded line map | asked twice a quarter-turn apart in smoothing, the tile's cell agrees with itself 0.033, and 0.062 even allowed to rotate freely |
 | the repeat's angular phase, from the fold-order harmonic | half a sector out under a softbox (0.529 against a truth of 0.000); the sign that would fix it has no signal there, skew −0.001 |
+| which end of a blade is its point, from the taper | over the outer quarter the bipa dagger is 88 wide at the tip and 116 at the butt, but its tang narrows to a 39-wide stem against a 79-wide tip, so the rule stands that dagger on its point |
 
 The information needed is not in the extracted marks, because decoration and
 lighting arrive there in the same shapes. What was wrong was **what was being

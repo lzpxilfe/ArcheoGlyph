@@ -34,10 +34,8 @@ from .colors import (
     muted_hex,
 )
 from .enhance import (
-    INCISED,
     estimate_masked_edge_density,
     prepare_detail_source,
-    relief_ink_sheet,
 )
 from .geometry import (
     MAX_INTERIOR_MARKS,
@@ -469,13 +467,16 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                 # Smooth curves between gentle vertices, hard corners kept.
                 path_data = smooth_closed_path(final_points, corner_deg=38.0)
 
-    # Read once and shared: the schematic structure lines and a vessel's rim
-    # and shoulder are the same measurement, and asking twice drew the pot's
-    # first band twice - the identical polyline, four strokes once haloed. The
-    # slider path still sees exactly the budget it asked for.
-    all_profile_lines = estimate_profile_bands(
-        target_mask, max_lines=max(2, profile_count))
-    profile_lines = all_profile_lines[:max(1, profile_count)]
+    # Asked for the count this path actually spends, not sliced off a longer
+    # read. estimate_profile_bands picks its candidates by curvature strength
+    # and then sorts them by position, so the first of two is not the one it
+    # would have chosen if asked for one: on the open-vessel control, one band
+    # is the shoulder at y=229 while two are [186, 229], and the prefix hands
+    # back y=186. The vessel's own rim and shoulder are read separately below,
+    # and cannot double-draw with these because they are only read when this
+    # list came out empty.
+    profile_lines = estimate_profile_bands(
+        target_mask, max_lines=max(1, profile_count))
     round_lines = estimate_round_bands(
         target_mask,
         max_lines=max(0, min(2, profile_count + 1)),
@@ -515,15 +516,14 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
     # horizontals (Line does, deliberately - but a rim is not a stray bar).
     vessel_bands = []
     if not is_drawing and not profile_lines and looks_like_a_vessel(target_mask):
-        # Only when the schematic reading is off, and reusing what it already
-        # measured: both are the same bands, and drawing them from both places
-        # laid the pot's rim down twice.
-        vessel_bands = all_profile_lines[:2]
+        # Only when the schematic reading is off, which is also what keeps
+        # these from being laid down twice: the two readings are never both
+        # drawn.
+        vessel_bands = estimate_profile_bands(target_mask, max_lines=2)
         if vessel_bands:
             log(f"Drawing {len(vessel_bands)} structural bands on this vessel "
                 f"- its rim and shoulder, not its decoration.")
     ink_lines = []
-    relief_sheet = None
     #: The height map of a flat relief face, kept so that every interior mark
     #: the symbol ends up drawing can be held to the same test the boundary
     #: curves were: does the surface actually step across it.
@@ -572,8 +572,6 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
                 # itself and never skeletonises.
                 _rx, _ry, _rw, _rh = cv2.boundingRect(main_contour)
                 face_radius = max(_rw, _rh) / 2.0
-                relief_sheet = relief_ink_sheet(processing_bgr, target_mask,
-                                                face_radius, reading=INCISED)
                 ink_lines, relief_surface = read_relief_outlines(
                     processing_bgr, target_mask, main_contour)
                 read_as_relief = True
@@ -789,11 +787,19 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
             # it agrees. Silence from it is not disagreement - a plain disc
             # has nothing to match - so only an actual conflict refuses.
             # When the vote placed the frame there is no second method left
-            # to disagree; the six nudges above were the check.
-            if voted is None:
-                voted = vote_for_centre(motif_gray, target_mask,
-                                        max(frame.a, frame.b))
-            if centre_disagrees(frame, voted, max(frame.a, frame.b)):
+            # to disagree; the six nudges above were the check. Silence is
+            # final: the radius the vote takes only sets its accumulator's
+            # blur, and none of the ways it declines depend on it, so asking
+            # again with a different one returns the same silence and costs a
+            # second SIFT pass to learn nothing.
+            #
+            # The gate is measured against the FACE radius, which is what
+            # CENTRE_AGREEMENT was calibrated on (see test_feature_symmetry).
+            # frame.a and frame.b are the survey's sampling ring, 0.66 to 0.90
+            # of the face, so using them silently tightened 0.12 to 0.098 and
+            # cut the margin over the lotus tile's own 0.072 from 1.7 times to
+            # 1.1.
+            if centre_disagrees(frame, voted, frame.radius):
                 log("Two methods put this artefact's decorated face in "
                     f"different places - fitted ({frame.cx:.0f},{frame.cy:.0f}), "
                     f"feature vote ({voted[0]:.0f},{voted[1]:.0f}) - so the "
@@ -1192,7 +1198,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
         drawing_limit = 80 if is_mono else max(3, line_detail_count + 2)
         internal_lines = [list(pl) for pl in ink_lines[:drawing_limit]]
     elif is_mono and is_roundish and ink_lines and not folded_motif_lines:
-        if relief_sheet is not None:
+        if read_as_relief:
             # The ink was traced from a rubbing of this artefact's own relief,
             # so it is the content, exactly as it is for a real rubbing above -
             # and the region extractors it used to be merged with are reading
@@ -1245,7 +1251,7 @@ def run_autotrace(bgr, options, mask_provider, relief=None, cancel_check=None):
             # documentation plates, not markers - capping them there cut a
             # lotus rosette of 125 strokes down to ten arcs. The size floor
             # still applies to both: a speck is unreadable whatever drew it.
-            strokes_are_content = is_drawing or relief_sheet is not None
+            strokes_are_content = is_drawing or read_as_relief
             if strokes_are_content and is_mono:
                 # A documentation plate keeps the whole drawing. The legend
                 # floor cut a rosette of four hundred traced curves down to

@@ -790,11 +790,24 @@ def stand_upright(bgr_img, mask):
     Excavated material is photographed lying down - a dagger is laid on the
     bench and shot from above - so tracing the photograph as-is gives a blade
     lying on its side. Archaeological illustration draws such a find upright,
-    point up, and a legend marker has to match: the horizontal lens the
-    slender bronze dagger came out as read as no artefact at all.
+    and a legend marker has to match: the horizontal lens the slender bronze
+    dagger came out as read as no artefact at all.
+
+    **Vertical, not point-up.** The long edge is 180 degrees ambiguous and
+    this does not resolve it, so a find photographed end-for-end comes out
+    inverted. Deciding it from the silhouette was tried and refused: the
+    obvious cue is that a blade tapers to its point, but measured over the
+    outer quarter of each end the bipa-form bronze dagger is 88 wide at the
+    tip and 116 at the butt, and at the very extremity its tang is a 39-wide
+    stem against a 79-wide tip - so "narrow end up" stands that dagger on its
+    point, and it was already the right way up in the photograph. It read the
+    sehyeong dagger correctly, which is what makes it a trap rather than an
+    obvious mistake. Which end is the point is not in the outline; a caller
+    who needs it has to say so.
 
     Only objects with a real long axis are turned; a mirror or a roof tile
-    end has none, and spinning one would just blur it.
+    end has none, and spinning one would just blur it. The stone dagger sits
+    below that gate at aspect 1.69 and is never touched here.
     """
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     if not contours:
@@ -818,6 +831,9 @@ def stand_upright(bgr_img, mask):
     long_angle = math.degrees(math.atan2(by - ay, bx - ax))
     # Rotate so the long edge stands vertical (90 degrees in image coords).
     delta = ((long_angle - 90.0 + 90.0) % 180.0) - 90.0
+
+    # The modulo lays the axis down but throws away the edge's 180 degree
+    # ambiguity - see the docstring for why nothing here picks a side.
     if abs(delta) < 1.0:
         return bgr_img, mask
 

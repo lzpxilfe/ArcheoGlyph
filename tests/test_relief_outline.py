@@ -240,6 +240,38 @@ def test_the_repeat_is_drawn_the_same_way_under_either_lamp():
             f"overlap {agreement:.2f}")
 
 
+def test_a_boss_is_drawn_only_where_there_is_one():
+    """
+    The central ring is a reading, not decoration, so it has to abstain.
+
+    The bar it has to clear is 1.3 times the petal band's own level, and that
+    level is taken as a magnitude on purpose. This wedge is a height and the
+    integral behind it sums to zero, so the band's mean is as often negative
+    as positive - -0.051 on the eight-fold control - and multiplying a
+    negative baseline by 1.3 moves the bar DOWN instead of up. A ridge worth
+    four parts in a thousand of the map's scale cleared it that way, and drew
+    a boss on a disc that has none.
+
+    The ridge also has to be a ring rather than the petals seen end-on, since
+    the search reaches inside them - so it must stand higher than it varies
+    around the turn. The nine-fold control is the exception that shows the
+    rule is about geometry rather than about bosses: at the radius in question
+    its petals are 21 degrees wide in a 20 degree half sector, so they really
+    do run together into a closed annulus, and a ring there is a correct
+    reading of the height field whether or not a knop was planted.
+    """
+    for folds, without in ((6, 0), (8, 0), (9, 1)):
+        for boss, expected in ((True, 1), (False, without)):
+            image = synthetic.lit_relief_disc(size=600, folds=folds, lobes=3,
+                                              boss=boss)
+            elements, rings, _mask, _radius, _frame = _repeat_of(image, folds)
+            assert len(elements) == folds
+            assert len(rings) == expected, (
+                f"a {folds}-fold disc "
+                f"{'with' if boss else 'without'} a boss drew {len(rings)} "
+                f"central rings")
+
+
 def test_the_repeat_is_registered_by_convention_not_by_the_photograph():
     """
     Every element lands on the same angle whatever the lighting.
